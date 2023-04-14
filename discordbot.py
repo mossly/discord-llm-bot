@@ -18,7 +18,7 @@ async def on_ready():
 
 async def send_request(model, message_content):
   openai.ChatCompletion.create(
-    model=model
+    model=model,
     messages=[
           {"role": "system", "content": "You are MS-DOS-LY, a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."},
           {"role": "user", "content": str(message_content).replace("<@1088294375253082223>", "")},
