@@ -17,13 +17,14 @@ async def on_ready():
     print(f"{bot.user.name} has connected to Discord!")
 
 async def send_request(model, message_content):
-  openai.ChatCompletion.create(
+  response = openai.ChatCompletion.create(
     model=model,
     messages=[
           {"role": "system", "content": "You are MS-DOS-LY, a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."},
           {"role": "user", "content": str(message_content).replace("<@1088294375253082223>", "")},
-      ]
+    ]
   )
+  return response
 
 @bot.event
 async def on_message(message):
