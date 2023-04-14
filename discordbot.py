@@ -63,10 +63,6 @@ async def on_message(message):
         
         temp_message = await message.reply(embed=discord.Embed(title="", description="...generating reply...", color=0xFDDA0D).set_footer(text=""))
         
-        response = await send_request(model, message.content.strip())
-        
-        await temp_message.delete()
-
         try:
             #Make your OpenAI API request here
             response = await send_request(model, message.content.strip())
@@ -83,6 +79,7 @@ async def on_message(message):
             await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"OpenAI API request exceeded rate limit: {e}"))
             pass
         else:
+            await temp_message.delete()
             await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{replyMode} | generated in {round(time.time() - start_time, 2)} seconds'))
 
 BOTAPITOKEN  = os.getenv("BOT_API_TOKEN")
