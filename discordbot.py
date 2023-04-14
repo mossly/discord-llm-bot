@@ -10,6 +10,8 @@ intents.typing = True
 intents.presences = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 @bot.event
 async def on_ready():
     print(f"{bot.user.name} has connected to Discord!")
@@ -66,7 +68,7 @@ async def on_message(message):
         await temp_message.delete()
 
         if response.status_code == 200:
-            await message.reply(embed=discord.Embed(title="", description=response.json()['output'].strip(), color=0x32a956).set_footer(text=f'{replyMode} | generated in {round(time.time() - start_time, 2)} seconds'))
+            await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{replyMode} | generated in {round(time.time() - start_time, 2)} seconds'))
         else:
             await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text="message failed to send..."))
 
