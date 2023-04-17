@@ -16,15 +16,25 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 async def on_ready():
     print(f"{bot.user.name} has connected to Discord!")
 
-async def send_request(model, message_content):
-  response = openai.ChatCompletion.create(
-    model=model,
-    messages=[
-          {"role": "system", "content": "You are MS-DOS-LY, a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."},
-          {"role": "user", "content": str(message_content).replace("<@1088294375253082223>", "")},
-    ]
-  )
-  return response
+async def send_request(model, message_content, reference_message):
+    if reference_message is None:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are MS-DOS-LY, a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."},
+                {"role": "user", "content": str(message_content).replace("<@1088294375253082223>", "")},
+            ]
+        )
+        else:
+            response = openai.ChatCompletion.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are MS-DOS-LY, a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."},
+                {"role": "user", "reference_message": str(message_content).replace("<@1088294375253082223>", "")},
+                {"role": "user", "content": str(message_content).replace("<@1088294375253082223>", "")},
+            ]
+        )  
+    return response
 
 @bot.event
 async def on_message(message):
@@ -41,12 +51,12 @@ async def on_message(message):
             if message.reference.cached_message.author == bot.user:
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D).set_footer(text=""))
-                reference_message = message.reference.cached_message.embeds[0].description
+                reference_message = message.reference.cached_message.embeds[0].description.strip()
                 reference_author = "MS-DOS-LY"
             else:
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D).set_footer(text=""))
-                reference_message = message.reference.cached_message.content
+                reference_message = message.reference.cached_message.content.strip()
                 reference_author = message.reference.cached_message.author.name
             
         suffixes = {
