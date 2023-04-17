@@ -76,7 +76,7 @@ async def on_message(message):
         
         try:
             #Make your OpenAI API request here
-            response = await send_request(model, message.content.strip())
+            response = await send_request(model, message.content.strip(), reference_message)
         except openai.error.APIError as e:
             #Handle API error here, e.g. retry or log
             await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"OpenAI API returned an API Error: {e}"))
