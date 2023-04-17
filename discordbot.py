@@ -34,7 +34,7 @@ async def send_request(model, message_content, reference_message):
                 {"role": "user", "content": str(message_content).replace("<@1088294375253082223>", "")},
             ]
         )
-        return response
+    return response
 
 @bot.event
 async def on_message(message):
