@@ -76,7 +76,7 @@ async def on_message(message):
         
         max_retries = 5
         
-        for retry in range(max_retries)
+        for retry in range(max_retries):
             try:
                 #Make your OpenAI API request here
                 response = await send_request(model, message.content.strip(), reference_message)
