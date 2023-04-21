@@ -74,25 +74,32 @@ async def on_message(message):
         
         temp_message = await message.reply(embed=discord.Embed(title="", description="...generating reply...", color=0xFDDA0D).set_footer(text=""))
         
-        try:
-            #Make your OpenAI API request here
-            response = await send_request(model, message.content.strip(), reference_message)
-        except openai.error.APIError as e:
-            #Handle API error here, e.g. retry or log
-            await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"OpenAI API returned an API Error: {e}"))
-            pass
-        except openai.error.APIConnectionError as e:
-            #Handle connection error here
-            await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"Failed to connect to OpenAI API: {e}"))
-            pass
-        except openai.error.RateLimitError as e:
-            #Handle rate limit error (we recommend using exponential backoff)
-            await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"OpenAI API request exceeded rate limit: {e}"))
-            pass
-        else:
-            await temp_message.delete()
-            await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{replyMode} | generated in {round(time.time() - start_time, 2)} seconds'))
-
+        max_retries = 5
+        
+        for retry in range(max_retries)
+            try:
+                #Make your OpenAI API request here
+                response = await send_request(model, message.content.strip(), reference_message)
+            except openai.error.APIError as e:
+                #Handle API error here, e.g. retry or log
+                if retry == max_retries - 1: 
+                    await temp_message.delete()
+                    await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"OpenAI API returned an API Error: {e}"))
+                continue
+            except openai.error.APIConnectionError as e:
+                if retry == max_retries - 1: 
+                    await temp_message.delete()
+                    await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"Failed to connect to OpenAI API: {e}"))
+                continue
+            except openai.error.RateLimitError as e:
+                if retry == max_retries - 1: 
+                    await temp_message.delete()
+                    await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0xDC143C).set_footer(text=f"OpenAI API request exceeded rate limit: {e}"))
+                continue
+            else:
+                await temp_message.delete()
+                await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{replyMode} | generated in {round(time.time() - start_time, 2)} seconds'))
+    
 BOTAPITOKEN  = os.getenv("BOT_API_TOKEN")
 
 bot.run(BOTAPITOKEN)
