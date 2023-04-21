@@ -19,9 +19,11 @@ system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
 async def send_request(model, reply_mode, message_content, reference_message):
+    print("Entering send_request function")
     message_content = str(message_content).replace(bot_tag, "")
     
     if reference_message is None:
+        print("About to make API request without reference message")
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
@@ -29,7 +31,9 @@ async def send_request(model, reply_mode, message_content, reference_message):
                 {"role": "user", "content": message_content},
             ]
         )
+        print("API request completed without reference message")
     else:
+        print("About to make API request with reference message") 
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
@@ -38,6 +42,7 @@ async def send_request(model, reply_mode, message_content, reference_message):
                 {"role": "user", "content": message_content},
             ]
         )
+        print("API request completed with reference message")
     return response
 
 @bot.event
