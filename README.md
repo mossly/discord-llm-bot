@@ -71,7 +71,7 @@ This Discord bot is powered by OpenAI's API and allows users to interact with th
 
 5. To reference a previous message, first reply to the message you want to reference, and then mention the bot with your query:
 
-```
+    ```
     @User1 What is the square root of 16?
     @User2 It's 4.
     @GPT4Bot Is that correct? (Replying to User2's message)
