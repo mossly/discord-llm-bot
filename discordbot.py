@@ -10,9 +10,9 @@ verbose_prompt = "You are detailed & articulate. Include evidence and reasoning 
 creative_prompt = "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. Never use the passive voice where you can use the active voice. Do not end your message with a summary."
 
 suffixes = {
-    "-v": ("gpt-4", verbose_prompt),
-    "-t": ("gpt-3.5-turbo", concise_prompt),
-    "-c": ("gpt-4", creative_prompt)
+    "-v": ("gpt-4", verbose_prompt, "GPT-4 'Verbose'"),
+    "-t": ("gpt-3.5-turbo", concise_prompt, "GPT-3.5 Turbo 'Concise'"),
+    "-c": ("gpt-4", creative_prompt, "GPT-4 'Creative'")
 }
 
 intents = discord.Intents.default()
@@ -83,7 +83,7 @@ async def on_message(message):
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
                 return
 
-        model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
+        model, reply_mode, reply_mode_footer = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt", "GPT-4 'Concise'"))
 
         if message.content[-2:] in suffixes:
             message.content = message.content[:-2]
@@ -114,7 +114,7 @@ async def on_message(message):
                 continue
             else:
                 await temp_message.delete()
-                await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{model} {reply_mode} | generated in {round(time.time() - start_time, 2)} seconds'))
+                await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds'))
     
 BOTAPITOKEN  = os.getenv("BOT_API_TOKEN")
 
