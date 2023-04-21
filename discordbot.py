@@ -76,13 +76,14 @@ async def on_message(message):
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
 
-            suffixes = {
-                "-v": ("gpt-4", verbose_prompt),
-                "-t": ("gpt-3.5-turbo", concise_prompt),
-                "-c": ("gpt-4", creative_prompt)
-            }
+        suffixes = {
+            "-v": ("gpt-4", verbose_prompt),
+            "-t": ("gpt-3.5-turbo", concise_prompt),
+            "-c": ("gpt-4", creative_prompt)
+        }
 
-            model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
+        model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
+
         
         if message.content[-2:] in suffixes:
             message.content = message.content[:-2]
