@@ -55,7 +55,9 @@ async def on_message(message):
         
         reference_author = None
         reference_message = None
-        if message.reference:
+        
+    if message.reference:
+        try:
             if message.reference.cached_message.author == bot.user:
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D).set_footer(text=""))
@@ -65,6 +67,9 @@ async def on_message(message):
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D).set_footer(text=""))
                 reference_message = message.reference.cached_message.content.strip()
             reference_author = message.reference.cached_message.author.name
+        except AttributeError:
+            await temp_message.delete()
+            temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
             
         suffixes = {
             "-v": ("gpt-4", verbose_prompt),
@@ -86,7 +91,7 @@ async def on_message(message):
         for retry in range(max_retries):
             try:
                 #Make your OpenAI API request here
-                response = await send_request(model, message.content.strip(), reference_message)
+                response = await send_request(model, reply_mode, message.content.strip(), reference_message)
             except openai.error.APIError as e:
                 #Handle API error here, e.g. retry or log
                 if retry == max_retries - 1: 
