@@ -5,15 +5,15 @@ import discord
 from discord.ext import commands
 import openai
 
+concise_prompt = "You are a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."
+verbose_prompt = "You are detailed & articulate. Include evidence and reasoning in your answers."
+creative_prompt = "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. Never use the passive voice where you can use the active voice. Do not end your message with a summary."
+
 suffixes = {
     "-v": ("gpt-4", verbose_prompt),
     "-t": ("gpt-3.5-turbo", concise_prompt),
     "-c": ("gpt-4", creative_prompt)
 }
-
-concise_prompt = "You are a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."
-verbose_prompt = "You are detailed & articulate. Include evidence and reasoning in your answers."
-creative_prompt = "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. Never use the passive voice where you can use the active voice. Do not end your message with a summary."
 
 intents = discord.Intents.default()
 intents.typing = True
