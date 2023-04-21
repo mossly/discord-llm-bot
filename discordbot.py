@@ -12,13 +12,14 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
+bot_tag = str(os.getenv("BOT_TAG")).strip()
 
 @bot.event
 async def on_ready():
     print(f"{bot.user.name} has connected to Discord!")
 
 async def send_request(model, message_content, reference_message):
-    message_content = str(message_content).replace("<@1088294375253082223>", "")
+    message_content = str(message_content).replace(bot_tag, "")
     
     if reference_message is None:
         response = openai.ChatCompletion.create(
@@ -55,12 +56,11 @@ async def on_message(message):
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D).set_footer(text=""))
                 reference_message = message.reference.cached_message.embeds[0].description.strip()
-                reference_author = "MS-DOS-LY"
             else:
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D).set_footer(text=""))
                 reference_message = message.reference.cached_message.content.strip()
-                reference_author = message.reference.cached_message.author.name
+            reference_author = message.reference.cached_message.author.name
             
         suffixes = {
             "-v": ("gpt-4", "Verbose"),
