@@ -18,10 +18,6 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
-@bot.event
-async def on_ready():
-    print(f"{bot.user.name} has connected to Discord!")
-
 async def send_request(model, reply_mode, message_content, reference_message):
     message_content = str(message_content).replace(bot_tag, "")
     
@@ -45,6 +41,10 @@ async def send_request(model, reply_mode, message_content, reference_message):
     return response
 
 @bot.event
+async def on_ready():
+    print(f"{bot.user.name} has connected to Discord!")
+
+@bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
@@ -56,38 +56,36 @@ async def on_message(message):
         reference_author = None
         reference_message = None
         
-    if message.reference:
-        try:
-            if message.reference.cached_message.author == bot.user:
+        if message.reference:
+            try:
+                if message.reference.cached_message.author == bot.user:
+                    await temp_message.delete()
+                    temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D).set_footer(text=""))
+                    reference_message = message.reference.cached_message.embeds[0].description.strip()
+                else:
+                    await temp_message.delete()
+                    temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D).set_footer(text=""))
+                    reference_message = message.reference.cached_message.content.strip()
+                reference_author = message.reference.cached_message.author.name
+            except AttributeError:
                 await temp_message.delete()
-                temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D).set_footer(text=""))
-                reference_message = message.reference.cached_message.embeds[0].description.strip()
-            else:
-                await temp_message.delete()
-                temp_message = await message.reply(embed=discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D).set_footer(text=""))
-                reference_message = message.reference.cached_message.content.strip()
-            reference_author = message.reference.cached_message.author.name
-        except AttributeError:
-            await temp_message.delete()
-            temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
-            
-        suffixes = {
-            "-v": ("gpt-4", verbose_prompt),
-            "-t": ("gpt-3.5-turbo", concise_prompt),
-            "-c": ("gpt-4", creative_prompt)
-        }
+                temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
 
-        model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
+            suffixes = {
+                "-v": ("gpt-4", verbose_prompt),
+                "-t": ("gpt-3.5-turbo", concise_prompt),
+                "-c": ("gpt-4", creative_prompt)
+            }
+
+            model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
         
         if message.content[-2:] in suffixes:
             message.content = message.content[:-2]
 
         await temp_message.delete()
-        
         temp_message = await message.reply(embed=discord.Embed(title="", description="...generating reply...", color=0xFDDA0D).set_footer(text=""))
         
         max_retries = 5
-        
         for retry in range(max_retries):
             try:
                 #Make your OpenAI API request here
