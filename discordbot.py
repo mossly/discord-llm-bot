@@ -81,6 +81,7 @@ async def on_message(message):
             except AttributeError:
                 await temp_message.delete()
                 temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
+                return
 
         model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
 
