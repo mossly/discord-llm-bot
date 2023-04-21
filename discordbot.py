@@ -5,6 +5,10 @@ import discord
 from discord.ext import commands
 import openai
 
+concise_prompt = "You are a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."
+verbose_prompt = "You are detailed & articulate. Include evidence and reasoning in your answers."
+creative_prompt = "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. Never use the passive voice where you can use the active voice. Do not end your message with a summary."
+
 intents = discord.Intents.default()
 intents.typing = True
 intents.presences = True
@@ -18,14 +22,14 @@ bot_tag = str(os.getenv("BOT_TAG")).strip()
 async def on_ready():
     print(f"{bot.user.name} has connected to Discord!")
 
-async def send_request(model, message_content, reference_message):
+async def send_request(model, reply_mode, message_content, reference_message):
     message_content = str(message_content).replace(bot_tag, "")
     
     if reference_message is None:
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": system_prompt+" "+reply_mode},
                 {"role": "user", "content": message_content},
             ]
         )
@@ -33,7 +37,7 @@ async def send_request(model, message_content, reference_message):
         response = openai.ChatCompletion.create(
             model=model,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": system_prompt+" "+reply_mode},
                 {"role": "user", "content": reference_message},
                 {"role": "user", "content": message_content},
             ]
@@ -63,12 +67,12 @@ async def on_message(message):
             reference_author = message.reference.cached_message.author.name
             
         suffixes = {
-            "-v": ("gpt-4", "Verbose"),
-            "-t": ("gpt-3.5-turbo", "Concise"),
-            "-c": ("gpt-4", "Creative")
+            "-v": ("gpt-4", verbose_prompt),
+            "-t": ("gpt-3.5-turbo", concise_prompt),
+            "-c": ("gpt-4", creative_prompt)
         }
 
-        model, replyMode = suffixes.get(message.content[-2:], ("gpt-4", "Concise"))
+        model, reply_mode = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt"))
         
         if message.content[-2:] in suffixes:
             message.content = message.content[:-2]
@@ -101,7 +105,7 @@ async def on_message(message):
                 continue
             else:
                 await temp_message.delete()
-                await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{replyMode} | generated in {round(time.time() - start_time, 2)} seconds'))
+                await message.reply(embed=discord.Embed(title="", description=response['choices'][0]['message']['content'].strip(), color=0x32a956).set_footer(text=f'{model} {reply_mode} | generated in {round(time.time() - start_time, 2)} seconds'))
     
 BOTAPITOKEN  = os.getenv("BOT_API_TOKEN")
 
