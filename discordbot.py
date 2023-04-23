@@ -4,6 +4,7 @@ import time
 import discord
 from discord.ext import commands
 import openai
+import aiohttp
 
 concise_prompt = "You are a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."
 verbose_prompt = "You are detailed & articulate. Include evidence and reasoning in your answers."
@@ -80,9 +81,26 @@ async def on_message(message):
                 reference_author = message.reference.cached_message.author.name
             except AttributeError:
                 await temp_message.delete()
-                temp_message = await message.reply(embed=discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0x32a956).set_footer(text='Error | generated in {round(time.time() - start_time, 2)} seconds'))
+                temp_message = await message.reply(embed=discord.Embed(title="ERROR", description="x_x", color=0x32a956).set_footer(text="...unable to fetch reference, the message is not cached..."))
                 return
-
+        
+        if message.attachments and message.attachments[0].filename.endswith(".txt"):
+            attachment = message.attachments[0]
+            async with aiohttp.ClientSession() as session:
+                async with session.get(attachment.url) as response:
+                    if response.status == 200:
+                        message.content = await response.text()
+                    else:
+                        await temp_message.delete()
+                        await message.reply(
+                            embed=discord.Embed(
+                                title="ERROR",
+                                description="x_x",
+                                color=0x32a956
+                            ).set_footer(text=f"...failed to download the attached .txt file... code: {response.status}")
+                        )
+                        return
+                    
         model, reply_mode, reply_mode_footer = suffixes.get(message.content[-2:], ("gpt-4", "concise_prompt", "GPT-4 'Concise'"))
 
         if message.content[-2:] in suffixes:
