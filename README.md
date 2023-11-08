@@ -60,7 +60,6 @@ This Discord bot is powered by OpenAI's API and allows users to interact with th
 4. To use different response modes, add the corresponding suffix to your message:
 
     - `-v`: Verbose mode
-    - `-t`: Turbo mode
     - `-c`: Creative mode
 
     Example:
