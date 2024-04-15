@@ -254,7 +254,7 @@ async def on_message(msg_rcvd):
           discord.Embed(title="",
                         description="...analyzing image...",
                         color=0xFDDA0D).set_footer(text=""))
-      response = await send_request("gpt-4-turbo", reply_mode,
+      response = await send_request("gpt-4-vision-preview", reply_mode,
                                     msg_rcvd.content.strip(),
                                     reference_message, image_url)
 
