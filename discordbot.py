@@ -6,7 +6,7 @@ from openai import OpenAI
 import os
 import time
 
-client = OpenAI()
+oaiclient = OpenAI()
 
 concise_prompt = "You are a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."
 verbose_prompt = "You are detailed & articulate. Include evidence and reasoning in your answers."
@@ -19,7 +19,7 @@ suffixes = {
 }
 
 intents = discord.Intents.default()
-intents.message_content, intents.typing, intents.presences = True, True, True
+client = discord.Client(intents=intents)
 global bot
 bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -77,7 +77,7 @@ async def send_request(model, reply_mode, message_content, reference_message,
   )
 
   # Make the API request
-  response = client.chat.completions.create(model=model,
+  response = oaiclient.chat.completions.create(model=model,
                                             messages=messages_input,
                                             max_tokens=640)
 
@@ -93,7 +93,7 @@ async def send_request(model, reply_mode, message_content, reference_message,
 async def generate_image(img_prompt, img_quality, img_size):
   print("Entering gen_image function")
 
-  # Call the images.generate method on the client instance
+  # Call the images.generate method on the oaiclient instance
   response = openai.images.generate(
       model="dall-e-3",
       prompt=img_prompt,
