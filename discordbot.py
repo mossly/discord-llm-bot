@@ -13,9 +13,8 @@ verbose_prompt = "You are detailed & articulate. Include evidence and reasoning 
 creative_prompt = "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. Never use the passive voice where you can use the active voice. Do not end your message with a summary."
 
 suffixes = {
-    "-v": ("gpt-4-turbo", verbose_prompt, "GPT-4 Turbo 'Verbose'"),
-    "-3": ("gpt-3.5-turbo", concise_prompt, "GPT-3.5 Turbo 'Concise'"),
-    "-c": ("gpt-4-turbo", creative_prompt, "GPT-4 Turbo 'Creative'")
+    "-v": ("GPT-4o", verbose_prompt, "GPT-4o 'Verbose'"),
+    "-c": ("GPT-4o", creative_prompt, "GPT-4o 'Creative'")
 }
 
 intents = discord.Intents.default()
@@ -185,7 +184,7 @@ async def on_message(msg_rcvd):
     return
 
   if bot.user in msg_rcvd.mentions:
-    model, reply_mode, reply_mode_footer = "gpt-4-turbo", "concise_prompt", "GPT-4 Turbo 'Concise'"
+    model, reply_mode, reply_mode_footer = "GPT-4o", "concise_prompt", "GPT-4o 'Concise'"
     start_time = time.time()
     status_msg = await temp_msg(
         None, msg_rcvd,
@@ -254,7 +253,7 @@ async def on_message(msg_rcvd):
           discord.Embed(title="",
                         description="...analyzing image...",
                         color=0xFDDA0D).set_footer(text=""))
-      response = await send_request("gpt-4-vision-preview", reply_mode,
+      response = await send_request("GPT-4o", reply_mode,
                                     msg_rcvd.content.strip(),
                                     reference_message, image_url)
 
@@ -271,7 +270,7 @@ async def on_message(msg_rcvd):
       msg_rcvd.content = msg_rcvd.content[:-2]
       model, reply_mode, reply_mode_footer = suffixes.get(
           msg_rcvd.content[-2:],
-          ("gpt-4", "concise_prompt", "GPT-4 Turbo 'Concise'"))
+          ("GPT-4o", "concise_prompt", "GPT-4o 'Concise'"))
 
     status_msg = await temp_msg(
         status_msg, msg_rcvd,
