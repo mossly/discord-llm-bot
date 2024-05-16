@@ -4,7 +4,9 @@ from discord.ext import commands
 import openai
 from openai import OpenAI
 import os
+from datetime import datetime
 import time
+import asyncio
 
 oaiclient = OpenAI()
 
@@ -26,6 +28,40 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
+reminders = [
+    # Put all of your reminders here
+    ('2024-04-17 03:50:00', 'Take out the garbage'),
+    ('2024-04-17 03:52:00', 'Another reminder'),
+    ('2024-04-17 03:54:00', 'Another reminder'),
+    ('2024-04-17 03:56:00', 'Another reminder'),
+    ('2024-04-17 03:58:00', 'Another reminder')
+]
+
+# Conversion to timestamps
+reminders2 = {datetime.fromisoformat(reminder[0]).timestamp(): reminder[1] for reminder in reminders}
+
+def convert_to_readable(timestamp):
+    """Converts Unix timestamp to human-readable format."""
+    return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+async def background():
+    reminder_times = list(reminders2.keys())
+     
+    while True:
+        now = time.time()
+        for timestamp in reminder_times:
+            if timestamp in reminders2:
+                if timestamp < now:
+                    try:
+                        user = await bot.fetch_user("195485849952059392") # Use bot instead of client
+                        print(f'Sent {user} reminder: {reminders2[timestamp]}')
+                        await user.send(f'Reminder: {reminders2[timestamp]}')
+                    except Exception as e:
+                        print(f"Failed to send reminder: {e}")
+                    del reminders2[timestamp]
+                    reminder_times.remove(timestamp) 
+                    break # Exit the loop to wait for the next cycle
+        await asyncio.sleep(1)
 
 ######### MESSAGE DELETION #########
 async def delete_msg(msg):
@@ -117,10 +153,13 @@ async def on_ready():
     if member:
       permissions = member.guild_permissions
       print(f"Bot's permissions in {guild.name}: {permissions}")
-
+    
+  bot.loop.create_task(background())  # Schedule the background task
 
 ######### COMMANDS ########
-
+@bot.command()
+async def remind(ctx):
+  await ctx.send('Pong!')
 
 @bot.command()
 async def ping(ctx):
@@ -321,7 +360,6 @@ async def on_message(msg_rcvd):
         ))
         break
   await bot.process_commands(msg_rcvd)
-
 
 BOTAPITOKEN = os.getenv("BOT_API_TOKEN")
 
