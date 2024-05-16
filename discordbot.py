@@ -219,147 +219,144 @@ async def temp_msg(replaces_msg, request_msg, embed):
 ######### MESSAGE #########
 @bot.event
 async def on_message(msg_rcvd):
-  if msg_rcvd.author == bot.user:
-    return
+    if msg_rcvd.author == bot.user:
+        return
 
-  if bot.user in msg_rcvd.mentions:
-    model, reply_mode, reply_mode_footer = "GPT-4o", "concise_prompt", "GPT-4o 'Concise'"
-    start_time = time.time()
-    status_msg = await temp_msg(
-        None, msg_rcvd,
-        discord.Embed(title="",
-                      description="...reading request...",
-                      color=0xFDDA0D).set_footer(text=""))
+    if bot.user in msg_rcvd.mentions:
+        model, reply_mode, reply_mode_footer = "GPT-4o", "concise_prompt", "GPT-4o 'Concise'"
+        start_time = time.time()
+        status_msg = await temp_msg(
+            None, msg_rcvd,
+            discord.Embed(title="",
+                          description="...reading request...",
+                          color=0xFDDA0D).set_footer(text=""))
 
-    reference_author, reference_message, image_url = None, None, None
+        reference_author, reference_message, image_url = None, None, None
 
-    if msg_rcvd.reference:
-      try:
-        # Make sure the reference isn't None and there's a cached message
-        ref_msg = None
-        if msg_rcvd.reference.cached_message:
-          ref_msg = msg_rcvd.reference.cached_message
-        else:
-          ref_msg = await msg_rcvd.channel.fetch_message(
-              msg_rcvd.reference.message_id)
+        if msg_rcvd.reference:
+            try:
+                # Make sure the reference isn't None and there's a cached message
+                ref_msg = None
+                if msg_rcvd.reference.cached_message:
+                    ref_msg = msg_rcvd.reference.cached_message
+                else:
+                    ref_msg = await msg_rcvd.channel.fetch_message(
+                        msg_rcvd.reference.message_id)
 
-        if ref_msg.author == bot.user:
-          status_msg = await temp_msg(
-              status_msg, msg_rcvd,
-              discord.Embed(title="",
-                            description="...fetching bot reference...",
-                            color=0xFDDA0D).set_footer(text=""))
+                if ref_msg.author == bot.user:
+                    status_msg = await temp_msg(
+                        status_msg, msg_rcvd,
+                        discord.Embed(title="",
+                                      description="...fetching bot reference...",
+                                      color=0xFDDA0D).set_footer(text=""))
 
-          reference_message = ref_msg.embeds[0].description.strip()
-        else:
-          status_msg = await temp_msg(
-              status_msg, msg_rcvd,
-              discord.Embed(title="",
-                            description="...fetching user reference...",
-                            color=0xFDDA0D).set_footer(text=""))
-        reference_author = ref_msg.author.name
-      except AttributeError:
+                    reference_message = ref_msg.embeds[0].description.strip()
+                else:
+                    status_msg = await temp_msg(
+                        status_msg, msg_rcvd,
+                        discord.Embed(title="",
+                                      description="...fetching user reference...",
+                                      color=0xFDDA0D).set_footer(text=""))
+                reference_author = ref_msg.author.name
+            except AttributeError:
+                status_msg = await temp_msg(
+                    status_msg, msg_rcvd,
+                    discord.Embed(
+                        title="",
+                        description=
+                        "...unable to fetch reference, the message is not cached...",
+                        color=0xFDDA0D).set_footer(text=""))
+
+        if (msg_rcvd.attachments and msg_rcvd.attachments[0].filename.endswith(".txt")):
+            attachment = msg_rcvd.attachments[0]
+            async with aiohttp.ClientSession() as session:
+                async with session.get(attachment.url) as response:
+                    if response.status == 200:
+                        msg_rcvd.content = await response.text()
+                    else:
+                        status_msg = await temp_msg(
+                            status_msg, msg_rcvd,
+                            discord.Embed(title="ERROR", description="x_x",
+                                          color=0x32a956).
+                            set_footer(
+                                text=
+                                f"...failed to download the attached .txt file... code: {response.status}"
+                            ))
+        if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
+            image_url = msg_rcvd.attachments[0].url
+            status_msg = await temp_msg(
+                status_msg, msg_rcvd,
+                discord.Embed(title="",
+                              description="...analyzing image...",
+                              color=0xFDDA0D).set_footer(text=""))
+            response = await send_request("GPT-4o", reply_mode,
+                                          msg_rcvd.content.strip(),
+                                          reference_message, image_url)
+
+            await delete_msg(status_msg)
+            await msg_rcvd.reply(embed=discord.Embed(
+                title="", description=response, color=0x32a956
+            ).set_footer(
+                text=
+                f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds'
+            ))
+            return
+
+        if msg_rcvd.content[-2:] in suffixes:
+            msg_rcvd.content = msg_rcvd.content[:-2]
+            model, reply_mode, reply_mode_footer = suffixes.get(
+                msg_rcvd.content[-2:],
+                ("GPT-4o", "concise_prompt", "GPT-4o 'Concise'"))
+
         status_msg = await temp_msg(
             status_msg, msg_rcvd,
-            discord.Embed(
-                title="",
-                description=
-                "...unable to fetch reference, the message is not cached...",
-                color=0xFDDA0D).set_footer(text=""))
+            discord.Embed(title="",
+                          description="...generating reply...",
+                          color=0xFDDA0D).set_footer(text=""))
 
-    if msg_rcvd.attachments and msg_rcvd.attachments[0].filename.endswith(
-        ".txt"):
-      attachment = msg_rcvd.attachments[0]
-      async with aiohttp.ClientSession() as session:
-        async with session.get(attachment.url) as response:
-          if response.status == 200:
-            msg_rcvd.content = await response.text()
-          else:
-            status_msg = temp_msg(
-                status_msg, msg_rcvd,
-                discord.Embed(title="ERROR", description="x_x",
-                              color=0x32a956).
-                set_footer(
+        max_retries = 5
+        for retry in range(max_retries):
+            try:
+                print("Trying for " + str(retry) + "/" + str(max_retries) + "...")
+                #Make your OpenAI API request here
+                response = await send_request(model, reply_mode,
+                                              msg_rcvd.content.strip(),
+                                              reference_message, image_url)
+            except openai.APIError as e:
+                #Handle API error here, e.g. retry or log
+                if retry == max_retries - 1:
+                    await temp_msg(
+                        status_msg, msg_rcvd,
+                        discord.Embed(title="ERROR", description="x_x",
+                                      color=0xDC143C).set_footer(
+                                        text=f"OpenAI API returned an API Error: {e}"))
+                continue
+            except openai.APIConnectionError as e:
+                if retry == max_retries - 1:
+                    await temp_msg(
+                        status_msg, msg_rcvd,
+                        discord.Embed(title="ERROR", description="x_x",
+                                      color=0xDC143C).set_footer(
+                                        text=f"failed to connect to OpenAI API: {e}"))
+                continue
+            except openai.RateLimitError as e:
+                if retry == max_retries - 1:
+                    await temp_msg(
+                        status_msg, msg_rcvd,
+                        discord.Embed(
+                            title="ERROR", description="x_x", color=0xDC143C).set_footer(
+                                text=f"OpenAI API request exceeded rate limit: {e}"))
+                continue
+            else:
+                await delete_msg(status_msg)
+                await msg_rcvd.reply(embed=discord.Embed(
+                    title="", description=response, color=0x32a956
+                ).set_footer(
                     text=
-                    f"...failed to download the attached .txt file... code: {response.status}"
+                    f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds'
                 ))
-    if msg_rcvd.attachments and any(
-        msg_rcvd.attachments[0].filename.endswith(x)
-        for x in [".png", ".jpg", ".jpeg", ".webp", ".gif"]):
-      image_url = msg_rcvd.attachments[0].url
-      status_msg = await temp_msg(
-          status_msg, msg_rcvd,
-          discord.Embed(title="",
-                        description="...analyzing image...",
-                        color=0xFDDA0D).set_footer(text=""))
-      response = await send_request("GPT-4o", reply_mode,
-                                    msg_rcvd.content.strip(),
-                                    reference_message, image_url)
-
-      await delete_msg(status_msg)
-      await msg_rcvd.reply(embed=discord.Embed(
-          title="", description=response, color=0x32a956
-      ).set_footer(
-          text=
-          f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds'
-      ))
-      return
-
-    if msg_rcvd.content[-2:] in suffixes:
-      msg_rcvd.content = msg_rcvd.content[:-2]
-      model, reply_mode, reply_mode_footer = suffixes.get(
-          msg_rcvd.content[-2:],
-          ("GPT-4o", "concise_prompt", "GPT-4o 'Concise'"))
-
-    status_msg = await temp_msg(
-        status_msg, msg_rcvd,
-        discord.Embed(title="",
-                      description="...generating reply...",
-                      color=0xFDDA0D).set_footer(text=""))
-
-    max_retries = 5
-    for retry in range(max_retries):
-      try:
-        print("Trying for " + str(retry) + "/" + str(max_retries) + "...")
-        #Make your OpenAI API request here
-        response = await send_request(model, reply_mode,
-                                      msg_rcvd.content.strip(),
-                                      reference_message, image_url)
-      except openai.APIError as e:
-        #Handle API error here, e.g. retry or log
-        if retry == max_retries - 1:
-          temp_msg(
-              status_msg, msg_rcvd,
-              discord.Embed(title="ERROR", description="x_x",
-                            color=0xDC143C).set_footer(
-                                text=f"OpenAI API returned an API Error: {e}"))
-        continue
-      except openai.APIConnectionError as e:
-        if retry == max_retries - 1:
-          temp_msg(
-              status_msg, msg_rcvd,
-              discord.Embed(title="ERROR", description="x_x",
-                            color=0xDC143C).set_footer(
-                                text=f"failed to connect to OpenAI API: {e}"))
-        continue
-      except openai.RateLimitError as e:
-        if retry == max_retries - 1:
-          temp_msg(
-              status_msg, msg_rcvd,
-              discord.Embed(
-                  title="ERROR", description="x_x", color=0xDC143C).set_footer(
-                      text=f"OpenAI API request exceeded rate limit: {e}"))
-        continue
-      else:
-        await delete_msg(status_msg)
-        await msg_rcvd.reply(embed=discord.Embed(
-            title="", description=response, color=0x32a956
-        ).set_footer(
-            text=
-            f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds'
-        ))
-        break
-  await bot.process_commands(msg_rcvd)
+                break
+    await bot.process_commands(msg_rcvd)
 
 BOTAPITOKEN = os.getenv("BOT_API_TOKEN")
 
