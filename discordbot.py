@@ -8,7 +8,10 @@ from datetime import datetime
 import time
 import asyncio
 
-oaiclient = OpenAI()
+oaiclient = OpenAI(
+  base_url="https://openrouter.ai/api/v1",
+  api_key=os.getenv("OPENAI_API_KEY"),
+)
 
 concise_prompt = "You are a concise and succinct assistant. When you aren't sure, do your best to guess with ballpark figures or heuristic understanding. It is better to oversimplify than to give a qualified answer. It is better to simply say you don't know than to explain nuance about the question or its ambiguities."
 verbose_prompt = "You are detailed & articulate. Include evidence and reasoning in your answers."
@@ -24,7 +27,6 @@ client = discord.Client(intents=intents)
 global bot
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
 system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
