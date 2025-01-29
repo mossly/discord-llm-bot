@@ -159,14 +159,17 @@ async def on_ready():
   bot.loop.create_task(background())  # Schedule the background task
 
 ######### COMMANDS ########
-@bot.command()
-async def remind(ctx):
-  await ctx.send('Pong!')
+#@bot.command()
+#async def remind(ctx):
+#  await ctx.send('Pong!')
 
 @bot.command()
 async def ping(ctx):
   await ctx.send('Pong!')
 
+@bot.command()
+async def rule(ctx):
+  await ctx.send()
 
 @bot.command()
 async def gen(ctx, *, prompt):
