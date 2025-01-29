@@ -8,8 +8,12 @@ from datetime import datetime
 import time
 import asyncio
 
-oaiclient = OpenAI(
+openrouterclient = OpenAI(
   base_url="https://openrouter.ai/api/v1",
+  api_key=os.getenv("OPENAI_API_KEY"),
+)
+
+oaiclient = OpenAI(
   api_key=os.getenv("OPENAI_API_KEY"),
 )
 
@@ -221,7 +225,7 @@ async def on_message(msg_rcvd):
         return
 
     if bot.user in msg_rcvd.mentions:
-        model, reply_mode, reply_mode_footer = "deepseek/deepseek-chat", "concise_prompt", "Deepseek V3"
+        model, reply_mode, reply_mode_footer = "gpt-4o-mini", "concise_prompt", "GPT-4o-mini"
         start_time = time.time()
         status_msg = await temp_msg(
             None, msg_rcvd,
