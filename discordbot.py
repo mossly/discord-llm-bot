@@ -32,11 +32,7 @@ bot_tag = str(os.getenv("BOT_TAG")).strip()
 
 reminders = [
     # Put all of your reminders here
-    ('2024-04-17 03:50:00', 'Take out the garbage'),
-    ('2024-04-17 03:52:00', 'Another reminder'),
-    ('2024-04-17 03:54:00', 'Another reminder'),
-    ('2024-04-17 03:56:00', 'Another reminder'),
-    ('2024-04-17 03:58:00', 'Another reminder')
+    # ('2024-04-17 03:50:00', 'Take out the garbage'),
 ]
 
 # Conversion to timestamps
@@ -225,7 +221,7 @@ async def on_message(msg_rcvd):
         return
 
     if bot.user in msg_rcvd.mentions:
-        model, reply_mode, reply_mode_footer = "gpt-4o", "concise_prompt", "gpt-4o 'Concise'"
+        model, reply_mode, reply_mode_footer = "deepseek/deepseek-chat", "concise_prompt", "Deepseek V3"
         start_time = time.time()
         status_msg = await temp_msg(
             None, msg_rcvd,
