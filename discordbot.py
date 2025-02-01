@@ -227,7 +227,7 @@ async def on_message(msg_rcvd):
         return
 
     if bot.user in msg_rcvd.mentions:
-        model, reply_mode, reply_mode_footer = "o3-mini", "concise_prompt", "GPT-4o-mini"
+        model, reply_mode, reply_mode_footer = "o3-mini", "concise_prompt", "o3-mini"
         start_time = time.time()
         status_msg = await temp_msg(
             None, msg_rcvd,
