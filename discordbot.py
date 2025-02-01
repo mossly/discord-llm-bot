@@ -115,8 +115,7 @@ async def send_request(model, reply_mode, message_content, reference_message,
 
   # Make the API request
   response = oaiclient.chat.completions.create(model=model,
-                                            messages=messages_input,
-                                            max_tokens=640)
+                                            messages=messages_input)
 
   # Print completion message
   print(
