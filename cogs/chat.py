@@ -25,8 +25,8 @@ class ChatCog(commands.Cog):
 
         # You can store model settings or prompts here.
         self.suffixes = {
-            "-v": ("gpt-4o", "verbose_prompt", "gpt-4o | Verbose"),
-            "-c": ("gpt-4o", "creative_prompt", "gpt-4o | Creative")
+            "-o3": ("gpt-4o", "verbose_prompt", "gpt-4o | Verbose"),
+            "-4o": ("gpt-4o", "creative_prompt", "gpt-4o | Creative")
         }
 
     async def send_request(self, model, reply_mode, message_content, reference_message, image_url):
