@@ -8,6 +8,7 @@ from datetime import datetime
 import time
 import asyncio
 from duckduckgo_search import DDGS  # NEW: for DDG search
+from embed_utils import send_embed  # New consolidated embed helper
 
 # Set up API clients
 openrouterclient = OpenAI(
@@ -42,7 +43,7 @@ system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
 reminders = [
-    # e.g.: ('2024-04-17 03:50:00', 'Take out the garbage'),
+    # Example: ('2024-04-17 03:50:00', 'Take out the garbage'),
 ]
 
 # Convert reminder dates to Unix timestamps
@@ -51,78 +52,6 @@ reminders2 = {datetime.fromisoformat(rem[0]).timestamp(): rem[1] for rem in remi
 def convert_to_readable(timestamp):
     """Convert Unix timestamp to human-readable format."""
     return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-
-#######################################
-# EMBED HELPERS – CHECKING & SPLITTING
-#######################################
-def get_embed_total_length(embed: discord.Embed) -> int:
-    """
-    Compute total number of characters used in (title + description + footer + all fields).
-    """
-    total = 0
-    if embed.title:
-        total += len(embed.title)
-    if embed.description:
-        total += len(embed.description)
-    if embed.footer and embed.footer.text:
-        total += len(embed.footer.text)
-    for field in embed.fields:
-        total += len(field.name) + len(field.value)
-    return total
-
-def split_embed(embed: discord.Embed) -> list:
-    """
-    Splits an embed (by its description) into multiple embeds so that none exceed Discord’s 6000 character limit.
-    Only the description is split; the title appears only in the first embed and the footer only in the last embed.
-    
-    (Note: This helper assumes that the long text is in the description. If you also use fields,
-    you’ll need to adjust accordingly.)
-    """
-    header_len = len(embed.title) if embed.title else 0
-    footer_len = len(embed.footer.text) if (embed.footer and embed.footer.text) else 0
-    safe_chunk_size = min(4096, 6000 - max(header_len, footer_len))
-    
-    text = embed.description or ""
-    if not text:
-        return [embed]
-    
-    # Split the description in safe chunks.
-    chunks = [text[i:i+safe_chunk_size] for i in range(0, len(text), safe_chunk_size)]
-    new_embeds = []
-    for idx, chunk in enumerate(chunks):
-        new_embed = discord.Embed(color=embed.color)
-        if idx == 0 and embed.title:
-            new_embed.title = embed.title
-        new_embed.description = chunk
-        if idx == len(chunks) - 1 and embed.footer and embed.footer.text:
-            new_embed.set_footer(text=embed.footer.text)
-        new_embeds.append(new_embed)
-    return new_embeds
-
-async def safe_send_embed_channel(channel, embed):
-    """
-    Sends an embed (or a series of split embeds) to a channel.
-    """
-    if get_embed_total_length(embed) > 6000:
-        parts = split_embed(embed)
-        await channel.send(embed=parts[0])
-        for part in parts[1:]:
-            await channel.send(embed=part)
-    else:
-        await channel.send(embed=embed)
-
-async def safe_send_embed_reply(message: discord.Message, embed):
-    """
-    Replies to a message with an embed. If the embed is too large, reply with parts.
-    The first part is sent as a reply and subsequent parts as plain messages.
-    """
-    if get_embed_total_length(embed) > 6000:
-        parts = split_embed(embed)
-        await message.reply(embed=parts[0])
-        for part in parts[1:]:
-            await message.channel.send(embed=part)
-    else:
-        await message.reply(embed=embed)
 
 #######################################
 # BACKGROUND REMINDER TASK
@@ -235,6 +164,16 @@ async def perform_ddg_search(query: str) -> str:
     return concat_result
 
 #######################################
+# CUSTOM STATUS MESSAGE HELPER
+#######################################
+async def temp_msg(replaces_msg, request_msg, embed):
+    if replaces_msg:
+        await delete_msg(replaces_msg)
+    # Use our unified send_embed helper to reply
+    # (Assuming the embed is short enough that splitting isn’t a concern.)
+    return await send_embed(request_msg.channel, embed, reply_to=request_msg)
+
+#######################################
 # DISCORD EVENTS AND COMMANDS
 #######################################
 @bot.event
@@ -290,12 +229,8 @@ async def gen(ctx, *, prompt):
     for url in result_urls:
         embed = discord.Embed(title="", description=prompt, color=0x32a956)
         embed.set_footer(text=footer_text)
-        await safe_send_embed_channel(ctx.channel, embed)
-
-async def temp_msg(replaces_msg, request_msg, embed):
-    if replaces_msg:
-        await delete_msg(replaces_msg)
-    return await request_msg.reply(embed=embed)
+        # Send to channel using the unified embed helper (non-reply mode)
+        await send_embed(ctx.channel, embed)
 
 @bot.event
 async def on_message(msg_rcvd):
@@ -340,7 +275,8 @@ async def on_message(msg_rcvd):
                         error_embed.set_footer(text=f"...failed to download attachment. Code: {response.status}")
                         status_msg = await temp_msg(status_msg, msg_rcvd, error_embed)
 
-        if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
+        if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.lower().endswith(ext)
+                                         for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
             image_url = msg_rcvd.attachments[0].url
             status_embed = discord.Embed(title="", description="...analyzing image...", color=0xFDDA0D)
             status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
@@ -348,14 +284,15 @@ async def on_message(msg_rcvd):
             await delete_msg(status_msg)
             response_embed = discord.Embed(title="", description=response, color=0x32a956)
             response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time()-start_time, 2)} seconds")
-            await safe_send_embed_reply(msg_rcvd, response_embed)
+            await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
             return
 
         # Check for suffix flags in content (e.g. "-v" or "-c")
         if msg_rcvd.content[-2:] in suffixes:
-            # Remove the last two characters (the flag) and set new mode.
+            flag = msg_rcvd.content[-2:]
+            # Remove the flag from the message content
             msg_rcvd.content = msg_rcvd.content[:-2]
-            model, reply_mode, reply_mode_footer = suffixes.get(msg_rcvd.content[-2:], ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
+            model, reply_mode, reply_mode_footer = suffixes.get(flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
 
         status_embed = discord.Embed(title="", description="...generating reply...", color=0xFDDA0D)
         status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
@@ -406,7 +343,7 @@ async def on_message(msg_rcvd):
                 await delete_msg(status_msg)
                 response_embed = discord.Embed(title="", description=response, color=0x32a956)
                 response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time()-start_time, 2)} seconds")
-                await safe_send_embed_reply(msg_rcvd, response_embed)
+                await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
                 break
     await bot.process_commands(msg_rcvd)
 
