@@ -14,6 +14,11 @@ from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attemp
 from embed_utils import send_embed
 from status_utils import update_status
 
+if __name__ == "__main__":
+    for filename in os.listdir("./cogs"):
+        if filename.endswith(".py"):
+            bot.load_extension(f"cogs.{filename[:-3]}")
+
 # Set up API clients
 openrouterclient = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -118,51 +123,6 @@ async def generate_image(img_prompt, img_quality, img_size):
     )
     image_urls = [data.url for data in response.data]
     return image_urls
-
-#######################################
-# DDG SEARCH HELPER FUNCTIONS
-#######################################
-async def extract_search_query(user_message: str) -> str:
-    """
-    Uses GPT-4o-mini to extract a concise search query from the user’s message.
-    """
-    def _extract_search_query(um):
-        try:
-            response = oaiclient.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Extract a concise search query string from the following text that captures its key intent. Only return the query and nothing else."},
-                    {"role": "user", "content": um},
-                ]
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print("Error extracting search query:", e)
-            return ""
-    return await asyncio.to_thread(_extract_search_query, user_message)
-
-async def perform_ddg_search(query: str) -> str:
-    """
-    Uses DuckDuckGo (via DDGS) to search for the given query and formats up to 10 results.
-    """
-    def _ddg_search(q):
-        try:
-            proxy = os.getenv("DUCK_PROXY")
-            duck = DDGS(proxy=proxy) if proxy else DDGS()
-            results = duck.text(q, max_results=10)
-            return results
-        except Exception as e:
-            print("Error during DDG search:", e)
-            return None
-    results = await asyncio.to_thread(_ddg_search, query)
-    if not results:
-        return ""
-    concat_result = f"Search query: {query}\n\n"
-    for i, result in enumerate(results, start=1):
-        title = result.get('title', '')
-        body = result.get('body', '')
-        concat_result += f"{i} -- {title}: {body}\n\n"
-    return concat_result
 
 #######################################
 # DISCORD EVENTS AND COMMANDS
@@ -275,18 +235,24 @@ async def on_message(msg_rcvd):
             msg_rcvd.content = msg_rcvd.content[:-2]
             model, reply_mode, reply_mode_footer = suffixes.get(flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
 
-        # NEW: DDG search integration.
+        # DuckDuckGo Search
         original_content = msg_rcvd.content.strip()
-        status_msg = await update_status(status_msg, "...extracting search query...")
-        search_query = await extract_search_query(original_content)
-        
-        if search_query:
-            status_msg = await update_status(status_msg, "...searching the web...")
-            ddg_results = await perform_ddg_search(search_query)
-            if ddg_results:
-                modified_message = original_content + "\n\nRelevant Internet Search Results:\n" + ddg_results
-            else:
-                modified_message = original_content
+        ddg_cog = bot.get_cog("DuckDuckGo")
+        ddg_results = ""
+        if ddg_cog:
+            status_msg = await update_status(status_msg, "...extracting search query...")
+            search_query = await ddg_cog.extract_search_query(original_content)
+            
+            if search_query:
+                status_msg = await update_status(status_msg, "...searching the web...")
+                ddg_results = await ddg_cog.perform_ddg_search(search_query)
+            
+        if ddg_results:
+            modified_message = (
+                original_content
+                + "\n\nRelevant Internet Search Results:\n"
+                + ddg_results
+            )
         else:
             modified_message = original_content
 
