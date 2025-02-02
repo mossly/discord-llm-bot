@@ -71,5 +71,5 @@ class DuckDuckGo(commands.Cog):
         else:
             await ctx.send("No results found.")
 
-def setup(bot):
-    bot.add_cog(DuckDuckGo(bot))
+async def setup(bot):
+    await bot.add_cog(DuckDuckGo(bot))
