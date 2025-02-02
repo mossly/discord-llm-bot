@@ -13,6 +13,7 @@ from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attemp
 # Import our consolidated embed helper and status updater.
 from embed_utils import send_embed
 from status_utils import update_status
+from message_utils import delete_msg
 
 # Set up API clients
 openrouterclient = OpenAI(
@@ -77,13 +78,6 @@ async def background():
 #######################################
 # HELPER FUNCTIONS
 #######################################
-async def delete_msg(msg):
-    try:
-        await msg.delete()
-    except discord.errors.NotFound:
-        print(f"Message {msg.id} not found.")
-        pass
-
 async def send_request(model, reply_mode, message_content, reference_message, image_url):
     print("Entering send_request function")
     # Remove the bot tag from the user message (if present)
@@ -107,18 +101,6 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     print("API request completed")
     return response.choices[0].message.content
 
-async def generate_image(img_prompt, img_quality, img_size):
-    print("Entering generate_image function")
-    response = openai.images.generate(
-        model="dall-e-3",
-        prompt=img_prompt,
-        size=img_size,
-        quality=img_quality,
-        n=1,
-    )
-    image_urls = [data.url for data in response.data]
-    return image_urls
-
 #######################################
 # DISCORD EVENTS AND COMMANDS
 #######################################
@@ -139,41 +121,6 @@ async def ping(ctx):
 @bot.command()
 async def rule(ctx):
     await ctx.send("")
-
-@bot.command()
-async def gen(ctx, *, prompt):
-    start_time = time.time()
-    # Default settings
-    quality = "standard"
-    size = "1024x1024"
-    footer_text_parts = ["DALL·E 3"]
-    args = prompt.split()
-    prompt_without_flags = []
-    for arg in args:
-        if arg == "-hd":
-            quality = "hd"
-            footer_text_parts.append("HD")
-        elif arg == "-l":
-            size = "1792x1024"
-            footer_text_parts.append("Landscape")
-        elif arg == "-p":
-            size = "1024x1792"
-            footer_text_parts.append("Portrait")
-        else:
-            prompt_without_flags.append(arg)
-    prompt = " ".join(prompt_without_flags)
-    
-    status_msg = await update_status(None, "...generating image...", channel=ctx.channel)
-    result_urls = await generate_image(prompt, quality, size)
-    generation_time = round(time.time() - start_time, 2)
-    footer_text_parts.append(f"generated in {generation_time} seconds")
-    footer_text = " | ".join(footer_text_parts)
-    await delete_msg(status_msg)
-    
-    for url in result_urls:
-        embed = discord.Embed(title="", description=prompt, color=0x32a956)
-        embed.set_footer(text=footer_text)
-        await send_embed(ctx.channel, embed)
 
 @bot.event
 async def on_message(msg_rcvd):
