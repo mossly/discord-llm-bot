@@ -312,5 +312,8 @@ async def on_message(msg_rcvd):
 #######################################
 # RUN THE BOT
 #######################################
-BOTAPITOKEN = os.getenv("BOT_API_TOKEN")
-bot.run(BOTAPITOKEN)
+for filename in os.listdir("./cogs"):
+    if filename.endswith(".py"):
+        bot.load_extension(f"cogs.{filename[:-3]}")
+        
+bot.run(os.getenv("BOT_API_TOKEN"))
