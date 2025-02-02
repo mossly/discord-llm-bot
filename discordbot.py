@@ -14,11 +14,6 @@ from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attemp
 from embed_utils import send_embed
 from status_utils import update_status
 
-if __name__ == "__main__":
-    for filename in os.listdir("./cogs"):
-        if filename.endswith(".py"):
-            bot.load_extension(f"cogs.{filename[:-3]}")
-
 # Set up API clients
 openrouterclient = OpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -275,8 +270,10 @@ async def on_message(msg_rcvd):
 
     await bot.process_commands(msg_rcvd)
 
-#######################################
+# LOAD COGS AFTER THE BOT IS DEFINED
+for filename in os.listdir("./cogs"):
+    if filename.endswith(".py"):
+        bot.load_extension(f"cogs.{filename[:-3]}")
+
 # RUN THE BOT
-#######################################
-BOTAPITOKEN = os.getenv("BOT_API_TOKEN")
-bot.run(BOTAPITOKEN)
+bot.run(os.getenv("BOT_API_TOKEN"))
