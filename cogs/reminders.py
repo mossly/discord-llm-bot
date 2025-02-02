@@ -5,10 +5,10 @@ from datetime import datetime
 class ReminderCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Set up your reminders – this might be loaded from a file or database.
-        # We’re using a dictionary with Unix timestamps as keys.
+        # Set up your reminders – for example, using a dictionary with Unix timestamps as keys.
         self.reminders = {
-            # For example: datetime.fromisoformat("2024-04-17 03:50:00").timestamp(): "Take out the garbage"
+            # Example usage:
+            # datetime.fromisoformat("2024-04-17 03:50:00").timestamp(): "Take out the garbage"
         }
         # Start the background loop.
         self.check_reminders.start()
@@ -23,8 +23,8 @@ class ReminderCog(commands.Cog):
         for timestamp in list(self.reminders.keys()):
             if timestamp < now:
                 try:
-                    # Replace the user ID with the desired recipient.
-                    user = await self.bot.fetch_user("195485849952059392")
+                    # Replace the ID with the actual recipient's user ID.
+                    user = await self.bot.fetch_user(195485849952059392)
                     await user.send(f"Reminder: {self.reminders[timestamp]}")
                 except Exception as e:
                     print(f"Failed to send reminder: {e}")
@@ -36,5 +36,6 @@ class ReminderCog(commands.Cog):
     async def before_check_reminders(self):
         await self.bot.wait_until_ready()
 
-def setup(bot):
-    bot.add_cog(ReminderCog(bot))
+# The setup function must be asynchronous.
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ReminderCog(bot))
