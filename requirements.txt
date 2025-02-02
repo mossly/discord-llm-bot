@@ -2,3 +2,4 @@ discord.py
 requests
 openai
 aiohttp
+duckduckgo_search

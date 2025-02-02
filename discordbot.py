@@ -362,8 +362,15 @@ async def on_message(msg_rcvd):
         
         # NEW: DDG search integration.
         original_content = msg_rcvd.content.strip()
+        search_extract_embed = discord.Embed(title="", description="...extracting search query...", color=0xFDDA0D)
+        status_msg = await temp_msg(status_msg, msg_rcvd, search_extract_embed)
+
         search_query = await extract_search_query(original_content)
+        
         if search_query:
+            search_web_embed = discord.Embed(title="", description="...searching the web...", color=0xFDDA0D)
+            status_msg = await temp_msg(status_msg, msg_rcvd, search_web_embed)
+
             ddg_results = await perform_ddg_search(search_query)
             if ddg_results:
                 modified_message = original_content + "\n\nRelevant Internet Search Results:\n" + ddg_results
