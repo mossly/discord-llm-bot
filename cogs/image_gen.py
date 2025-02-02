@@ -70,5 +70,5 @@ class ImageGen(commands.Cog):
             await send_embed(ctx.channel, embed)
 
 # Cog setup
-def setup(bot):
-    bot.add_cog(ImageGen(bot))
+async def setup(bot):
+    await bot.add_cog(ImageGen(bot))

@@ -138,5 +138,5 @@ class ChatCog(commands.Cog):
         # Allow other commands to be processed.
         await self.bot.process_commands(msg_rcvd)
 
-def setup(bot):
-    bot.add_cog(ChatCog(bot))
+async def setup(bot):
+    await bot.add_cog(ChatCog(bot))
