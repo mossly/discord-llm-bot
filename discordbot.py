@@ -312,8 +312,13 @@ async def on_message(msg_rcvd):
 #######################################
 # RUN THE BOT
 #######################################
-for filename in os.listdir("./cogs"):
-    if filename.endswith(".py"):
-        bot.load_extension(f"cogs.{filename[:-3]}")
-        
-bot.run(os.getenv("BOT_API_TOKEN"))
+async def load_cogs():
+    for filename in os.listdir("./cogs"):
+        if filename.endswith(".py"):
+            await bot.load_extension(f"cogs.{filename[:-3]}")
+
+async def main():
+    await load_cogs()
+    await bot.start(os.getenv("BOT_API_TOKEN"))
+
+asyncio.run(main())
