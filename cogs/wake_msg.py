@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands
 
@@ -22,5 +21,6 @@ class StatusCog(commands.Cog):
         # Schedule the background task
         self.bot.loop.create_task(background())
 
-def setup(bot):
-    bot.add_cog(StatusCog(bot))
+# Asynchronous setup function
+async def setup(bot: commands.Bot):
+    await bot.add_cog(StatusCog(bot))
