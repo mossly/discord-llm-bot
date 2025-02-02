@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 import time
 import asyncio
+from duckduckgo_search import DDGS  # NEW: for DDG search
 
 # Set up OpenAI clients
 openrouterclient = OpenAI(
@@ -79,7 +80,6 @@ def split_embed(embed: discord.Embed) -> list:
     """
     header_len = len(embed.title) if embed.title else 0
     footer_len = len(embed.footer.text) if (embed.footer and embed.footer.text) else 0
-    # We must also obey the description limit of 4096 characters.
     safe_chunk_size = min(4096, 6000 - max(header_len, footer_len))
     
     text = embed.description or ""
@@ -91,11 +91,9 @@ def split_embed(embed: discord.Embed) -> list:
     new_embeds = []
     for idx, chunk in enumerate(chunks):
         new_embed = discord.Embed(color=embed.color)
-        # First embed gets the title.
         if idx == 0 and embed.title:
             new_embed.title = embed.title
         new_embed.description = chunk
-        # Last embed gets the footer.
         if idx == len(chunks) - 1 and embed.footer and embed.footer.text:
             new_embed.set_footer(text=embed.footer.text)
         new_embeds.append(new_embed)
@@ -158,6 +156,7 @@ async def delete_msg(msg):
 
 async def send_request(model, reply_mode, message_content, reference_message, image_url):
     print("Entering send_request function")
+    # Remove the bot tag from the user message (if present)
     message_content = str(message_content).replace(bot_tag, "")
     messages_input = [{
         "role": "system",
@@ -165,7 +164,6 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     }]
     if reference_message is not None:
         messages_input.append({"role": "user", "content": reference_message})
-    
     user_message = {
         "role": "user",
         "content": message_content if image_url is None else [
@@ -190,6 +188,51 @@ async def generate_image(img_prompt, img_quality, img_size):
     )
     image_urls = [data.url for data in response.data]
     return image_urls
+
+#######################################
+# NEW: DDG SEARCH HELPER FUNCTIONS
+#######################################
+async def extract_search_query(user_message: str) -> str:
+    """
+    Uses GPT-4o-mini to extract a concise search query from the user’s message.
+    """
+    def _extract_search_query(um):
+        try:
+            response = oaiclient.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Extract a concise search query string from the following text that captures its key intent. Only return the query and nothing else."},
+                    {"role": "user", "content": um},
+                ]
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print("Error extracting search query:", e)
+            return ""
+    return await asyncio.to_thread(_extract_search_query, user_message)
+
+async def perform_ddg_search(query: str) -> str:
+    """
+    Uses DuckDuckGo (via DDGS) to search for the given query and formats up to 10 results.
+    """
+    def _ddg_search(q):
+        try:
+            proxy = os.getenv("DUCK_PROXY")
+            duck = DDGS(proxy=proxy) if proxy else DDGS()
+            results = duck.text(q, max_results=10)
+            return results
+        except Exception as e:
+            print("Error during DDG search:", e)
+            return None
+    results = await asyncio.to_thread(_ddg_search, query)
+    if not results:
+        return ""
+    concat_result = f"Search query: {query}\n\n"
+    for i, result in enumerate(results, start=1):
+        title = result.get('title', '')
+        body = result.get('body', '')
+        concat_result += f"{i} -- {title}: {body}\n\n"
+    return concat_result
 
 #######################################
 # DISCORD EVENTS AND COMMANDS
@@ -247,7 +290,6 @@ async def gen(ctx, *, prompt):
     for url in result_urls:
         embed = discord.Embed(title="", description=prompt, color=0x32a956)
         embed.set_footer(text=footer_text)
-        # Instead of ctx.send(embed=embed) we use safe sending:
         await safe_send_embed_channel(ctx.channel, embed)
 
 async def temp_msg(replaces_msg, request_msg, embed):
@@ -314,15 +356,27 @@ async def on_message(msg_rcvd):
             # Remove the last two characters (the flag) and set new mode.
             msg_rcvd.content = msg_rcvd.content[:-2]
             model, reply_mode, reply_mode_footer = suffixes.get(msg_rcvd.content[-2:], ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
-        
+
         status_embed = discord.Embed(title="", description="...generating reply...", color=0xFDDA0D)
         status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
+        
+        # NEW: DDG search integration.
+        original_content = msg_rcvd.content.strip()
+        search_query = await extract_search_query(original_content)
+        if search_query:
+            ddg_results = await perform_ddg_search(search_query)
+            if ddg_results:
+                modified_message = original_content + "\n\nRelevant Internet Search Results:\n" + ddg_results
+            else:
+                modified_message = original_content
+        else:
+            modified_message = original_content
 
         max_retries = 5
         for retry in range(max_retries):
             try:
                 print(f"Attempt {retry+1}/{max_retries} for request...")
-                response = await send_request(model, reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
+                response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
             except openai.APIError as e:
                 if retry == max_retries - 1:
                     error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
