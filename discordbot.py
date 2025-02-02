@@ -104,15 +104,6 @@ async def send_request(model, reply_mode, message_content, reference_message, im
 #######################################
 # DISCORD EVENTS AND COMMANDS
 #######################################
-@bot.event
-async def on_ready():
-    print(f"{bot.user.name} has connected to Discord!")
-    for guild in bot.guilds:
-        print(f"Bot is in server: {guild.name} (id: {guild.id})")
-        member = guild.get_member(bot.user.id)
-        if member:
-            print(f"Bot's permissions in {guild.name}: {member.guild_permissions}")
-    bot.loop.create_task(background())
 
 @bot.command()
 async def ping(ctx):
