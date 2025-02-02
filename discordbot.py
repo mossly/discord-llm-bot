@@ -8,14 +8,17 @@ from datetime import datetime
 import time
 import asyncio
 from duckduckgo_search import DDGS  # NEW: for DDG search
-from embed_utils import send_embed  # New consolidated embed helper
+from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential, )
+
+# Import our consolidated embed helper and status updater.
+from embed_utils import send_embed
+from status_utils import update_status
 
 # Set up API clients
 openrouterclient = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
 )
-
 oaiclient = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Prompts and suffix definitions
@@ -43,10 +46,8 @@ system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
 reminders = [
-    # Example: ('2024-04-17 03:50:00', 'Take out the garbage'),
+    # e.g.: ('2024-04-17 03:50:00', 'Take out the garbage'),
 ]
-
-# Convert reminder dates to Unix timestamps
 reminders2 = {datetime.fromisoformat(rem[0]).timestamp(): rem[1] for rem in reminders}
 
 def convert_to_readable(timestamp):
@@ -74,7 +75,7 @@ async def background():
         await asyncio.sleep(1)
 
 #######################################
-# HELPER FUNCTIONS FOR MESSAGES
+# HELPER FUNCTIONS
 #######################################
 async def delete_msg(msg):
     try:
@@ -119,7 +120,7 @@ async def generate_image(img_prompt, img_quality, img_size):
     return image_urls
 
 #######################################
-# NEW: DDG SEARCH HELPER FUNCTIONS
+# DDG SEARCH HELPER FUNCTIONS
 #######################################
 async def extract_search_query(user_message: str) -> str:
     """
@@ -162,16 +163,6 @@ async def perform_ddg_search(query: str) -> str:
         body = result.get('body', '')
         concat_result += f"{i} -- {title}: {body}\n\n"
     return concat_result
-
-#######################################
-# CUSTOM STATUS MESSAGE HELPER
-#######################################
-async def temp_msg(replaces_msg, request_msg, embed):
-    if replaces_msg:
-        await delete_msg(replaces_msg)
-    # Use our unified send_embed helper to reply
-    # (Assuming the embed is short enough that splitting isn’t a concern.)
-    return await send_embed(request_msg.channel, embed, reply_to=request_msg)
 
 #######################################
 # DISCORD EVENTS AND COMMANDS
@@ -217,9 +208,7 @@ async def gen(ctx, *, prompt):
             prompt_without_flags.append(arg)
     prompt = " ".join(prompt_without_flags)
     
-    status_embed = discord.Embed(title="", description="...generating image...", color=0xFDDA0D)
-    status_msg = await ctx.send(embed=status_embed)
-    
+    status_msg = await update_status(None, "...generating image...", channel=ctx.channel)
     result_urls = await generate_image(prompt, quality, size)
     generation_time = round(time.time() - start_time, 2)
     footer_text_parts.append(f"generated in {generation_time} seconds")
@@ -229,7 +218,6 @@ async def gen(ctx, *, prompt):
     for url in result_urls:
         embed = discord.Embed(title="", description=prompt, color=0x32a956)
         embed.set_footer(text=footer_text)
-        # Send to channel using the unified embed helper (non-reply mode)
         await send_embed(ctx.channel, embed)
 
 @bot.event
@@ -238,31 +226,28 @@ async def on_message(msg_rcvd):
         return
 
     if bot.user in msg_rcvd.mentions:
+        # Set defaults.
         model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         start_time = time.time()
-        status_embed = discord.Embed(title="", description="...reading request...", color=0xFDDA0D)
-        status_msg = await temp_msg(None, msg_rcvd, status_embed)
+        # Start with a single status message
+        status_msg = await update_status(None, "...reading request...", channel=msg_rcvd.channel)
 
         reference_author, reference_message, image_url = None, None, None
 
         if msg_rcvd.reference:
             try:
-                ref_msg = None
                 if msg_rcvd.reference.cached_message:
                     ref_msg = msg_rcvd.reference.cached_message
                 else:
                     ref_msg = await msg_rcvd.channel.fetch_message(msg_rcvd.reference.message_id)
                 if ref_msg.author == bot.user:
-                    status_embed = discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D)
-                    status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
+                    status_msg = await update_status(status_msg, "...fetching bot reference...")
                     reference_message = ref_msg.embeds[0].description.strip() if ref_msg.embeds else ""
                 else:
-                    status_embed = discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D)
-                    status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
+                    status_msg = await update_status(status_msg, "...fetching user reference...")
                 reference_author = ref_msg.author.name
             except Exception:
-                status_embed = discord.Embed(title="", description="...unable to fetch reference...", color=0xFDDA0D)
-                status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
+                status_msg = await update_status(status_msg, "...unable to fetch reference...")
 
         if (msg_rcvd.attachments and msg_rcvd.attachments[0].filename.endswith(".txt")):
             attachment = msg_rcvd.attachments[0]
@@ -271,15 +256,12 @@ async def on_message(msg_rcvd):
                     if response.status == 200:
                         msg_rcvd.content = await response.text()
                     else:
-                        error_embed = discord.Embed(title="ERROR", description="x_x", color=0x32a956)
-                        error_embed.set_footer(text=f"...failed to download attachment. Code: {response.status}")
-                        status_msg = await temp_msg(status_msg, msg_rcvd, error_embed)
-
+                        status_msg = await update_status(status_msg, f"...failed to download attachment. Code: {response.status}")
+                        
         if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.lower().endswith(ext)
                                          for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
             image_url = msg_rcvd.attachments[0].url
-            status_embed = discord.Embed(title="", description="...analyzing image...", color=0xFDDA0D)
-            status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
+            status_msg = await update_status(status_msg, "...analyzing image...")
             response = await send_request("gpt-4o", reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
             await delete_msg(status_msg)
             response_embed = discord.Embed(title="", description=response, color=0x32a956)
@@ -290,24 +272,16 @@ async def on_message(msg_rcvd):
         # Check for suffix flags in content (e.g. "-v" or "-c")
         if msg_rcvd.content[-2:] in suffixes:
             flag = msg_rcvd.content[-2:]
-            # Remove the flag from the message content
             msg_rcvd.content = msg_rcvd.content[:-2]
             model, reply_mode, reply_mode_footer = suffixes.get(flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
 
-        status_embed = discord.Embed(title="", description="...generating reply...", color=0xFDDA0D)
-        status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
-        
         # NEW: DDG search integration.
         original_content = msg_rcvd.content.strip()
-        search_extract_embed = discord.Embed(title="", description="...extracting search query...", color=0xFDDA0D)
-        status_msg = await temp_msg(status_msg, msg_rcvd, search_extract_embed)
-
+        status_msg = await update_status(status_msg, "...extracting search query...")
         search_query = await extract_search_query(original_content)
         
         if search_query:
-            search_web_embed = discord.Embed(title="", description="...searching the web...", color=0xFDDA0D)
-            status_msg = await temp_msg(status_msg, msg_rcvd, search_web_embed)
-
+            status_msg = await update_status(status_msg, "...searching the web...")
             ddg_results = await perform_ddg_search(search_query)
             if ddg_results:
                 modified_message = original_content + "\n\nRelevant Internet Search Results:\n" + ddg_results
@@ -316,35 +290,23 @@ async def on_message(msg_rcvd):
         else:
             modified_message = original_content
 
-        max_retries = 5
-        for retry in range(max_retries):
-            try:
-                print(f"Attempt {retry+1}/{max_retries} for request...")
+        async for attempt in AsyncRetrying(
+            retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
+            wait=wait_exponential(min=1, max=10),
+            stop=stop_after_attempt(5),
+            reraise=True,
+        ):
+            with attempt:
+                print(f"Attempt {attempt.retry_state.attempt_number}/5 for request...")
+                status_msg = await update_status(status_msg, "...generating reply...")
                 response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
-            except openai.APIError as e:
-                if retry == max_retries - 1:
-                    error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                    error_embed.set_footer(text=f"API Error: {e}")
-                    await temp_msg(status_msg, msg_rcvd, error_embed)
-                continue
-            except openai.APIConnectionError as e:
-                if retry == max_retries - 1:
-                    error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                    error_embed.set_footer(text=f"Connection error: {e}")
-                    await temp_msg(status_msg, msg_rcvd, error_embed)
-                continue
-            except openai.RateLimitError as e:
-                if retry == max_retries - 1:
-                    error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                    error_embed.set_footer(text=f"Rate limit exceeded: {e}")
-                    await temp_msg(status_msg, msg_rcvd, error_embed)
-                continue
-            else:
-                await delete_msg(status_msg)
-                response_embed = discord.Embed(title="", description=response, color=0x32a956)
-                response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time()-start_time, 2)} seconds")
-                await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
-                break
+
+        await delete_msg(status_msg)
+        elapsed = round(time.time() - start_time, 2)
+        response_embed = discord.Embed(title="", description=response, color=0x32a956)
+        response_embed.set_footer(text=f"{reply_mode_footer} | generated in {elapsed} seconds")
+        await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
+
     await bot.process_commands(msg_rcvd)
 
 #######################################

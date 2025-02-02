@@ -3,3 +3,4 @@ requests
 openai
 aiohttp
 duckduckgo_search
+tenacity
