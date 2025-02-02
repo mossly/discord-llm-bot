@@ -8,17 +8,15 @@ from datetime import datetime
 import time
 import asyncio
 
-# Configure your OpenAI clients
-  openrouterclient = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key=os.getenv("OPENROUTER_API_KEY"),
+# Set up OpenAI clients
+openrouterclient = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY"),
 )
 
-oaiclient = OpenAI(
-  api_key=os.getenv("OPENAI_API_KEY"),
-)
+oaiclient = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Prompts and suffixes
+# Prompts and suffix definitions
 o3mini_prompt = ""
 concise_prompt = ("You are a concise and succinct assistant. When you aren't sure, do your best to guess "
                   "with ballpark figures or heuristic understanding. It is better to oversimplify than to give "
@@ -37,28 +35,29 @@ suffixes = {
 # Discord bot setup
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
-global bot
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
 
 reminders = [
-    # ('2024-04-17 03:50:00', 'Take out the garbage'),
+    # e.g.: ('2024-04-17 03:50:00', 'Take out the garbage'),
 ]
 
-# Convert reminder dates into Unix timestamps
-reminders2 = {datetime.fromisoformat(reminder[0]).timestamp(): reminder[1] for reminder in reminders}
+# Convert reminder dates to Unix timestamps
+reminders2 = {datetime.fromisoformat(rem[0]).timestamp(): rem[1] for rem in reminders}
 
 def convert_to_readable(timestamp):
-    """Converts Unix timestamp to human-readable format."""
+    """Convert Unix timestamp to human-readable format."""
     return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
-###############################
-# EMBED UTILITY FUNCTIONS
-###############################
+#######################################
+# EMBED HELPERS – CHECKING & SPLITTING
+#######################################
 def get_embed_total_length(embed: discord.Embed) -> int:
-    """Calculate the total number of characters used in an embed."""
+    """
+    Compute total number of characters used in (title + description + footer + all fields).
+    """
     total = 0
     if embed.title:
         total += len(embed.title)
@@ -72,93 +71,93 @@ def get_embed_total_length(embed: discord.Embed) -> int:
 
 def split_embed(embed: discord.Embed) -> list:
     """
-    Splits an embed into multiple embeds if its description exceeds limits.
+    Splits an embed (by its description) into multiple embeds so that none exceed Discord’s 6000 character limit.
+    Only the description is split; the title appears only in the first embed and the footer only in the last embed.
     
-    Discord’s limits:
-      • Total embed content must be <= 6000 characters.
-      • Description is limited to 4096 characters.
-      
-    This function splits the embed’s description into chunks that are safely within these limits.
-    The first embed gets the original title (if any) and the final embed gets the original footer (if any).
+    (Note: This helper assumes that the long text is in the description. If you also use fields,
+    you’ll need to adjust accordingly.)
     """
-    # Calculate header and footer lengths (default to 0 if not present)
     header_len = len(embed.title) if embed.title else 0
     footer_len = len(embed.footer.text) if (embed.footer and embed.footer.text) else 0
-    # For safety, we’ll use a chunk size that is the lower of:
-    #   • The description’s hard limit (4096)
-    #   • The overall embed limit minus the maximum overhead (from title or footer)
+    # We must also obey the description limit of 4096 characters.
     safe_chunk_size = min(4096, 6000 - max(header_len, footer_len))
     
-    text = embed.description if embed.description else ""
-    # If there is no text, return the original embed.
+    text = embed.description or ""
     if not text:
         return [embed]
     
-    # Split the description into successive chunks
+    # Split the description in safe chunks.
     chunks = [text[i:i+safe_chunk_size] for i in range(0, len(text), safe_chunk_size)]
     new_embeds = []
     for idx, chunk in enumerate(chunks):
         new_embed = discord.Embed(color=embed.color)
-        # Only the first embed gets the title.
+        # First embed gets the title.
         if idx == 0 and embed.title:
             new_embed.title = embed.title
         new_embed.description = chunk
-        # The last embed gets the footer.
+        # Last embed gets the footer.
         if idx == len(chunks) - 1 and embed.footer and embed.footer.text:
             new_embed.set_footer(text=embed.footer.text)
         new_embeds.append(new_embed)
     return new_embeds
 
-async def send_embed_reply(message: discord.Message, embed: discord.Embed):
+async def safe_send_embed_channel(channel, embed):
     """
-    Sends an embed reply to a message.
-    If the embed's content exceeds Discord’s limits, split it into multiple messages.
+    Sends an embed (or a series of split embeds) to a channel.
     """
-    # Check if the embed’s description or overall size is too long.
-    if (embed.description and len(embed.description) > 4096) or get_embed_total_length(embed) > 6000:
-        embeds = split_embed(embed)
-        # Reply with the first embed...
-        await message.reply(embed=embeds[0])
-        # ...and send any additional embeds into the channel.
-        for e in embeds[1:]:
-            await message.channel.send(embed=e)
+    if get_embed_total_length(embed) > 6000:
+        parts = split_embed(embed)
+        await channel.send(embed=parts[0])
+        for part in parts[1:]:
+            await channel.send(embed=part)
+    else:
+        await channel.send(embed=embed)
+
+async def safe_send_embed_reply(message: discord.Message, embed):
+    """
+    Replies to a message with an embed. If the embed is too large, reply with parts.
+    The first part is sent as a reply and subsequent parts as plain messages.
+    """
+    if get_embed_total_length(embed) > 6000:
+        parts = split_embed(embed)
+        await message.reply(embed=parts[0])
+        for part in parts[1:]:
+            await message.channel.send(embed=part)
     else:
         await message.reply(embed=embed)
 
-###############################
+#######################################
 # BACKGROUND REMINDER TASK
-###############################
+#######################################
 async def background():
     reminder_times = list(reminders2.keys())
     while True:
         now = time.time()
-        for timestamp in reminder_times:
-            if timestamp in reminders2:
-                if timestamp < now:
-                    try:
-                        user = await bot.fetch_user("195485849952059392")  # Replace with your user ID
-                        print(f'Sent {user} reminder: {reminders2[timestamp]}')
-                        await user.send(f"Reminder: {reminders2[timestamp]}")
-                    except Exception as e:
-                        print(f"Failed to send reminder: {e}")
-                    del reminders2[timestamp]
-                    reminder_times.remove(timestamp)
-                    break  # Exit loop and wait for next cycle
+        for t in reminder_times:
+            if t in reminders2 and t < now:
+                try:
+                    user = await bot.fetch_user("195485849952059392")  # Replace with your own user ID.
+                    print(f"Sending reminder to {user}: {reminders2[t]}")
+                    await user.send(f"Reminder: {reminders2[t]}")
+                except Exception as e:
+                    print(f"Failed to send reminder: {e}")
+                del reminders2[t]
+                reminder_times.remove(t)
+                break
         await asyncio.sleep(1)
 
-###############################
-# HELPER FUNCTIONS
-###############################
+#######################################
+# HELPER FUNCTIONS FOR MESSAGES
+#######################################
 async def delete_msg(msg):
     try:
         await msg.delete()
     except discord.errors.NotFound:
-        print(f'msg {msg.id} not found')
+        print(f"Message {msg.id} not found.")
         pass
 
 async def send_request(model, reply_mode, message_content, reference_message, image_url):
     print("Entering send_request function")
-    # Remove bot mention tag if present
     message_content = str(message_content).replace(bot_tag, "")
     messages_input = [{
         "role": "system",
@@ -166,21 +165,22 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     }]
     if reference_message is not None:
         messages_input.append({"role": "user", "content": reference_message})
+    
     user_message = {
-         "role": "user",
-         "content": message_content if image_url is None else [
-               {"type": "text", "text": message_content},
-               {"type": "image_url", "image_url": image_url}
-         ]
+        "role": "user",
+        "content": message_content if image_url is None else [
+            {"type": "text", "text": message_content},
+            {"type": "image_url", "image_url": image_url}
+        ]
     }
     messages_input.append(user_message)
-    print(f"About to make API request with reference message [{reference_message is not None}] and image [{image_url is not None}]")
+    print(f"Making API request (ref: {reference_message is not None}, image: {image_url is not None})")
     response = oaiclient.chat.completions.create(model=model, messages=messages_input)
-    print(f"API request completed with reference message [{reference_message is not None}] and image [{image_url is not None}]")
+    print("API request completed")
     return response.choices[0].message.content
 
 async def generate_image(img_prompt, img_quality, img_size):
-    print("Entering gen_image function")
+    print("Entering generate_image function")
     response = openai.images.generate(
         model="dall-e-3",
         prompt=img_prompt,
@@ -191,9 +191,9 @@ async def generate_image(img_prompt, img_quality, img_size):
     image_urls = [data.url for data in response.data]
     return image_urls
 
-###############################
+#######################################
 # DISCORD EVENTS AND COMMANDS
-###############################
+#######################################
 @bot.event
 async def on_ready():
     print(f"{bot.user.name} has connected to Discord!")
@@ -201,29 +201,27 @@ async def on_ready():
         print(f"Bot is in server: {guild.name} (id: {guild.id})")
         member = guild.get_member(bot.user.id)
         if member:
-            permissions = member.guild_permissions
-            print(f"Bot's permissions in {guild.name}: {permissions}")
+            print(f"Bot's permissions in {guild.name}: {member.guild_permissions}")
     bot.loop.create_task(background())
 
 @bot.command()
 async def ping(ctx):
-    await ctx.send('Pong!')
+    await ctx.send("Pong!")
 
 @bot.command()
 async def rule(ctx):
-    await ctx.send()
+    await ctx.send("")
 
 @bot.command()
 async def gen(ctx, *, prompt):
     start_time = time.time()
-    # Default image generation settings:
+    # Default settings
     quality = "standard"
     size = "1024x1024"
     footer_text_parts = ["DALL·E 3"]
-    # Parse prompt flags
     args = prompt.split()
     prompt_without_flags = []
-    for index, arg in enumerate(args):
+    for arg in args:
         if arg == "-hd":
             quality = "hd"
             footer_text_parts.append("HD")
@@ -236,16 +234,21 @@ async def gen(ctx, *, prompt):
         else:
             prompt_without_flags.append(arg)
     prompt = " ".join(prompt_without_flags)
-    status_msg = await ctx.send(embed=discord.Embed(title="", description="...generating image...", color=0xFDDA0D))
+    
+    status_embed = discord.Embed(title="", description="...generating image...", color=0xFDDA0D)
+    status_msg = await ctx.send(embed=status_embed)
+    
     result_urls = await generate_image(prompt, quality, size)
     generation_time = round(time.time() - start_time, 2)
     footer_text_parts.append(f"generated in {generation_time} seconds")
     footer_text = " | ".join(footer_text_parts)
     await delete_msg(status_msg)
+    
     for url in result_urls:
         embed = discord.Embed(title="", description=prompt, color=0x32a956)
         embed.set_footer(text=footer_text)
-        await ctx.send(embed=embed)
+        # Instead of ctx.send(embed=embed) we use safe sending:
+        await safe_send_embed_channel(ctx.channel, embed)
 
 async def temp_msg(replaces_msg, request_msg, embed):
     if replaces_msg:
@@ -260,14 +263,11 @@ async def on_message(msg_rcvd):
     if bot.user in msg_rcvd.mentions:
         model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         start_time = time.time()
-        # Send an initial status message
         status_embed = discord.Embed(title="", description="...reading request...", color=0xFDDA0D)
-        status_embed.set_footer(text="")
         status_msg = await temp_msg(None, msg_rcvd, status_embed)
 
         reference_author, reference_message, image_url = None, None, None
 
-        # Check for reference message (reply chain)
         if msg_rcvd.reference:
             try:
                 ref_msg = None
@@ -275,23 +275,18 @@ async def on_message(msg_rcvd):
                     ref_msg = msg_rcvd.reference.cached_message
                 else:
                     ref_msg = await msg_rcvd.channel.fetch_message(msg_rcvd.reference.message_id)
-
                 if ref_msg.author == bot.user:
                     status_embed = discord.Embed(title="", description="...fetching bot reference...", color=0xFDDA0D)
-                    status_embed.set_footer(text="")
                     status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
-                    reference_message = ref_msg.embeds[0].description.strip()
+                    reference_message = ref_msg.embeds[0].description.strip() if ref_msg.embeds else ""
                 else:
                     status_embed = discord.Embed(title="", description="...fetching user reference...", color=0xFDDA0D)
-                    status_embed.set_footer(text="")
                     status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
                 reference_author = ref_msg.author.name
-            except AttributeError:
-                status_embed = discord.Embed(title="", description="...unable to fetch reference, the message is not cached...", color=0xFDDA0D)
-                status_embed.set_footer(text="")
+            except Exception:
+                status_embed = discord.Embed(title="", description="...unable to fetch reference...", color=0xFDDA0D)
                 status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
 
-        # If a .txt file is attached, download it and set msg content accordingly.
         if (msg_rcvd.attachments and msg_rcvd.attachments[0].filename.endswith(".txt")):
             attachment = msg_rcvd.attachments[0]
             async with aiohttp.ClientSession() as session:
@@ -300,64 +295,62 @@ async def on_message(msg_rcvd):
                         msg_rcvd.content = await response.text()
                     else:
                         error_embed = discord.Embed(title="ERROR", description="x_x", color=0x32a956)
-                        error_embed.set_footer(text=f"...failed to download the attached .txt file... code: {response.status}")
+                        error_embed.set_footer(text=f"...failed to download attachment. Code: {response.status}")
                         status_msg = await temp_msg(status_msg, msg_rcvd, error_embed)
 
-        # If an image attachment is present, grab its URL and process it
-        if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
+        if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
             image_url = msg_rcvd.attachments[0].url
             status_embed = discord.Embed(title="", description="...analyzing image...", color=0xFDDA0D)
-            status_embed.set_footer(text="")
             status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
             response = await send_request("gpt-4o", reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
             await delete_msg(status_msg)
             response_embed = discord.Embed(title="", description=response, color=0x32a956)
-            response_embed.set_footer(text=f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds')
-            await send_embed_reply(msg_rcvd, response_embed)
+            response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time()-start_time, 2)} seconds")
+            await safe_send_embed_reply(msg_rcvd, response_embed)
             return
 
-        # Check for suffix flags in the message content
+        # Check for suffix flags in content (e.g. "-v" or "-c")
         if msg_rcvd.content[-2:] in suffixes:
+            # Remove the last two characters (the flag) and set new mode.
             msg_rcvd.content = msg_rcvd.content[:-2]
             model, reply_mode, reply_mode_footer = suffixes.get(msg_rcvd.content[-2:], ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
         
         status_embed = discord.Embed(title="", description="...generating reply...", color=0xFDDA0D)
-        status_embed.set_footer(text="")
         status_msg = await temp_msg(status_msg, msg_rcvd, status_embed)
 
         max_retries = 5
         for retry in range(max_retries):
             try:
-                print("Trying for " + str(retry) + "/" + str(max_retries) + "...")
+                print(f"Attempt {retry+1}/{max_retries} for request...")
                 response = await send_request(model, reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
             except openai.APIError as e:
                 if retry == max_retries - 1:
                     error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                    error_embed.set_footer(text=f"OpenAI API returned an API Error: {e}")
+                    error_embed.set_footer(text=f"API Error: {e}")
                     await temp_msg(status_msg, msg_rcvd, error_embed)
                 continue
             except openai.APIConnectionError as e:
                 if retry == max_retries - 1:
                     error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                    error_embed.set_footer(text=f"Failed to connect to OpenAI API: {e}")
+                    error_embed.set_footer(text=f"Connection error: {e}")
                     await temp_msg(status_msg, msg_rcvd, error_embed)
                 continue
             except openai.RateLimitError as e:
                 if retry == max_retries - 1:
                     error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                    error_embed.set_footer(text=f"OpenAI API request exceeded rate limit: {e}")
+                    error_embed.set_footer(text=f"Rate limit exceeded: {e}")
                     await temp_msg(status_msg, msg_rcvd, error_embed)
                 continue
             else:
                 await delete_msg(status_msg)
                 response_embed = discord.Embed(title="", description=response, color=0x32a956)
-                response_embed.set_footer(text=f'{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds')
-                await send_embed_reply(msg_rcvd, response_embed)
+                response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time()-start_time, 2)} seconds")
+                await safe_send_embed_reply(msg_rcvd, response_embed)
                 break
     await bot.process_commands(msg_rcvd)
 
-###############################
+#######################################
 # RUN THE BOT
-###############################
+#######################################
 BOTAPITOKEN = os.getenv("BOT_API_TOKEN")
 bot.run(BOTAPITOKEN)
