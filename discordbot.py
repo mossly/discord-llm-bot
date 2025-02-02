@@ -9,7 +9,7 @@ import time
 import asyncio
 from duckduckgo_search import DDGS  # NEW: for DDG search
 
-# Set up OpenAI clients
+# Set up API clients
 openrouterclient = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -29,8 +29,8 @@ creative_prompt = ("You are a creative chatbot. Do your best to suggest original
                    "Never use the passive voice where you can use the active voice. Do not end your message with a summary.")
 
 suffixes = {
-    "-v": ("gpt-4o", verbose_prompt, "gpt-4o 'Verbose'"),
-    "-c": ("gpt-4o", creative_prompt, "gpt-4o 'Creative'")
+    "-v": ("gpt-4o", verbose_prompt, "gpt-4o | Verbose"),
+    "-c": ("gpt-4o", creative_prompt, "gpt-4o | Creative")
 }
 
 # Discord bot setup
