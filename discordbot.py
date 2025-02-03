@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 import time
 import asyncio
-from duckduckgo_search import DDGS  # NEW: for DDG search
+from ddg_search import extract_search_query, perform_ddg_search
 from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential, )
 
 # Import our consolidated embed helper and status updater.
