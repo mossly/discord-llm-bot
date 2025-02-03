@@ -13,6 +13,7 @@ from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attemp
 # Import our consolidated embed helper and status updater.
 from embed_utils import send_embed
 from status_utils import update_status
+from message_utils import delete_msg
 
 # Set up API clients
 openrouterclient = OpenAI(
@@ -77,13 +78,6 @@ async def background():
 #######################################
 # HELPER FUNCTIONS
 #######################################
-async def delete_msg(msg):
-    try:
-        await msg.delete()
-    except discord.errors.NotFound:
-        print(f"Message {msg.id} not found.")
-        pass
-
 async def send_request(model, reply_mode, message_content, reference_message, image_url):
     print("Entering send_request function")
     # Remove the bot tag from the user message (if present)
