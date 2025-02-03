@@ -21,6 +21,7 @@ class ImageGen(commands.Cog):
         )
         # Grab the image URLs from the response (assumes response.data is an iterable with .url)
         image_urls = [data.url for data in response.data]
+        print("Generated image URL:", image_urls)
         return image_urls
 
     @commands.command(name="gen")
