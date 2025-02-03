@@ -107,63 +107,6 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     print("API request completed")
     return response.choices[0].message.content
 
-async def generate_image(img_prompt, img_quality, img_size):
-    print("Entering generate_image function")
-    response = openai.images.generate(
-        model="dall-e-3",
-        prompt=img_prompt,
-        size=img_size,
-        quality=img_quality,
-        n=1,
-    )
-    image_urls = [data.url for data in response.data]
-    return image_urls
-
-#######################################
-# DDG SEARCH HELPER FUNCTIONS
-#######################################
-async def extract_search_query(user_message: str) -> str:
-    """
-    Uses GPT-4o-mini to extract a concise search query from the user’s message.
-    """
-    def _extract_search_query(um):
-        try:
-            response = oaiclient.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Extract a concise search query string from the following text that captures its key intent. Only return the query and nothing else."},
-                    {"role": "user", "content": um},
-                ]
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print("Error extracting search query:", e)
-            return ""
-    return await asyncio.to_thread(_extract_search_query, user_message)
-
-async def perform_ddg_search(query: str) -> str:
-    """
-    Uses DuckDuckGo (via DDGS) to search for the given query and formats up to 10 results.
-    """
-    def _ddg_search(q):
-        try:
-            proxy = os.getenv("DUCK_PROXY")
-            duck = DDGS(proxy=proxy) if proxy else DDGS()
-            results = duck.text(q, max_results=10)
-            return results
-        except Exception as e:
-            print("Error during DDG search:", e)
-            return None
-    results = await asyncio.to_thread(_ddg_search, query)
-    if not results:
-        return ""
-    concat_result = f"Search query: {query}\n\n"
-    for i, result in enumerate(results, start=1):
-        title = result.get('title', '')
-        body = result.get('body', '')
-        concat_result += f"{i} -- {title}: {body}\n\n"
-    return concat_result
-
 #######################################
 # DISCORD EVENTS AND COMMANDS
 #######################################
@@ -184,41 +127,6 @@ async def ping(ctx):
 @bot.command()
 async def rule(ctx):
     await ctx.send("")
-
-@bot.command()
-async def gen(ctx, *, prompt):
-    start_time = time.time()
-    # Default settings
-    quality = "standard"
-    size = "1024x1024"
-    footer_text_parts = ["DALL·E 3"]
-    args = prompt.split()
-    prompt_without_flags = []
-    for arg in args:
-        if arg == "-hd":
-            quality = "hd"
-            footer_text_parts.append("HD")
-        elif arg == "-l":
-            size = "1792x1024"
-            footer_text_parts.append("Landscape")
-        elif arg == "-p":
-            size = "1024x1792"
-            footer_text_parts.append("Portrait")
-        else:
-            prompt_without_flags.append(arg)
-    prompt = " ".join(prompt_without_flags)
-    
-    status_msg = await update_status(None, "...generating image...", channel=ctx.channel)
-    result_urls = await generate_image(prompt, quality, size)
-    generation_time = round(time.time() - start_time, 2)
-    footer_text_parts.append(f"generated in {generation_time} seconds")
-    footer_text = " | ".join(footer_text_parts)
-    await delete_msg(status_msg)
-    
-    for url in result_urls:
-        embed = discord.Embed(title="", description=prompt, color=0x32a956)
-        embed.set_footer(text=footer_text)
-        await send_embed(ctx.channel, embed)
 
 @bot.event
 async def on_message(msg_rcvd):
