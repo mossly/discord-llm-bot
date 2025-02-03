@@ -24,8 +24,10 @@ class DuckDuckGo(commands.Cog):
                         {
                             "role": "system",
                             "content": (
-                                "Extract a concise search query string from the following text that captures its key intent. "
+                                "Determine if a web search would be relevant to addressing the users query."
+                                "If so, extract a concise search query string from the following text that captures its key intent. "
                                 "Only return the query and nothing else."
+                                "If not, return nothing at all."
                             ),
                         },
                         {"role": "user", "content": um},

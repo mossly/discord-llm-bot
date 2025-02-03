@@ -7,7 +7,6 @@ import os
 from datetime import datetime
 import time
 import asyncio
-from ddg_search import extract_search_query, perform_ddg_search
 from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential, )
 
 # Import our consolidated embed helper and status updater.
@@ -177,20 +176,26 @@ async def on_message(msg_rcvd):
             msg_rcvd.content = msg_rcvd.content[:-2]
             model, reply_mode, reply_mode_footer = suffixes.get(flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
 
-        # NEW: DDG search integration.
-        original_content = msg_rcvd.content.strip()
-        status_msg = await update_status(status_msg, "...extracting search query...")
-        search_query = await extract_search_query(original_content)
-        
-        if search_query:
-            status_msg = await update_status(status_msg, "...searching the web...")
-            ddg_results = await perform_ddg_search(search_query)
-            if ddg_results:
-                modified_message = original_content + "\n\nRelevant Internet Search Results:\n" + ddg_results
+            # NEW: DDG search integration.
+            original_content = msg_rcvd.content.strip()
+
+            # Get the DDG cog instance by name (the class name is “DuckDuckGo” by default).
+            duck_cog = bot.get_cog("DuckDuckGo")
+            if duck_cog is not None:
+                status_msg = await update_status(status_msg, "...extracting search query...")
+                search_query = await duck_cog.extract_search_query(original_content)
+                if search_query:
+                    status_msg = await update_status(status_msg, "...searching the web...")
+                    ddg_results = await duck_cog.perform_ddg_search(search_query)
+                else:
+                    ddg_results = ""
+            # Append the DDG results (if any) to the original content.
+                modified_message = (
+                    original_content +
+                    ("\n\nRelevant Internet Search Results:\n" + ddg_results if ddg_results else "")
+                )
             else:
                 modified_message = original_content
-        else:
-            modified_message = original_content
 
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
