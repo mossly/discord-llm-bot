@@ -7,7 +7,12 @@ import os
 from datetime import datetime
 import time
 import asyncio
-from tenacity import ( AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential, )
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 # Import our consolidated embed helper and status updater.
 from embed_utils import send_embed
@@ -23,14 +28,20 @@ oaiclient = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Prompts and suffix definitions
 o3mini_prompt = ""
-concise_prompt = ("You are a concise and succinct assistant. When you aren't sure, do your best to guess "
-                  "with ballpark figures or heuristic understanding. It is better to oversimplify than to give "
-                  "a qualified answer. It is better to simply say you don't know than to explain nuance about the "
-                  "question or its ambiguities.")
-verbose_prompt = ("You are detailed & articulate. Include evidence and reasoning in your answers.")
-creative_prompt = ("You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. "
-                   "Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. "
-                   "Never use the passive voice where you can use the active voice. Do not end your message with a summary.")
+concise_prompt = (
+    "You are a concise and succinct assistant. When you aren't sure, do your best to guess "
+    "with ballpark figures or heuristic understanding. It is better to oversimplify than to give "
+    "a qualified answer. It is better to simply say you don't know than to explain nuance about the "
+    "question or its ambiguities."
+)
+verbose_prompt = (
+    "You are detailed & articulate. Include evidence and reasoning in your answers."
+)
+creative_prompt = (
+    "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. "
+    "Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. "
+    "Never use the passive voice where you can use the active voice. Do not end your message with a summary."
+)
 
 suffixes = {
     "-v": ("gpt-4o", verbose_prompt, "gpt-4o | Verbose"),
@@ -40,7 +51,7 @@ suffixes = {
 # Discord bot setup
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 system_prompt = str(os.getenv("SYSTEM_PROMPT")).strip()
 bot_tag = str(os.getenv("BOT_TAG")).strip()
@@ -50,9 +61,11 @@ reminders = [
 ]
 reminders2 = {datetime.fromisoformat(rem[0]).timestamp(): rem[1] for rem in reminders}
 
+
 def convert_to_readable(timestamp):
     """Convert Unix timestamp to human-readable format."""
-    return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+    return datetime.utcfromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
 
 #######################################
 # BACKGROUND REMINDER TASK
@@ -74,6 +87,7 @@ async def background():
                 break
         await asyncio.sleep(1)
 
+
 #######################################
 # HELPER FUNCTIONS
 #######################################
@@ -81,24 +95,30 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     print("Entering send_request function")
     # Remove the bot tag from the user message (if present)
     message_content = str(message_content).replace(bot_tag, "")
-    messages_input = [{
-        "role": "system",
-        "content": system_prompt + " " + reply_mode
-    }]
+    messages_input = [
+        {
+            "role": "system",
+            "content": system_prompt + " " + reply_mode
+        }
+    ]
     if reference_message is not None:
         messages_input.append({"role": "user", "content": reference_message})
     user_message = {
         "role": "user",
-        "content": message_content if image_url is None else [
+        "content": message_content
+        if image_url is None
+        else [
             {"type": "text", "text": message_content},
             {"type": "image_url", "image_url": image_url}
         ]
     }
     messages_input.append(user_message)
     print(f"Making API request (ref: {reference_message is not None}, image: {image_url is not None})")
-    response = oaiclient.chat.completions.create(model=model, messages=messages_input)
+    # Using the asynchronous version of the API call
+    response = await oaiclient.chat.completions.acreate(model=model, messages=messages_input)
     print("API request completed")
     return response.choices[0].message.content
+
 
 #######################################
 # DISCORD EVENTS AND COMMANDS
@@ -113,13 +133,16 @@ async def on_ready():
             print(f"Bot's permissions in {guild.name}: {member.guild_permissions}")
     bot.loop.create_task(background())
 
+
 @bot.command()
 async def ping(ctx):
     await ctx.send("Pong!")
 
+
 @bot.command()
 async def rule(ctx):
     await ctx.send("")
+
 
 @bot.event
 async def on_message(msg_rcvd):
@@ -158,19 +181,21 @@ async def on_message(msg_rcvd):
                         msg_rcvd.content = await response.text()
                     else:
                         status_msg = await update_status(status_msg, f"...failed to download attachment. Code: {response.status}")
-                        
-        if (msg_rcvd.attachments and any(msg_rcvd.attachments[0].filename.lower().endswith(ext)
-                                         for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"])):
+
+        if (msg_rcvd.attachments and any(
+            msg_rcvd.attachments[0].filename.lower().endswith(ext)
+            for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"]
+        )):
             image_url = msg_rcvd.attachments[0].url
             status_msg = await update_status(status_msg, "...analyzing image...")
             response = await send_request("gpt-4o", reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
             await delete_msg(status_msg)
             response_embed = discord.Embed(title="", description=response, color=0x32a956)
-            response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time()-start_time, 2)} seconds")
+            response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds")
             await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
             return
 
-        # Check for suffix flags in content (e.g. "-v" or "-c")
+        # Check for suffix flags in content (e.g., "-v" or "-c")
         if msg_rcvd.content[-2:] in suffixes:
             flag = msg_rcvd.content[-2:]
             msg_rcvd.content = msg_rcvd.content[:-2]
@@ -189,13 +214,16 @@ async def on_message(msg_rcvd):
                     ddg_results = await duck_cog.perform_ddg_search(search_query)
                 else:
                     ddg_results = ""
-            # Append the DDG results (if any) to the original content.
+                # Append the DDG results (if any) to the original content.
                 modified_message = (
                     original_content +
                     ("\n\nRelevant Internet Search Results:\n" + ddg_results if ddg_results else "")
                 )
             else:
                 modified_message = original_content
+        else:
+            # If no suffix flag was provided, use the message content as is.
+            modified_message = msg_rcvd.content.strip()
 
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
@@ -216,6 +244,7 @@ async def on_message(msg_rcvd):
 
     await bot.process_commands(msg_rcvd)
 
+
 #######################################
 # RUN THE BOT
 #######################################
@@ -224,8 +253,10 @@ async def load_cogs():
         if filename.endswith(".py"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
 
+
 async def main():
     await load_cogs()
     await bot.start(os.getenv("BOT_API_TOKEN"))
+
 
 asyncio.run(main())
