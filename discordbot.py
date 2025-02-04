@@ -208,35 +208,38 @@ async def on_message(msg_rcvd):
             await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
             return
 
-        # Check for suffix flags in content (e.g., "-v" or "-c")
-        if msg_rcvd.content[-2:] in suffixes:
-            flag = msg_rcvd.content[-2:]
-            msg_rcvd.content = msg_rcvd.content[:-2]
-            model, reply_mode, reply_mode_footer = suffixes.get(flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'"))
+    # Check for suffix flags in content (e.g., "-v" or "-c")
+    if msg_rcvd.content[-2:] in suffixes:
+        flag = msg_rcvd.content[-2:]
+        # Remove the suffix flag from the content.
+        msg_rcvd.content = msg_rcvd.content[:-2]
+        model, reply_mode, reply_mode_footer = suffixes.get(
+            flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'")
+        )
+    else:
+        # Default flag settings when no suffix is provided.
+        model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
 
-            # NEW: DDG search integration.
-            original_content = msg_rcvd.content.strip()
+    # Use the processed message content for both the API query and DDG integration.
+    original_content = msg_rcvd.content.strip()
 
-            # Get the DDG cog instance by name (the class name is “DuckDuckGo” by default).
-            duck_cog = bot.get_cog("DuckDuckGo")
-            if duck_cog is not None:
-                status_msg = await update_status(status_msg, "...extracting search query...")
-                search_query = await duck_cog.extract_search_query(original_content)
-                if search_query:
-                    status_msg = await update_status(status_msg, "...searching the web...")
-                    ddg_results = await duck_cog.perform_ddg_search(search_query)
-                else:
-                    ddg_results = ""
-                # Append the DDG results (if any) to the original content.
-                modified_message = (
-                    original_content +
-                    ("\n\nRelevant Internet Search Results:\n" + ddg_results if ddg_results else "")
-                )
-            else:
-                modified_message = original_content
+    # NEW: DDG search integration is always executed regardless of flags.
+    duck_cog = bot.get_cog("DuckDuckGo")
+    if duck_cog is not None:
+        status_msg = await update_status(status_msg, "...extracting search query...")
+        search_query = await duck_cog.extract_search_query(original_content)
+        if search_query:
+            status_msg = await update_status(status_msg, "...searching the web...")
+            ddg_results = await duck_cog.perform_ddg_search(search_query)
         else:
-            # If no suffix flag was provided, use the message content as is.
-            modified_message = msg_rcvd.content.strip()
+            ddg_results = ""
+        # Append any DDG results to the original content.
+        modified_message = (
+            original_content +
+            (("\n\nRelevant Internet Search Results:\n" + ddg_results) if ddg_results else "")
+        )
+    else:
+        modified_message = original_content
 
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
