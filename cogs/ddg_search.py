@@ -1,11 +1,12 @@
 import os
 import asyncio
 import logging
-
+from embed_utils import send_embed  
 from duckduckgo_search import DDGS
 from discord.ext import commands
 import openai
 from openai import OpenAI
+import time
 
 # Set up a logger for this module.
 logger = logging.getLogger(__name__)
@@ -82,25 +83,35 @@ class DuckDuckGo(commands.Cog):
     # Command that lets users trigger DDG search by first extracting a search query.
     @commands.command(name="ddg")
     async def ddg(self, ctx, *, message: str):
-        """
-        Extracts a search query using GPT-4o-mini from the provided message.
-        If a valid query is extracted, then performs a DDG search and returns the results.
-        """
-        logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
+        start = time.monotonic()
+        self.bot.logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
+
+        # Extract the search query using GPT-4o-mini
         search_query = await self.extract_search_query(message)
         if not search_query:
             await ctx.send("No valuable search query could be extracted from your message; search cancelled.")
-            logger.info("No valid search query extracted from message: %s", message)
+            self.bot.logger.info("No valid search query extracted from message: %s", message)
             return
 
+        # Perform the DDG search
         results = await self.perform_ddg_search(search_query)
+        elapsed = time.monotonic() - start
+
         if results:
-            # Wrap the output in a code block to preserve formatting.
-            await ctx.send(f"```{results}```")
-            logger.info("Sent DDG search results for query: %s", search_query)
+            # Build an embed matching your established style.
+            # You can set a title if needed; here we leave it empty.
+            response_embed = discord.Embed(title="", description=results, color=0x32a956)
+            # You can modify reply_mode_footer as desired (for example, "DuckDuckGo Search")
+            reply_mode_footer = "DuckDuckGo Search"
+            response_embed.set_footer(text=f"{reply_mode_footer} | generated in {elapsed:.2f} seconds")
+
+            # Instead of sending a raw message which might exceed the limit,
+            # use your helper to split/send the embed if necessary.
+            await send_embed(ctx.channel, response_embed, reply_to=ctx.message)
+            self.bot.logger.info("Sent DDG search results for query: %s", search_query)
         else:
             await ctx.send("No results found.")
-            logger.info("No DDG search results for query: %s", search_query)
+            self.bot.logger.info("No DDG search results for query: %s", search_query)
 
 async def setup(bot):
     await bot.add_cog(DuckDuckGo(bot))
