@@ -25,7 +25,7 @@ class DuckDuckGo(commands.Cog):
         Uses GPT-4o-mini to extract a concise search query from the user’s message.
         """
         logger.info("Extracting search query for message: %s", user_message)
-        def _extract_search_query(um):
+        def _extract_search_query(user_message):
             try:
                 response = oaiclient.chat.completions.create(
                     model="gpt-4o-mini",
@@ -39,7 +39,7 @@ class DuckDuckGo(commands.Cog):
                                 "If not, return nothing at all."
                             ),
                         },
-                        {"role": "user", "content": um},
+                        {"role": "user", "content": user_message},
                     ],
                 )
                 extracted_query = response.choices[0].message.content.strip()
