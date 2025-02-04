@@ -14,6 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 import logging
+import asyncio
 
 # Enhanced logging configuration: set level, format, and date format.
 logging.basicConfig(
@@ -122,8 +123,12 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     }
     messages_input.append(user_message)
     logging.info(f"Making API request (ref: {reference_message is not None}, image: {image_url is not None})")
-    # Using the asynchronous version of the API call
-    response = await oaiclient.chat.completions.acreate(model=model, messages=messages_input)
+    # Instead of using the non-existent acreate method, use the synchronous create in a thread.
+    response = await asyncio.to_thread(
+        oaiclient.chat.completions.create,
+        model=model,
+        messages=messages_input
+    )
     logging.info("API request completed")
     return response.choices[0].message.content
 
