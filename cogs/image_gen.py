@@ -1,17 +1,22 @@
 import time
 import discord
 import openai
+import logging
 from discord.ext import commands
 from message_utils import delete_msg
 from embed_utils import send_embed
 from status_utils import update_status
+
+# Create a logger for this module.
+logger = logging.getLogger(__name__)
 
 class ImageGen(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     async def generate_image(self, img_prompt, img_quality, img_size):
-        print("Entering generate_image function (COG)")
+        logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s'",
+                    img_prompt, img_quality, img_size)
         response = openai.images.generate(
             model="dall-e-3",
             prompt=img_prompt,
@@ -21,7 +26,7 @@ class ImageGen(commands.Cog):
         )
         # Grab the image URLs from the response (assumes response.data is an iterable with .url)
         image_urls = [data.url for data in response.data]
-        print("Generated image URL:", image_urls)
+        logger.info("Generated image URL(s): %s", image_urls)
         return image_urls
 
     @commands.command(name="gen")
@@ -48,6 +53,8 @@ class ImageGen(commands.Cog):
             else:
                 prompt_without_flags.append(arg)
         prompt_final = " ".join(prompt_without_flags)
+        logger.info("Processing image generation command. User: %s, Channel: %s, Final Prompt: '%s', Quality: '%s', Size: '%s'",
+                    ctx.author.name, ctx.channel.name, prompt_final, quality, size)
         
         # Update status in the channel.
         status_msg = await update_status(None, "...generating image...", channel=ctx.channel)
@@ -55,6 +62,7 @@ class ImageGen(commands.Cog):
             result_urls = await self.generate_image(prompt_final, quality, size)
         except Exception as e:
             await delete_msg(status_msg)
+            logger.exception("Error generating image for prompt: '%s'", prompt_final)
             await ctx.send(f"Error generating image: {e}")
             return
 
@@ -69,6 +77,9 @@ class ImageGen(commands.Cog):
             embed.set_image(url=url)
             embed.set_footer(text=footer_text)
             await send_embed(ctx.channel, embed)
+            logger.info("Sent generated image embed for URL: %s", url)
+        
+        logger.info("Image generation command completed in %s seconds", generation_time)
 
 # Cog setup
 async def setup(bot):
