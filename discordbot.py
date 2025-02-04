@@ -226,7 +226,7 @@ async def on_message(msg_rcvd):
     # NEW: DDG search integration is always executed regardless of flags.
     duck_cog = bot.get_cog("DuckDuckGo")
     if duck_cog is not None:
-        status_msg = await update_status(status_msg, "...extracting search query...")
+        status_msg = await update_status(None, "...extracting search query...", channel=ctx.channel)
         search_query = await duck_cog.extract_search_query(original_content)
         if search_query:
             status_msg = await update_status(status_msg, "...searching the web...")
