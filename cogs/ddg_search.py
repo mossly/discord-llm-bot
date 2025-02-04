@@ -3,6 +3,7 @@ import asyncio
 import logging
 from embed_utils import send_embed  
 from duckduckgo_search import DDGS
+import discord
 from discord.ext import commands
 import openai
 from openai import OpenAI
