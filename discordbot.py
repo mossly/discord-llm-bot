@@ -13,6 +13,14 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+import logging
+
+# Enhanced logging configuration: set level, format, and date format.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 # Import our consolidated embed helper and status updater.
 from embed_utils import send_embed
@@ -78,10 +86,10 @@ async def background():
             if t in reminders2 and t < now:
                 try:
                     user = await bot.fetch_user("195485849952059392")  # Replace with your own user ID.
-                    print(f"Sending reminder to {user}: {reminders2[t]}")
+                    logging.info(f"Sending reminder to {user}: {reminders2[t]}")
                     await user.send(f"Reminder: {reminders2[t]}")
                 except Exception as e:
-                    print(f"Failed to send reminder: {e}")
+                    logging.error(f"Failed to send reminder: {e}")
                 del reminders2[t]
                 reminder_times.remove(t)
                 break
@@ -92,7 +100,7 @@ async def background():
 # HELPER FUNCTIONS
 #######################################
 async def send_request(model, reply_mode, message_content, reference_message, image_url):
-    print("Entering send_request function")
+    logging.info("Entering send_request function")
     # Remove the bot tag from the user message (if present)
     message_content = str(message_content).replace(bot_tag, "")
     messages_input = [
@@ -113,10 +121,10 @@ async def send_request(model, reply_mode, message_content, reference_message, im
         ]
     }
     messages_input.append(user_message)
-    print(f"Making API request (ref: {reference_message is not None}, image: {image_url is not None})")
+    logging.info(f"Making API request (ref: {reference_message is not None}, image: {image_url is not None})")
     # Using the asynchronous version of the API call
     response = await oaiclient.chat.completions.acreate(model=model, messages=messages_input)
-    print("API request completed")
+    logging.info("API request completed")
     return response.choices[0].message.content
 
 
@@ -125,12 +133,12 @@ async def send_request(model, reply_mode, message_content, reference_message, im
 #######################################
 @bot.event
 async def on_ready():
-    print(f"{bot.user.name} has connected to Discord!")
+    logging.info(f"{bot.user.name} has connected to Discord!")
     for guild in bot.guilds:
-        print(f"Bot is in server: {guild.name} (id: {guild.id})")
+        logging.info(f"Bot is in server: {guild.name} (id: {guild.id})")
         member = guild.get_member(bot.user.id)
         if member:
-            print(f"Bot's permissions in {guild.name}: {member.guild_permissions}")
+            logging.info(f"Bot's permissions in {guild.name}: {member.guild_permissions}")
     bot.loop.create_task(background())
 
 
@@ -232,7 +240,7 @@ async def on_message(msg_rcvd):
             reraise=True,
         ):
             with attempt:
-                print(f"Attempt {attempt.retry_state.attempt_number}/5 for request...")
+                logging.info(f"Attempt {attempt.retry_state.attempt_number}/5 for request...")
                 status_msg = await update_status(status_msg, "...generating reply...")
                 response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
 
