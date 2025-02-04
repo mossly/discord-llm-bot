@@ -8,6 +8,7 @@ from discord.ext import commands
 import openai
 from openai import OpenAI
 import time
+from status_utils import update_status
 
 # Set up a logger for this module.
 logger = logging.getLogger(__name__)
@@ -87,6 +88,8 @@ class DuckDuckGo(commands.Cog):
         start = time.monotonic()
         logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
 
+        status_msg = await update_status(None, "...user triggered search...", channel=ctx.channel)
+        
         # Extract the search query using GPT-4o-mini
         search_query = await self.extract_search_query(message)
         if not search_query:
