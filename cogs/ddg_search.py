@@ -108,10 +108,10 @@ class DuckDuckGo(commands.Cog):
             # Instead of sending a raw message which might exceed the limit,
             # use your helper to split/send the embed if necessary.
             await send_embed(ctx.channel, response_embed, reply_to=ctx.message)
-            self.bot.logger.info("Sent DDG search results for query: %s", search_query)
+            logger.info("Sent DDG search results for query: %s", search_query)
         else:
             await ctx.send("No results found.")
-            self.bot.logger.info("No DDG search results for query: %s", search_query)
+            logger.info("No DDG search results for query: %s", search_query)
 
 async def setup(bot):
     await bot.add_cog(DuckDuckGo(bot))
