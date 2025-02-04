@@ -84,13 +84,13 @@ class DuckDuckGo(commands.Cog):
     @commands.command(name="ddg")
     async def ddg(self, ctx, *, message: str):
         start = time.monotonic()
-        self.bot.logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
+        logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
 
         # Extract the search query using GPT-4o-mini
         search_query = await self.extract_search_query(message)
         if not search_query:
             await ctx.send("No valuable search query could be extracted from your message; search cancelled.")
-            self.bot.logger.info("No valid search query extracted from message: %s", message)
+            logger.info("No valid search query extracted from message: %s", message)
             return
 
         # Perform the DDG search
