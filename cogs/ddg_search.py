@@ -38,7 +38,8 @@ class DuckDuckGo(commands.Cog):
                                 "Determine if a web search would help resolve the users last message. This will apply in all cases if the user asks a question that would benefit from information retrieval."
                                 "Try not to make any assumptions, particularly about dates, and definitely search for any information the user requests that is after your knowledge cutoff."
                                 "If a search would not be helpful, return NO_SEARCH."
-                                "If a search would be helpful, return only a concise search query string, informed by the following text, that captures its key intent. "
+                                "If a search would be helpful, return only a concise search query string, informed by the following text, that captures its key intent."
+                                "Always return a search query if the user explicitly requests a web search."
                             ),
                         },
                         {"role": "user", "content": user_message},
