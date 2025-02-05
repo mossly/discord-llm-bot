@@ -36,7 +36,7 @@ openrouterclient = OpenAI(
 oaiclient = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Prompts and suffix definitions
-o3mini_prompt = ""
+o3mini_prompt = "Use markdown formatting."
 concise_prompt = (
     "You are a concise and succinct assistant. When you aren't sure, do your best to guess "
     "with ballpark figures or heuristic understanding. It is better to oversimplify than to give "
@@ -223,21 +223,17 @@ async def on_message(msg_rcvd):
     # Use the processed message content for both the API query and DDG integration.
     original_content = msg_rcvd.content.strip()
 
-    # NEW: DDG search integration is always executed regardless of flags.
+    # NEW: Instead of doing a separate extraction and search, get a summarized result.
     duck_cog = bot.get_cog("DuckDuckGo")
     if duck_cog is not None:
-        status_msg = await update_status(status_msg, "...extracting search query...")
-        search_query = await duck_cog.extract_search_query(original_content)
-        if search_query:
-            status_msg = await update_status(status_msg, "...searching the web...")
-            ddg_results = await duck_cog.perform_ddg_search(search_query)
+        # Provide a status update, if you wish.
+        status_msg = await update_status(None, "...performing web search...", channel=msg_rcvd.channel)
+        ddg_summary = await duck_cog.search_and_summarize(original_content)
+        await update_status(status_msg, "...web search complete...")
+        if ddg_summary:
+            modified_message = original_content + "\n\nRelevant Web Search Summary:\n" + ddg_summary
         else:
-            ddg_results = ""
-        # Append any DDG results to the original content.
-        modified_message = (
-            original_content +
-            (("\n\nRelevant Internet Search Results:\n" + ddg_results) if ddg_results else "")
-        )
+            modified_message = original_content
     else:
         modified_message = original_content
 

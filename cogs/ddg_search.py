@@ -13,7 +13,7 @@ from status_utils import update_status
 # Set up a logger for this module.
 logger = logging.getLogger(__name__)
 
-# Set up the OpenAI client (this example uses the API key for GPT-4o-mini extraction)
+# Set up the OpenAI client (using the API key for GPT-4o-mini extraction)
 oaiclient = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class DuckDuckGo(commands.Cog):
@@ -23,7 +23,7 @@ class DuckDuckGo(commands.Cog):
 
     async def extract_search_query(self, user_message: str) -> str:
         """
-        Uses GPT-4o-mini to extract a concise search query from the user’s message.
+        Uses GPT-4o-mini to extract a concise search query from the user's message.
         """
         logger.info("Extracting search query for message: %s", user_message)
         def _extract_search_query(user_message):
@@ -34,10 +34,9 @@ class DuckDuckGo(commands.Cog):
                         {
                             "role": "system",
                             "content": (
-                                "Determine if a web search would be relevant to addressing the user's query. "
+                                "Determine if a web search would be relevant for the user's query. "
                                 "If so, extract a concise search query string from the following text that captures its key intent. "
-                                "Only return the query and nothing else. "
-                                "If not, return nothing at all."
+                                "Only return the query and nothing else. If not, return nothing."
                             ),
                         },
                         {"role": "user", "content": user_message},
@@ -56,7 +55,6 @@ class DuckDuckGo(commands.Cog):
         Uses DuckDuckGo (via DDGS) to search for the given query and formats up to 10 results.
         """
         logger.info("Performing DDG search for query: %s", query)
-        # If the query is blank, skip running the search.
         if not query.strip():
             logger.info("Blank query provided. Skipping DDG search.")
             return ""
@@ -82,38 +80,76 @@ class DuckDuckGo(commands.Cog):
         logger.info("Formatted DDG search results for query: %s", query)
         return concat_result
 
-    # Command that lets users trigger DDG search by first extracting a search query.
+    async def summarize_search_results(self, search_results: str) -> str:
+        """
+        Uses GPT-4o-mini to summarize the search results into a concise summary.
+        """
+        logger.info("Summarizing search results")
+        def _summarize(text):
+            try:
+                response = oaiclient.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "Please summarize the following DuckDuckGo search results. "
+                                "Extract and present only the key information in a concise summary, and return just the summary."
+                            )
+                        },
+                        {"role": "user", "content": text},
+                    ],
+                )
+                summary = response.choices[0].message.content.strip()
+                logger.info("Summary generated: %s", summary)
+                return summary
+            except Exception as e:
+                logger.exception("Error summarizing search results: %s", e)
+                # Fallback: return the original text if summarization fails.
+                return text
+        summary_text = await asyncio.to_thread(_summarize, search_results)
+        return summary_text
+
+    async def search_and_summarize(self, full_message: str) -> str:
+        """
+        Combines the DDG search and summarization steps.
+        1. Uses GPT-4o-mini to extract a search query from full_message.
+        2. Performs a DuckDuckGo search with that query.
+        3. Summarizes the search results via GPT-4o-mini.
+        Returns the summary (or an empty string if no query or results are found).
+        """
+        logger.info("Running combined search and summarization for message: %s", full_message)
+        search_query = await self.extract_search_query(full_message)
+        if not search_query:
+            logger.info("No search query was extracted; skipping search.")
+            return ""
+        raw_results = await self.perform_ddg_search(search_query)
+        if not raw_results:
+            logger.info("No search results found for query: %s", search_query)
+            return ""
+        summary = await self.summarize_search_results(raw_results)
+        return summary
+
+    # (The existing ddg command can still use the two-step approach if desired.)
     @commands.command(name="ddg")
     async def ddg(self, ctx, *, message: str):
         start = time.monotonic()
         logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
         
-        # Extract the search query using GPT-4o-mini
-        search_query = await self.extract_search_query(message)
-        if not search_query:
-            await ctx.send("No valuable search query could be extracted from your message; search cancelled.")
-            logger.info("No valid search query extracted from message: %s", message)
+        # Use combined search-and-summarize.
+        summary = await self.search_and_summarize(message)
+        if not summary:
+            await ctx.send("No valuable search results found.")
+            logger.info("No summarized results to show for message: %s", message)
             return
 
-        # Perform the DDG search
-        results = await self.perform_ddg_search(search_query)
         elapsed = time.monotonic() - start
 
-        if results:
-            # Build an embed matching your established style.
-            # You can set a title if needed; here we leave it empty.
-            response_embed = discord.Embed(title="", description=results, color=0x32a956)
-            # You can modify reply_mode_footer as desired (for example, "DuckDuckGo Search")
-            reply_mode_footer = "DuckDuckGo Search"
-            response_embed.set_footer(text=f"{reply_mode_footer} | generated in {elapsed:.2f} seconds")
-
-            # Instead of sending a raw message which might exceed the limit,
-            # use your helper to split/send the embed if necessary.
-            await send_embed(ctx.channel, response_embed, reply_to=ctx.message)
-            logger.info("Sent DDG search results for query: %s", search_query)
-        else:
-            await ctx.send("No results found.")
-            logger.info("No DDG search results for query: %s", search_query)
+        # Build an embed with the summary.
+        response_embed = discord.Embed(title="", description=summary, color=0x32a956)
+        response_embed.set_footer(text=f"DuckDuckGo Search (summarized) | generated in {elapsed:.2f} seconds")
+        await send_embed(ctx.channel, response_embed, reply_to=ctx.message)
+        logger.info("Sent summarized DDG search results.")
 
 async def setup(bot):
     await bot.add_cog(DuckDuckGo(bot))
