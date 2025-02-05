@@ -69,7 +69,7 @@ class DuckDuckGo(commands.Cog):
             try:
                 proxy = os.getenv("DUCK_PROXY")
                 duck = DDGS(proxy=proxy) if proxy else DDGS()
-                results = duck.text(q, max_results=10)
+                results = duck.text(q.strip('"').strip(), max_results=10)
                 logger.info("DDG search results retrieved for query '%s': %s", q, results)
                 return results
             except Exception as e:
