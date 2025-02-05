@@ -87,8 +87,6 @@ class DuckDuckGo(commands.Cog):
     async def ddg(self, ctx, *, message: str):
         start = time.monotonic()
         logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
-
-        status_msg = await update_status(None, "...user triggered search...", channel=ctx.channel)
         
         # Extract the search query using GPT-4o-mini
         search_query = await self.extract_search_query(message)
