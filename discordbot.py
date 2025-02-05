@@ -16,6 +16,8 @@ from tenacity import (
 import logging
 import asyncio
 
+status_msg = None
+
 # Enhanced logging configuration: set level, format, and date format.
 logging.basicConfig(
     level=logging.INFO,
