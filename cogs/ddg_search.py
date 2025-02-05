@@ -100,7 +100,7 @@ class DuckDuckGo(commands.Cog):
                         {
                             "role": "system",
                             "content": (
-                                "Please summarize the following DuckDuckGo search results. "
+                                "Please summarize the following DuckDuckGo search results."
                                 "Extract and present only the key information in a concise summary, and return just the summary."
                             )
                         },
