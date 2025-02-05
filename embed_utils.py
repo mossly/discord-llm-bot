@@ -63,14 +63,14 @@ def split_embed(embed: discord.Embed) -> List[discord.Embed]:
 async def send_embed(destination, embed: discord.Embed, *, reply_to: Optional[discord.Message] = None) -> None:
     """
     Sends an embed to the destination. If a reply_to is provided (a discord.Message),
-    then replies to that message. Handles splitting embeds if they exceed Discord's 6000 character limit.
+    then replies to that message. Handles splitting embeds if they exceed Discord's 4000 character limit.
     
     destination: Either a channel (with a .send method) or a context in which to call send.
     reply_to: Optional discord.Message. If provided, the first embed is sent as a reply to this message.
     """
     total_length = get_embed_total_length(embed)
     logger.debug("Embed total length: %d", total_length)
-    if total_length > 6000:
+    if total_length > 4000:
         logger.info("Embed exceeds 6000 characters. Splitting embed into multiple parts.")
         parts = split_embed(embed)
         if reply_to is not None:
