@@ -163,6 +163,9 @@ async def on_message(msg_rcvd):
         return
     status_msg = None
 
+    if not (bot.user in msg_rcvd.mentions or msg_rcvd.content.startswith(bot.command_prefix)):
+        return
+
     if bot.user in msg_rcvd.mentions:
         # Set defaults.
         model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
@@ -209,54 +212,54 @@ async def on_message(msg_rcvd):
             await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
             return
 
-    # Check for suffix flags in content (e.g., "-v" or "-c")
-    if msg_rcvd.content[-2:] in suffixes:
-        flag = msg_rcvd.content[-2:]
-        # Remove the suffix flag from the content.
-        msg_rcvd.content = msg_rcvd.content[:-2]
-        model, reply_mode, reply_mode_footer = suffixes.get(
-            flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'")
-        )
-    else:
-        # Default flag settings when no suffix is provided.
-        model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
-
-    # Use the processed message content for both the API query and DDG integration.
-    original_content = msg_rcvd.content.strip()
-
-    # NEW: Instead of doing a separate extraction and search, get a summarized result.
-    duck_cog = bot.get_cog("DuckDuckGo")
-    if duck_cog is not None:
-        # Provide a status update, if you wish.
-        status_msg = await update_status(status_msg, "...trying web search...", channel=msg_rcvd.channel)
-        ddg_summary = await duck_cog.search_and_summarize(original_content)
-        if ddg_summary:
-            status_msg = await update_status(status_msg, "...web search complete...")
-            modified_message = original_content + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
+        # Check for suffix flags in content (e.g., "-v" or "-c")
+        if msg_rcvd.content[-2:] in suffixes:
+            flag = msg_rcvd.content[-2:]
+            # Remove the suffix flag from the content.
+            msg_rcvd.content = msg_rcvd.content[:-2]
+            model, reply_mode, reply_mode_footer = suffixes.get(
+                flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'")
+            )
         else:
-            status_msg = await update_status(status_msg, "...no web search necessary...")
+            # Default flag settings when no suffix is provided.
+            model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
+
+        # Use the processed message content for both the API query and DDG integration.
+        original_content = msg_rcvd.content.strip()
+
+        # NEW: Instead of doing a separate extraction and search, get a summarized result.
+        duck_cog = bot.get_cog("DuckDuckGo")
+        if duck_cog is not None:
+            # Provide a status update, if you wish.
+            status_msg = await update_status(status_msg, "...trying web search...", channel=msg_rcvd.channel)
+            ddg_summary = await duck_cog.search_and_summarize(original_content)
+            if ddg_summary:
+                status_msg = await update_status(status_msg, "...web search complete...")
+                modified_message = original_content + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
+            else:
+                status_msg = await update_status(status_msg, "...no web search necessary...")
+                modified_message = original_content
+        else:
             modified_message = original_content
-    else:
-        modified_message = original_content
 
-    async for attempt in AsyncRetrying(
-        retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
-        wait=wait_exponential(min=1, max=10),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    ):
-        with attempt:
-            logging.info(f"Attempt {attempt.retry_state.attempt_number}/5 for request...")
-            status_msg = await update_status(status_msg, "...generating reply...")
-            response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
+        async for attempt in AsyncRetrying(
+            retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
+            wait=wait_exponential(min=1, max=10),
+            stop=stop_after_attempt(5),
+            reraise=True,
+        ):
+            with attempt:
+                logging.info(f"Attempt {attempt.retry_state.attempt_number}/5 for request...")
+                status_msg = await update_status(status_msg, "...generating reply...")
+                response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
 
-    await delete_msg(status_msg)
-    elapsed = round(time.time() - start_time, 2)
-    response_embed = discord.Embed(title="", description=response, color=0x32a956)
-    response_embed.set_footer(text=f"{reply_mode_footer} | generated in {elapsed} seconds")
-    await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
+        await delete_msg(status_msg)
+        elapsed = round(time.time() - start_time, 2)
+        response_embed = discord.Embed(title="", description=response, color=0x32a956)
+        response_embed.set_footer(text=f"{reply_mode_footer} | generated in {elapsed} seconds")
+        await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
 
-    await bot.process_commands(msg_rcvd)
+        await bot.process_commands(msg_rcvd)
 
 
 #######################################
