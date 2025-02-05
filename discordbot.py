@@ -169,7 +169,7 @@ async def on_message(msg_rcvd):
         model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         start_time = time.time()
         # Start with a single status message
-        status_msg = await update_status(None, "...reading request...", channel=msg_rcvd.channel)
+        status_msg = await update_status(status_msg, "...reading request...", channel=msg_rcvd.channel)
 
         reference_author, reference_message, image_url = None, None, None
 
@@ -229,9 +229,9 @@ async def on_message(msg_rcvd):
     duck_cog = bot.get_cog("DuckDuckGo")
     if duck_cog is not None:
         # Provide a status update, if you wish.
-        status_msg = await update_status(None, "...performing web search...", channel=msg_rcvd.channel)
+        status_msg = await update_status(status_msg, "...performing web search...", channel=msg_rcvd.channel)
         ddg_summary = await duck_cog.search_and_summarize(original_content)
-        await update_status(status_msg, "...web search complete...")
+        status_msg = await update_status(status_msg, "...web search complete...")
         if ddg_summary:
             modified_message = original_content + "\n\nRelevant Web Search Summary:\n" + ddg_summary
         else:
