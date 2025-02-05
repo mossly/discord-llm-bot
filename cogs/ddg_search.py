@@ -24,6 +24,7 @@ class DuckDuckGo(commands.Cog):
     async def extract_search_query(self, user_message: str) -> str:
         """
         Uses GPT-4o-mini to extract a concise search query from the user's message.
+        If GPT-4o-mini returns "NO_SEARCH" (case-insensitive), this function will return an empty string.
         """
         logger.info("Extracting search query for message: %s", user_message)
         def _extract_search_query(user_message):
@@ -34,14 +35,19 @@ class DuckDuckGo(commands.Cog):
                         {
                             "role": "system",
                             "content": (
-                                "Determine if a web search would be relevant for the user's query. If not, return NO_SEARCH."
-                                "If so, return only a concise search query based on the following text that captures its key intent."
+                                "Determine if a web search would be relevant for the user's query. "
+                                "If so, extract a concise search query string from the following text that captures its key intent. "
+                                "Only return the query and nothing else. If not, return NO_SEARCH."
                             ),
                         },
                         {"role": "user", "content": user_message},
                     ],
                 )
                 extracted_query = response.choices[0].message.content.strip()
+                # If the extraction indicates no search is needed, return an empty string.
+                if extracted_query.upper() == "NO_SEARCH":
+                    logger.info("Extracted query indicates NO_SEARCH; skipping search.")
+                    return ""
                 logger.info("Extracted search query: %s", extracted_query)
                 return extracted_query
             except Exception as e:
