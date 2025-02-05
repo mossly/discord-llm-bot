@@ -228,12 +228,13 @@ async def on_message(msg_rcvd):
     duck_cog = bot.get_cog("DuckDuckGo")
     if duck_cog is not None:
         # Provide a status update, if you wish.
-        status_msg = await update_status(status_msg, "...performing web search...", channel=msg_rcvd.channel)
+        status_msg = await update_status(status_msg, "...trying web search...", channel=msg_rcvd.channel)
         ddg_summary = await duck_cog.search_and_summarize(original_content)
-        status_msg = await update_status(status_msg, "...web search complete...")
         if ddg_summary:
-            modified_message = original_content + "\n\nRelevant Web Search Summary:\n" + ddg_summary
+            status_msg = await update_status(status_msg, "...web search complete...")
+            modified_message = original_content + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
         else:
+            status_msg = await update_status(status_msg, "...no web search necessary...")
             modified_message = original_content
     else:
         modified_message = original_content
