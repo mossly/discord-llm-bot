@@ -16,8 +16,6 @@ from tenacity import (
 import logging
 import asyncio
 
-status_msg = None
-
 # Enhanced logging configuration: set level, format, and date format.
 logging.basicConfig(
     level=logging.INFO,
@@ -163,6 +161,7 @@ async def rule(ctx):
 async def on_message(msg_rcvd):
     if msg_rcvd.author == bot.user:
         return
+    status_msg = None
 
     if bot.user in msg_rcvd.mentions:
         # Set defaults.
