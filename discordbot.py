@@ -243,7 +243,7 @@ async def on_message(msg_rcvd):
                 model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         else:
             # Force fun mode settings.
-            model, reply_mode, reply_mode_footer = "deepseek-v3", "", "Deepseek V3 | Fun Mode"
+            model, reply_mode, reply_mode_footer = "deepseek/deepseek-chat", "", "Deepseek V3 | Fun Mode"
 
         # Use the processed message content for both the API query and DDG integration.
         original_content = msg_rcvd.content.strip()
