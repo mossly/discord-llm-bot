@@ -220,7 +220,7 @@ async def on_message(msg_rcvd):
             status_msg = await update_status(status_msg, "...analyzing image...")
             if fun_mode:
                 # Use fun mode: send to Deepseek V3 via openrouterclient.
-                response = await send_request("deepseek/deepseek-r1-distill-qwen-32b", "", msg_rcvd.content.strip(), reference_message, image_url, custom_system_prompt=fun_system_prompt, api_client=openrouterclient)
+                response = await send_request("deepseek/deepseek-chat", "", msg_rcvd.content.strip(), reference_message, image_url, custom_system_prompt=fun_system_prompt, api_client=openrouterclient)
                 reply_mode_footer = "Deepseek V3 | Fun Mode"
             else:
                 response = await send_request("gpt-4o", reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
@@ -243,7 +243,7 @@ async def on_message(msg_rcvd):
                 model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         else:
             # Force fun mode settings.
-            model, reply_mode, reply_mode_footer = "deepseek/deepseek-r1-distill-qwen-32b", "", "Deepseek V3 | Fun Mode"
+            model, reply_mode, reply_mode_footer = "deepseek/deepseek-chat", "", "Deepseek V3 | Fun Mode"
 
         # Use the processed message content for both the API query and DDG integration.
         original_content = msg_rcvd.content.strip()
