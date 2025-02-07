@@ -52,6 +52,9 @@ creative_prompt = (
     "Never use the passive voice where you can use the active voice. Do not end your message with a summary."
 )
 
+# Add a fun system prompt for the new -fun flag.
+fun_system_prompt = os.getenv("FUN_PROMPT")
+
 suffixes = {
     "-v": ("gpt-4o", verbose_prompt, "gpt-4o | Verbose"),
     "-c": ("gpt-4o", creative_prompt, "gpt-4o | Creative")
@@ -100,14 +103,17 @@ async def background():
 #######################################
 # HELPER FUNCTIONS
 #######################################
-async def send_request(model, reply_mode, message_content, reference_message, image_url):
+# Modified send_request now accepts a custom_system_prompt and an api_client parameter.
+async def send_request(model, reply_mode, message_content, reference_message, image_url, custom_system_prompt=None, api_client=oaiclient):
     logging.info("Entering send_request function")
     # Remove the bot tag from the user message (if present)
     message_content = str(message_content).replace(bot_tag, "")
+    # Use the custom system prompt if provided; otherwise fall back to the default.
+    system_used = custom_system_prompt if custom_system_prompt is not None else system_prompt
     messages_input = [
         {
             "role": "system",
-            "content": system_prompt + " " + reply_mode
+            "content": system_used + " " + reply_mode
         }
     ]
     if reference_message is not None:
@@ -123,9 +129,9 @@ async def send_request(model, reply_mode, message_content, reference_message, im
     }
     messages_input.append(user_message)
     logging.info(f"Making API request (ref: {reference_message is not None}, image: {image_url is not None})")
-    # Instead of using the non-existent acreate method, use the synchronous create in a thread.
+    # Call the API client in a thread.
     response = await asyncio.to_thread(
-        oaiclient.chat.completions.create,
+        api_client.chat.completions.create,
         model=model,
         messages=messages_input
     )
@@ -166,15 +172,14 @@ async def on_message(msg_rcvd):
     if not (bot.user in msg_rcvd.mentions or msg_rcvd.content.startswith(bot.command_prefix)):
         return
 
+    # When the bot is mentioned, process the message.
     if bot.user in msg_rcvd.mentions:
         # Set defaults.
         model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         start_time = time.time()
-        # Start with a single status message
         status_msg = await update_status(status_msg, "...reading request...", channel=msg_rcvd.channel)
 
         reference_author, reference_message, image_url = None, None, None
-
         if msg_rcvd.reference:
             try:
                 if msg_rcvd.reference.cached_message:
@@ -190,6 +195,7 @@ async def on_message(msg_rcvd):
             except Exception:
                 status_msg = await update_status(status_msg, "...unable to fetch reference...")
 
+        # Check for text file attachments.
         if (msg_rcvd.attachments and msg_rcvd.attachments[0].filename.endswith(".txt")):
             attachment = msg_rcvd.attachments[0]
             async with aiohttp.ClientSession() as session:
@@ -199,30 +205,45 @@ async def on_message(msg_rcvd):
                     else:
                         status_msg = await update_status(status_msg, f"...failed to download attachment. Code: {response.status}")
 
+        # Look for the new -fun flag before any further processing.
+        fun_mode = False
+        if msg_rcvd.content.strip().endswith("-fun"):
+            msg_rcvd.content = msg_rcvd.content.strip()[:-4].strip()  # remove the flag and any extra whitespace
+            fun_mode = True
+
+        # Check for image attachments.
         if (msg_rcvd.attachments and any(
             msg_rcvd.attachments[0].filename.lower().endswith(ext)
             for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"]
         )):
             image_url = msg_rcvd.attachments[0].url
             status_msg = await update_status(status_msg, "...analyzing image...")
-            response = await send_request("gpt-4o", reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
+            if fun_mode:
+                # Use fun mode: send to Deepseek V3 via openrouterclient.
+                response = await send_request("deepseek/deepseek-chat", "", msg_rcvd.content.strip(), reference_message, image_url, custom_system_prompt=fun_system_prompt, api_client=openrouterclient)
+                reply_mode_footer = "Deepseek V3 | Fun Mode"
+            else:
+                response = await send_request("gpt-4o", reply_mode, msg_rcvd.content.strip(), reference_message, image_url)
             await delete_msg(status_msg)
             response_embed = discord.Embed(title="", description=response, color=0x32a956)
             response_embed.set_footer(text=f"{reply_mode_footer} | generated in {round(time.time() - start_time, 2)} seconds")
             await send_embed(msg_rcvd.channel, response_embed, reply_to=msg_rcvd)
             return
 
-        # Check for suffix flags in content (e.g., "-v" or "-c")
-        if msg_rcvd.content[-2:] in suffixes:
-            flag = msg_rcvd.content[-2:]
-            # Remove the suffix flag from the content.
-            msg_rcvd.content = msg_rcvd.content[:-2]
-            model, reply_mode, reply_mode_footer = suffixes.get(
-                flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'")
-            )
+        # If not in fun mode, check for other suffix flags (e.g., "-v" or "-c").
+        if not fun_mode:
+            if msg_rcvd.content[-2:] in suffixes:
+                flag = msg_rcvd.content[-2:]
+                # Remove the suffix flag from the content.
+                msg_rcvd.content = msg_rcvd.content[:-2]
+                model, reply_mode, reply_mode_footer = suffixes.get(
+                    flag, ("gpt-4o", "concise_prompt", "gpt-4o 'Concise'")
+                )
+            else:
+                model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
         else:
-            # Default flag settings when no suffix is provided.
-            model, reply_mode, reply_mode_footer = "o3-mini", "o3mini_prompt", "o3-mini | default"
+            # Force fun mode settings.
+            model, reply_mode, reply_mode_footer = "deepseek-v3", "", "Deepseek V3 | Fun Mode"
 
         # Use the processed message content for both the API query and DDG integration.
         original_content = msg_rcvd.content.strip()
@@ -230,7 +251,6 @@ async def on_message(msg_rcvd):
         # NEW: Instead of doing a separate extraction and search, get a summarized result.
         duck_cog = bot.get_cog("DuckDuckGo")
         if duck_cog is not None:
-            # Provide a status update, if you wish.
             status_msg = await update_status(status_msg, "...trying web search...", channel=msg_rcvd.channel)
             ddg_summary = await duck_cog.search_and_summarize(original_content)
             if ddg_summary:
@@ -242,6 +262,7 @@ async def on_message(msg_rcvd):
         else:
             modified_message = original_content
 
+        # Use tenacity to retry API calls in case of transient errors.
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
             wait=wait_exponential(min=1, max=10),
@@ -251,8 +272,10 @@ async def on_message(msg_rcvd):
             with attempt:
                 logging.info(f"Attempt {attempt.retry_state.attempt_number}/5 for request...")
                 status_msg = await update_status(status_msg, "...generating reply...")
-                response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
-
+                if fun_mode:
+                    response = await send_request(model, reply_mode, modified_message, reference_message, image_url, custom_system_prompt=fun_system_prompt, api_client=openrouterclient)
+                else:
+                    response = await send_request(model, reply_mode, modified_message, reference_message, image_url)
         await delete_msg(status_msg)
         elapsed = round(time.time() - start_time, 2)
         response_embed = discord.Embed(title="", description=response, color=0x32a956)
