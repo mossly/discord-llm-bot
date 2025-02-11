@@ -22,7 +22,7 @@ class FunCommands(commands.Cog):
         """
         start_time = time.time()
         # Set an initial status message (similar to "...reading request...")
-        status_msg = await update_status(None, "...reading request...", ctx.channel)
+        status_msg = await update_status(None, "...reading request...", channel=ctx.channel)
         
         image_url = None
         if ctx.message.attachments:
@@ -32,7 +32,7 @@ class FunCommands(commands.Cog):
                     image_url = att.url
                     break
             if image_url:
-                status_msg = await update_status(status_msg, "...analyzing image...", ctx.channel)
+                status_msg = await update_status(status_msg, "...analyzing image...", channel=ctx.channel)
         
         # Retrieve the API utilities cog (must be loaded)
         api_cog = self.bot.get_cog("APIUtils")
@@ -52,7 +52,7 @@ class FunCommands(commands.Cog):
             ):
                 with attempt:
                     # Update status right before generating the reply.
-                    status_msg = await update_status(status_msg, "...generating reply...", ctx.channel)
+                    status_msg = await update_status(status_msg, "...generating reply...", channel=ctx.channel)
                     result = await api_cog.send_request(
                         model=model,
                         reply_mode=reply_mode,
