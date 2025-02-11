@@ -164,7 +164,7 @@ class NormalCommands(commands.Cog):
 
         await delete_msg(status_msg)
         elapsed = round(time.time() - start_time, 2)
-        embed = discord.Embed(title="", description=result, color=0xDC143C)
+        embed = discord.Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=f"{reply_footer} | generated in {elapsed} seconds")
         await ctx.send(embed=embed)
 

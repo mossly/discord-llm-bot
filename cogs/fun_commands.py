@@ -75,7 +75,7 @@ class FunCommands(commands.Cog):
         # Delete the status message once the reply is ready.
         await delete_msg(status_msg)
         elapsed = round(time.time() - start_time, 2)
-        embed = discord.Embed(title="", description=result, color=0xDC143C)
+        embed = discord.Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=f"Deepseek V3 (Fun Mode) | generated in {elapsed} seconds")
         await ctx.send(embed=embed)
 
