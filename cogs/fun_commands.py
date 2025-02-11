@@ -1,6 +1,6 @@
 import time
 import logging
-import discord
+from discord import app_commands, Interaction, Attachment, Embed
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 import openai
@@ -15,7 +15,10 @@ class FunCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="fun")
+    @app_commands.command(
+        name="fun",
+        description="Generate a less than serious reply."
+    )
     async def fun(self, ctx: commands.Context, *, prompt: str):
         """
         Fun mode reply command.
