@@ -15,26 +15,26 @@ class Reminders(commands.Cog):
         # key: trigger timestamp (seconds since epoch)
         # value: tuple (user_id, reminder_message)
         self.reminders = {}
-        # Start background task.
-        self.task = self.bot.loop.create_task(self.reminder_loop())
+        self.task = None  # Will be created in the async hook
+
+    async def cog_load(self):
+        # Create the background task once the cog is loaded and the event loop is available.
+        self.task = asyncio.create_task(self.reminder_loop())
 
     async def reminder_loop(self):
         """Background loop that checks for due reminders every second."""
         while True:
             now = time.time()
             to_remove = []
-            # Loop through reminders
             for trigger_time, (user_id, message) in self.reminders.items():
                 if trigger_time <= now:
                     try:
-                        # Fetch the user (adjust this as needed – here we assume DM is acceptable)
                         user = await self.bot.fetch_user(user_id)
                         logger.info(f"Sending reminder to {user}: {message}")
                         await user.send(f"Reminder: {message}")
                     except Exception as e:
                         logger.error(f"Failed to send reminder for user {user_id}: {e}")
                     to_remove.append(trigger_time)
-            # Remove sent reminders.
             for trigger_time in to_remove:
                 self.reminders.pop(trigger_time, None)
             await asyncio.sleep(1)
@@ -51,7 +51,7 @@ class Reminders(commands.Cog):
             trigger_time = dt.timestamp()
         except ValueError:
             return await ctx.send("Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)")
-        
+
         self.reminders[trigger_time] = (ctx.author.id, reminder_text)
         await ctx.send(f"Reminder '{reminder_text}' set for {time_str} UTC.")
 
@@ -66,7 +66,7 @@ class Reminders(commands.Cog):
         ]
         if not user_reminders:
             return await ctx.send("You have no upcoming reminders.")
-        
+
         lines = []
         for ts, msg in sorted(user_reminders, key=lambda x: x[0]):
             readable_time = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
@@ -85,7 +85,7 @@ class Reminders(commands.Cog):
             trigger_time = dt.timestamp()
         except ValueError:
             return await ctx.send("Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)")
-        
+
         entry = self.reminders.get(trigger_time)
         if entry and entry[0] == ctx.author.id:
             self.reminders.pop(trigger_time)
@@ -93,11 +93,9 @@ class Reminders(commands.Cog):
         else:
             return await ctx.send("No matching reminder found for you at that time.")
 
-    def cog_unload(self):
-        """Cancel the background task if the cog is unloaded."""
+    async def cog_unload(self):
         if self.task:
             self.task.cancel()
 
-# Use async setup if you are using discord.py 2.x:
 async def setup(bot: commands.Bot):
     await bot.add_cog(Reminders(bot))
