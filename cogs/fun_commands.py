@@ -7,6 +7,7 @@ import openai
 # Import our status and message helpers – just as in the original version.
 from status_utils import update_status
 from message_utils import delete_msg
+from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,10 @@ class FunCommands(commands.Cog):
         except Exception as e:
             await delete_msg(status_msg)
             logger.exception("Error in fun command: %s", e)
-            return await ctx.send(f"Error generating fun reply: {e}")
+            error_embed = discord.Embed(title="ERROR", description="x_x", color=0x32a956)
+            error_embed.set_footer(text=f"Error generating reply: {e}")
+            await send_embed(ctx.channel, error_embed)
+            return
         
         # Delete the status message once the reply is ready.
         await delete_msg(status_msg)

@@ -6,8 +6,10 @@ from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 import openai
 
+
 from status_utils import update_status
 from message_utils import delete_msg
+from embed_utils import send_embed
 
 # Global prompt definitions (as used in the original code)
 O3MINI_PROMPT = "Use markdown formatting."
@@ -150,7 +152,10 @@ class NormalCommands(commands.Cog):
         except Exception as e:
             await delete_msg(status_msg)
             logger.exception("Error in chat command: %s", e)
-            return await ctx.send(f"Error generating reply: {e}")
+            error_embed = discord.Embed(title="ERROR", description="x_x", color=0x32a956)
+            error_embed.set_footer(text=f"Error generating reply: {e}")
+            await send_embed(ctx.channel, error_embed)
+            return
 
         await delete_msg(status_msg)
         elapsed = round(time.time() - start_time, 2)
