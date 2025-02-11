@@ -43,7 +43,7 @@ class NormalCommands(commands.Cog):
         (You may optionally attach a text file containing your prompt or images.)
         """
         start_time = time.time()
-        status_msg = await update_status(None, "...reading request...", ctx.channel)
+        status_msg = await update_status(None, "...reading request...", channel=ctx.channel)
 
         # First, process any .txt attachments by downloading their contents.
         if ctx.message.attachments:
@@ -56,11 +56,11 @@ class NormalCommands(commands.Cog):
                                     prompt = await response.text()
                                 else:
                                     status_msg = await update_status(
-                                        status_msg, f"...failed to download attachment. Code: {response.status}...", ctx.channel
+                                        status_msg, f"...failed to download attachment. Code: {response.status}...", channel=ctx.channel
                                     )
                     except Exception as e:
                         status_msg = await update_status(
-                            status_msg, "...failed to process text attachment...", ctx.channel
+                            status_msg, "...failed to process text attachment...", channel=ctx.channel
                         )
 
         # Look for image attachments.
@@ -69,7 +69,7 @@ class NormalCommands(commands.Cog):
             for att in ctx.message.attachments:
                 if att.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
                     image_url = att.url
-                    status_msg = await update_status(status_msg, "...analyzing image...", ctx.channel)
+                    status_msg = await update_status(status_msg, "...analyzing image...", channel=ctx.channel)
                     break
 
         # If this command was invoked in reply to another message, try to fetch that reference.
@@ -81,17 +81,17 @@ class NormalCommands(commands.Cog):
                 else:
                     ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
                 if ref_msg.author.id == self.bot.user.id:
-                    status_msg = await update_status(status_msg, "...fetching bot reference...", ctx.channel)
+                    status_msg = await update_status(status_msg, "...fetching bot reference...", channel=ctx.channel)
                     # If the bot’s reply was embedded, use the embed description.
                     if ref_msg.embeds and ref_msg.embeds[0].description:
                         reference_message = ref_msg.embeds[0].description.strip()
                     else:
                         reference_message = ""
                 else:
-                    status_msg = await update_status(status_msg, "...fetching user reference...", ctx.channel)
+                    status_msg = await update_status(status_msg, "...fetching user reference...", channel=ctx.channel)
                     reference_message = ref_msg.content
             except Exception:
-                status_msg = await update_status(status_msg, "...unable to fetch reference...", ctx.channel)
+                status_msg = await update_status(status_msg, "...unable to fetch reference...", channel=ctx.channel)
 
         # Process suffix flags in the prompt (e.g., "-v" for verbose or "-c" for creative).
         prompt = prompt.strip()
@@ -108,16 +108,16 @@ class NormalCommands(commands.Cog):
         # Optionally perform a web search integration via DuckDuckGo (if the DuckDuckGo cog is loaded)
         duck_cog = self.bot.get_cog("DuckDuckGo")
         if duck_cog is not None:
-            status_msg = await update_status(status_msg, "...trying web search...", ctx.channel)
+            status_msg = await update_status(status_msg, "...trying web search...", channel=ctx.channel)
             try:
                 ddg_summary = await duck_cog.search_and_summarize(original_content)
             except Exception:
                 ddg_summary = None
             if ddg_summary:
-                status_msg = await update_status(status_msg, "...web search complete...", ctx.channel)
+                status_msg = await update_status(status_msg, "...web search complete...", channel=ctx.channel)
                 modified_message = original_content + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
             else:
-                status_msg = await update_status(status_msg, "...no web search necessary...", ctx.channel)
+                status_msg = await update_status(status_msg, "...no web search necessary...", channel=ctx.channel)
                 modified_message = original_content
         else:
             modified_message = original_content
@@ -137,7 +137,7 @@ class NormalCommands(commands.Cog):
                 reraise=True,
             ):
                 with attempt:
-                    status_msg = await update_status(status_msg, "...generating reply...", ctx.channel)
+                    status_msg = await update_status(status_msg, "...generating reply...", channel=ctx.channel)
                     result = await api_cog.send_request(
                         model=model,
                         reply_mode=reply_mode,
