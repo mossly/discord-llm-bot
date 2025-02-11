@@ -33,7 +33,7 @@ class ChatSlash(commands.Cog):
     # Shortened the description to be 100 characters or less.
     @app_commands.command(
         name="chat",
-        description="Generate a reply using your prompt; optionally attach a text file or image."
+        description="Generate a reply using your prompt; optionally attach a text file or image.",
         dm_permission=True
     )
     async def chat(
