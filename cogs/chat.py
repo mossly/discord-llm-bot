@@ -73,7 +73,7 @@ class NormalCommands(commands.Cog):
                     image_url = att.url
                     status_msg = await update_status(status_msg, "...analyzing image...", channel=ctx.channel)
                     break
-
+        
         # If this command was invoked in reply to another message, try to fetch that reference.
         reference_message = None
         if ctx.message.reference:
@@ -104,6 +104,11 @@ class NormalCommands(commands.Cog):
             suffix = prompt[-2:]
             model, reply_mode, reply_footer = SUFFIXES[suffix]
             prompt = prompt[:-2].strip()
+
+        # IMPORTANT FIX: If an image is attached, force using gpt-4o-mini.
+        if image_url is not None:
+            model = "gpt-4o-mini"
+            reply_footer = "gpt-4o-mini | default"
 
         original_content = prompt
 

@@ -27,13 +27,14 @@ class FunCommands(commands.Cog):
         
         image_url = None
         if ctx.message.attachments:
-            # Look for an image attachment and update the status accordingly
             for att in ctx.message.attachments:
                 if att.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
                     image_url = att.url
                     break
-            if image_url:
-                status_msg = await update_status(status_msg, "...analyzing image...", channel=ctx.channel)
+            # Disabled until deepseek supports images
+            if image_url is not None:
+                image_url = None
+                #status_msg = await update_status(status_msg, "...analyzing image...", channel=ctx.channel)
         
         # Retrieve the API utilities cog (must be loaded)
         api_cog = self.bot.get_cog("APIUtils")
