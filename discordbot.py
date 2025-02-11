@@ -21,6 +21,8 @@ async def on_ready():
     logging.info(f"{bot.user.name} has connected to Discord!")
     for guild in bot.guilds:
         logging.info(f"Bot is in server: {guild.name} (id: {guild.id})")
+    # Force a sync of the slash commands with Discord
+    await bot.tree.sync()
 
 async def load_cogs():
     """
