@@ -6,7 +6,7 @@ import discord
 import openai
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
-from api_utils import send_request, openrouterclient
+from cogs.api_utils import send_request, openrouterclient
 
 from message_utils import delete_msg
 from embed_utils import send_embed
