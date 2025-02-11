@@ -157,14 +157,14 @@ class NormalCommands(commands.Cog):
         except Exception as e:
             await delete_msg(status_msg)
             logger.exception("Error in chat command: %s", e)
-            error_embed = discord.Embed(title="ERROR", description="x_x", color=0x32a956)
+            error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
             error_embed.set_footer(text=f"Error generating reply: {e}")
             await send_embed(ctx.channel, error_embed)
             return
 
         await delete_msg(status_msg)
         elapsed = round(time.time() - start_time, 2)
-        embed = discord.Embed(title="", description=result, color=0x32a956)
+        embed = discord.Embed(title="", description=result, color=0xDC143C)
         embed.set_footer(text=f"{reply_footer} | generated in {elapsed} seconds")
         await ctx.send(embed=embed)
 
