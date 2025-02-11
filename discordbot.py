@@ -52,9 +52,6 @@ creative_prompt = (
     "Never use the passive voice where you can use the active voice. Do not end your message with a summary."
 )
 
-# Add a fun system prompt for the new -fun flag.
-fun_system_prompt = os.getenv("FUN_PROMPT")
-
 suffixes = {
     "-v": ("gpt-4o", verbose_prompt, "gpt-4o | Verbose"),
     "-c": ("gpt-4o", creative_prompt, "gpt-4o | Creative")
