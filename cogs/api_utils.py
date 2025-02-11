@@ -55,7 +55,7 @@ class APIUtils(commands.Cog):
                 "role": "user",
                 "content": [
                     {"type": "text", "text": message_content},
-                    {"type": "image_url", "image_url": image_url},
+                    {"type": "image_url", "image_url": {"url": image_url}},
                 ],
             })
         logger.info("Sending API request with payload: %s", messages_input)
