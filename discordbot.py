@@ -21,8 +21,6 @@ async def on_ready():
     logging.info(f"{bot.user.name} has connected to Discord!")
     for guild in bot.guilds:
         logging.info(f"Bot is in server: {guild.name} (id: {guild.id})")
-    # Start the background reminder task.
-    bot.loop.create_task(background())
 
 async def load_cogs():
     """
