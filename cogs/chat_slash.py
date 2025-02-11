@@ -34,6 +34,7 @@ class ChatSlash(commands.Cog):
     @app_commands.command(
         name="chat",
         description="Generate a reply using your prompt; optionally attach a text file or image."
+        dm_permission=True
     )
     async def chat(
         self,
