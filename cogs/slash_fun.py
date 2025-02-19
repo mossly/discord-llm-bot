@@ -5,8 +5,9 @@ from discord import app_commands, Interaction, Attachment, Embed
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 import openai
+from typing import Optional
 
-# Import our helpers.
+# Import our status and message helpers – as used in other fun commands.
 from status_utils import update_status
 from message_utils import delete_msg
 from embed_utils import send_embed
@@ -19,19 +20,19 @@ class FunSlash(commands.Cog):
 
     @app_commands.command(
         name="fun",
-        description="Fun mode reply command. Provide a prompt, optionally attach an image or a message reference for context."
+        description="Fun mode reply command. Provide a prompt and optionally attach an image or a reference (message URL or ID) for context."
     )
     @app_commands.describe(
         prompt="Your fun prompt message.",
-        attachment="Optional attachment (image file).",
-        reference="Optional message to use as context (if replying to a message)."
+        attachment="Optional image attachment.",
+        reference="Optional message URL or ID from this channel to use as context."
     )
     async def fun(
         self,
         interaction: Interaction,
         prompt: str,
-        attachment: Attachment = None,
-        reference: discord.Message = None  # New optional parameter for replies
+        attachment: Optional[Attachment] = None,
+        reference: Optional[str] = None  # Changed from discord.Message to str
     ) -> None:
         # Defer the response so Discord knows we’re working on it.
         await interaction.response.defer()
@@ -44,25 +45,30 @@ class FunSlash(commands.Cog):
             filename = attachment.filename.lower()
             if filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
                 image_url = attachment.url
-                # Currently image processing is disabled (as in the exclamation command).
+                # If image processing is not enabled (as per your example), we force image_url to None.
                 if image_url is not None:
                     image_url = None
 
-        # Process a reference message (if provided).
-        # This mimics our other commands by using the referenced content as extra context.
+        # Process a reference message if provided.
         reference_message = None
-        if reference is not None:
+        if reference:
             try:
-                if reference.author == interaction.client.user:
-                    # If the referenced message is from the bot and includes an embed, use its embed description.
-                    if reference.embeds and reference.embeds[0].description:
-                        reference_message = reference.embeds[0].description.strip()
+                # Try to extract a message ID.
+                # The user can provide either a full URL (e.g. https://discord.com/channels/...) or just the message ID.
+                parts = reference.split('/')
+                possible_id = parts[-1] if parts[-1].isdigit() else reference
+                msg_id = int(possible_id)
+                ref_msg = await interaction.channel.fetch_message(msg_id)
+                if ref_msg.author == interaction.client.user:
+                    # If the referenced message is from our bot and includes an embed, use its embed description.
+                    if ref_msg.embeds and ref_msg.embeds[0].description:
+                        reference_message = ref_msg.embeds[0].description.strip()
                     else:
                         reference_message = ""
                 else:
-                    reference_message = reference.content
+                    reference_message = ref_msg.content
             except Exception as e:
-                logger.exception("Failed to process reference message: %s", e)
+                logger.exception("Failed to process reference parameter: %s", e)
 
         # Retrieve the API utilities cog.
         api_cog = self.bot.get_cog("APIUtils")
@@ -73,8 +79,7 @@ class FunSlash(commands.Cog):
 
         try:
             model = "deepseek/deepseek-chat"
-            reply_mode = ""  # In fun mode, we don’t include extra reply instructions.
-            # Use tenacity to retry the API call in case of transient errors.
+            reply_mode = ""  # In fun mode, we don’t add extra reply instructions.
             async for attempt in AsyncRetrying(
                 retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
                 wait=wait_exponential(min=1, max=10),
@@ -87,7 +92,7 @@ class FunSlash(commands.Cog):
                         model=model,
                         reply_mode=reply_mode,
                         message_content=prompt,
-                        reference_message=reference_message,  # Pass along the referenced text (if any)
+                        reference_message=reference_message,  # Passing the extracted reference.
                         image_url=image_url,
                         custom_system_prompt=api_cog.FUN_SYSTEM_PROMPT,
                         use_fun=True,
