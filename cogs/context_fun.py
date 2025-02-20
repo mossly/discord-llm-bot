@@ -30,6 +30,7 @@ class FunModeModal(discord.ui.Modal, title="Fun Mode Reply"):
         self.start_time = time.time()
 
     async def on_submit(self, interaction: Interaction):
+        await interaction.response.defer()
         # Use the modal input as additional prompt text.
         prompt_text = self.user_prompt.value or ""
         status_msg = await update_status(None, "...generating fun mode reply...", channel=self.channel)
@@ -66,7 +67,7 @@ class FunModeModal(discord.ui.Modal, title="Fun Mode Reply"):
         elapsed = round(time.time() - self.start_time, 2)
         embed = Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=f"Deepseek V3 (Fun Mode) | generated in {elapsed} seconds")
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
 # ─── Context Menu Command at the Module Level ───────────────
 @app_commands.context_menu(name="Fun Mode Reply")
