@@ -5,6 +5,7 @@ from discord import app_commands, Interaction, Embed
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 import openai
+from typing import Optional
 
 from status_utils import update_status
 from message_utils import delete_msg
@@ -12,7 +13,7 @@ from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
-# This modal gathers an optional additional prompt from the user.
+# ─── Modal for extra prompt input ───────────────────────────────
 class FunModeModal(discord.ui.Modal, title="Fun Mode Reply"):
     user_prompt = discord.ui.TextInput(
         label="Additional prompt (optional)",
@@ -29,10 +30,9 @@ class FunModeModal(discord.ui.Modal, title="Fun Mode Reply"):
         self.start_time = time.time()
 
     async def on_submit(self, interaction: Interaction):
-        # Use the modal value as the main prompt (may be empty).
+        # Use the modal input as additional prompt text.
         prompt_text = self.user_prompt.value or ""
         status_msg = await update_status(None, "...generating fun mode reply...", channel=self.channel)
-        
         try:
             model = "deepseek/deepseek-chat"
             reply_mode = ""  # No extra reply instructions in fun mode.
@@ -43,9 +43,7 @@ class FunModeModal(discord.ui.Modal, title="Fun Mode Reply"):
                 reraise=True,
             ):
                 with attempt:
-                    # Pass the additional prompt as message_content,
-                    # and the reference message (from the right-clicked message)
-                    # as reference_message.
+                    # Use the additional prompt and the referenced message as context.
                     result = await self.api_cog.send_request(
                         model=model,
                         reply_mode=reply_mode,
@@ -70,33 +68,41 @@ class FunModeModal(discord.ui.Modal, title="Fun Mode Reply"):
         embed.set_footer(text=f"Deepseek V3 (Fun Mode) | generated in {elapsed} seconds")
         await interaction.response.send_message(embed=embed)
 
-# This cog registers a context menu command that appears when you right‑click on any message.
-class FunModeContext(commands.Cog):
+# ─── Context Menu Command at the Module Level ───────────────
+@app_commands.context_menu(name="Fun Mode Reply")
+async def fun_mode_reply(interaction: Interaction, message: discord.Message):
+    """
+    When a user right‑clicks a message and selects “Fun Mode Reply”,
+    this command extracts text from the target message (if the message is from the bot,
+    uses its embed’s description) and then presents a modal for additional user input.
+    """
+    # Determine context text from the target message.
+    if message.author == interaction.client.user:
+        if message.embeds and message.embeds[0].description:
+            ref_msg_content = message.embeds[0].description.strip()
+        else:
+            ref_msg_content = ""
+    else:
+        ref_msg_content = message.content
+
+    # Retrieve the APIUtils cog.
+    api_cog = interaction.client.get_cog("APIUtils")
+    if not api_cog:
+        await interaction.response.send_message("API utility cog not loaded!", ephemeral=True)
+        return
+
+    # Show a modal so the user can optionally add extra prompt text.
+    modal = FunModeModal(reference_message=ref_msg_content, api_cog=api_cog, channel=interaction.channel)
+    await interaction.response.send_modal(modal)
+
+# ─── Dummy Cog to Group Related Code (Optional) ───────────────
+# (This cog can house additional helper methods if needed.)
+class ContextFun(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.context_menu(name="Fun Mode Reply")
-    async def fun_mode_reply(self, interaction: Interaction, message: discord.Message):
-        # Determine what text to send as context.
-        # If the target message is from our bot and has an embed,
-        # use the embed’s description; otherwise, use the plain content.
-        if message.author == self.bot.user:
-            if message.embeds and message.embeds[0].description:
-                ref_msg_content = message.embeds[0].description.strip()
-            else:
-                ref_msg_content = ""
-        else:
-            ref_msg_content = message.content
-
-        # Retrieve the API utilities cog.
-        api_cog = self.bot.get_cog("APIUtils")
-        if not api_cog:
-            await interaction.response.send_message("API utility cog not loaded!", ephemeral=True)
-            return
-
-        # Show a modal to let the user supply additional prompt text.
-        modal = FunModeModal(reference_message=ref_msg_content, api_cog=api_cog, channel=interaction.channel)
-        await interaction.response.send_modal(modal)
-
 async def setup(bot: commands.Bot):
-    await bot.add_cog(FunModeContext(bot))
+    # Add our dummy cog.
+    await bot.add_cog(ContextFun(bot))
+    # Register the context menu command with the bot's application command tree.
+    bot.tree.add_command(fun_mode_reply)
