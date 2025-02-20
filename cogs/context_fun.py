@@ -80,11 +80,13 @@ async def fun_mode_reply(interaction: Interaction, message: discord.Message):
     # Determine context text from the target message.
     if message.author == interaction.client.user:
         if message.embeds and message.embeds[0].description:
-            ref_msg_content = message.embeds[0].description.strip()
+            content = message.embeds[0].description.strip()
         else:
-            ref_msg_content = ""
+            content = ""
     else:
-        ref_msg_content = message.content
+        content = message.content
+
+    ref_msg_content = f"Message from {message.author.name}: {content}"
 
     # Retrieve the APIUtils cog.
     api_cog = interaction.client.get_cog("APIUtils")
