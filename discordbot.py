@@ -34,7 +34,7 @@ async def load_cogs():
         if filename.endswith(".py"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
             logging.info(f"Loaded cog: {filename}")
-            await bot.tree.sync() 
+    await bot.tree.sync() 
 
 async def main():
     await load_cogs()
