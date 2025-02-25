@@ -3,26 +3,40 @@ import logging
 import discord
 from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
+from typing import Optional, Literal
 from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
-# Model configuration - centralized and easy to extend
+# Enhanced model configuration with more details
 MODEL_CONFIG = {
     "gpt": {
         "name": "GPT",
-        "function": "perform_chat_query",
+        "function": "perform_chat_query",  # Function in generic_chat.py
         "color": 0x32a956,
         "default_model": "o3-mini",
-        "default_footer": "o3-mini | default"
+        "default_footer": "o3-mini | default",
+        "api_model": "o3-mini",
+        "system_prompt": "Use markdown formatting."
+    },
+    "deepseek": {
+        "name": "Deepseek",
+        "function": "perform_chat_query",  # Reuse the same function 
+        "color": 0x32a956, 
+        "default_model": "deepseek/deepseek-chat",
+        "default_footer": "Deepseek",
+        "api_model": "deepseek/deepseek-chat",
+        "system_prompt": "Use markdown formatting."
     },
     "fun": {
         "name": "Fun Mode",
-        "function": "perform_fun_query",
+        "function": "perform_fun_query",  # Function in generic_fun.py
         "color": 0x32a956,
         "default_model": "deepseek/deepseek-chat",
-        "default_footer": "Deepseek V3 (Fun Mode)"
-    },
+        "default_footer": "Deepseek V3 (Fun Mode)",
+        "api_model": "deepseek/deepseek-chat",
+        "system_prompt": None  # Fun uses custom system prompt from API cog
+    }
 }
 
 class AICommands(commands.Cog):
@@ -33,37 +47,52 @@ class AICommands(commands.Cog):
                                  attachments=None, reference_message=None, image_url=None):
         """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
+        channel = ctx.channel if ctx else interaction.channel
+        api_cog = self.bot.get_cog("APIUtils")
+        duck_cog = self.bot.get_cog("DuckDuckGo")
         
-        # Import the appropriate processing function
         if config["function"] == "perform_chat_query":
-            from generic_chat import prepare_chat_parameters, perform_chat_query
-            final_prompt, img_url, model, reply_mode, reply_footer, ref_msg = await prepare_chat_parameters(
-                prompt, attachments, ctx or interaction, is_slash=bool(interaction)
-            )
-            if image_url:  # Override with explicitly provided image URL if available
+            from generic_chat import prepare_chat_parameters, perform_chat_query, extract_suffixes
+            
+            # Process attachments and prepare parameters
+            if attachments:
+                from generic_chat import process_attachments
+                final_prompt, img_url = await process_attachments(prompt, attachments, is_slash=bool(interaction))
+                if image_url:  # Override with explicitly provided URL
+                    img_url = image_url
+            else:
+                final_prompt = prompt
                 img_url = image_url
                 
-            # Use reference_message if explicitly provided
-            if reference_message:
-                ref_msg = reference_message
-                
-            duck_cog = self.bot.get_cog("DuckDuckGo")
-            api_cog = self.bot.get_cog("APIUtils")
+            # Check for suffixes that might override model settings
+            cleaned_prompt, model_override, reply_mode, reply_footer = extract_suffixes(final_prompt)
             
+            # Decide which model to use (suffix overrides config)
+            if model_override != "o3-mini":  # A suffix was detected
+                model = model_override
+                footer = reply_footer
+                system_prompt = reply_mode
+            else:
+                model = config["api_model"]
+                footer = config["default_footer"]
+                system_prompt = config["system_prompt"]
+                
             try:
-                result, elapsed, final_footer = await perform_chat_query(
-                    prompt=final_prompt,
+                result, elapsed, _ = await perform_chat_query(
+                    prompt=cleaned_prompt,
                     api_cog=api_cog,
-                    channel=ctx.channel if ctx else interaction.channel,
+                    channel=channel,
                     duck_cog=duck_cog,
                     image_url=img_url,
-                    reference_message=ref_msg,
+                    reference_message=reference_message,
                     model=model,
-                    reply_mode=reply_mode,
-                    reply_footer=reply_footer
+                    reply_mode=system_prompt,
+                    reply_footer=footer
                 )
+                final_footer = footer
             except Exception as e:
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
+                logger.exception(f"Error in {model_key} request: %s", e)
+                error_embed = Embed(title="ERROR", description="x_x", color=0xDC143C)
                 error_embed.set_footer(text=f"Error generating reply: {e}")
                 if ctx:
                     return await ctx.reply(embed=error_embed)
@@ -72,18 +101,18 @@ class AICommands(commands.Cog):
                     
         elif config["function"] == "perform_fun_query":
             from generic_fun import perform_fun_query
-            api_cog = self.bot.get_cog("APIUtils")
             try:
                 result, elapsed = await perform_fun_query(
                     prompt=prompt,
                     api_cog=api_cog,
-                    channel=ctx.channel if ctx else interaction.channel,
+                    channel=channel,
                     image_url=image_url,
                     reference_message=reference_message
                 )
                 final_footer = config["default_footer"]
             except Exception as e:
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
+                logger.exception(f"Error in {model_key} request: %s", e)
+                error_embed = Embed(title="ERROR", description="x_x", color=0xDC143C)
                 error_embed.set_footer(text=f"Error generating reply: {e}")
                 if ctx:
                     return await ctx.reply(embed=error_embed)
@@ -91,7 +120,7 @@ class AICommands(commands.Cog):
                     return await interaction.followup.send(embed=error_embed)
 
         # Create and send the response embed
-        embed = discord.Embed(title="", description=result, color=config["color"])
+        embed = Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
         
         if ctx:  # Text command
@@ -110,6 +139,26 @@ class AICommands(commands.Cog):
     async def fun_text(self, ctx: commands.Context, *, prompt: str):
         """Fun mode chat - text command"""
         await self._process_ai_request(prompt, "fun", ctx=ctx, attachments=ctx.message.attachments)
+    
+    @commands.command(name="deepseek")
+    async def deepseek_text(self, ctx: commands.Context, *, prompt: str):
+        """Chat with Deepseek - text command"""
+        await self._process_ai_request(prompt, "deepseek", ctx=ctx, attachments=ctx.message.attachments)
+        
+    @commands.command(name="chat")
+    async def chat_text(self, ctx: commands.Context, model: Optional[str] = "gpt", *, prompt: str):
+        """
+        Generic chat command with model selection
+        Usage: !chat [model] your message
+        Models: gpt, deepseek, fun
+        """
+        # Normalize model name and validate
+        model_key = model.lower()
+        if model_key not in MODEL_CONFIG:
+            await ctx.reply(f"Unknown model '{model}'. Available models: {', '.join(MODEL_CONFIG.keys())}")
+            return
+            
+        await self._process_ai_request(prompt, model_key, ctx=ctx, attachments=ctx.message.attachments)
         
     # ===== SLASH COMMANDS =====
     
@@ -124,6 +173,29 @@ class AICommands(commands.Cog):
         await interaction.response.defer()
         attachments = [attachment] if attachment else []
         await self._process_ai_request(prompt, "fun", interaction=interaction, attachments=attachments)
+    
+    @app_commands.command(name="deepseek", description="Chat with Deepseek - provide a prompt and optionally attach content")
+    async def deepseek_slash(self, interaction: Interaction, prompt: str, attachment: Attachment = None):
+        await interaction.response.defer()
+        attachments = [attachment] if attachment else []
+        await self._process_ai_request(prompt, "deepseek", interaction=interaction, attachments=attachments)
+
+    @app_commands.command(name="chat", description="Generic AI chat with model selection")
+    @app_commands.describe(
+        model="The AI model to use for the response",
+        prompt="Your query or instructions",
+        attachment="Optional attachment (image or text file)"
+    )
+    async def chat_slash(
+        self, 
+        interaction: Interaction, 
+        model: Literal["gpt", "deepseek", "fun"],
+        prompt: str, 
+        attachment: Optional[Attachment] = None
+    ):
+        await interaction.response.defer()
+        attachments = [attachment] if attachment else []
+        await self._process_ai_request(prompt, model, interaction=interaction, attachments=attachments)
 
 class AIContextMenus(commands.Cog):
     """Separate cog for context menu commands"""
@@ -150,16 +222,63 @@ class AIContextMenus(commands.Cog):
             await interaction.response.defer()
             additional_text = self.additional_input.value or ""
 
-            # Get the appropriate cog and commands handler
             ai_commands = interaction.client.get_cog("AICommands")
             if not ai_commands:
                 await interaction.followup.send("AI commands not available", ephemeral=True)
                 return
                 
-            # Process the request through the unified handler
             await ai_commands._process_ai_request(
                 prompt=additional_text,
                 model_key=self.model_key,
+                interaction=interaction,
+                reference_message=self.reference_message
+            )
+
+    # Generic Reply modal with model selection
+    class ModelSelectModal(discord.ui.Modal, title="AI Reply"):
+        additional_input = discord.ui.TextInput(
+            label="Additional Input (Optional)",
+            style=discord.TextStyle.long,
+            required=False,
+            placeholder="Add any extra context or instructions..."
+        )
+        
+        def __init__(self, reference_message, channel):
+            super().__init__()
+            self.reference_message = reference_message
+            self.channel = channel
+            self.add_model_select()
+            
+        def add_model_select(self):
+            # Create a select menu for model selection
+            self.model_select = discord.ui.Select(
+                placeholder="Choose AI model",
+                options=[
+                    discord.SelectOption(label="GPT", value="gpt", description="OpenAI GPT model"),
+                    discord.SelectOption(label="Deepseek", value="deepseek", description="Deepseek standard model"),
+                    discord.SelectOption(label="Fun Mode", value="fun", description="Deepseek with fun personality")
+                ]
+            )
+            # Create placeholder item since Modal can't have selects directly
+            # (This is a workaround - in practice, you'd need to use a View)
+
+        async def on_submit(self, interaction: Interaction):
+            await interaction.response.defer()
+            additional_text = self.additional_input.value or ""
+            
+            # This is a workaround since Modal can't have Select components
+            # In a real implementation, you'd need to show a follow-up view with the Select
+            # For this example, we'll default to GPT
+            model_key = "gpt"
+
+            ai_commands = interaction.client.get_cog("AICommands")
+            if not ai_commands:
+                await interaction.followup.send("AI commands not available", ephemeral=True)
+                return
+                
+            await ai_commands._process_ai_request(
+                prompt=additional_text,
+                model_key=model_key,
                 interaction=interaction,
                 reference_message=self.reference_message
             )
@@ -170,33 +289,35 @@ class AIContextMenus(commands.Cog):
 async def gpt_context_menu(interaction: Interaction, message: discord.Message):
     """Context menu for GPT replies"""
     if message.author == interaction.client.user:
-        if message.embeds and message.embeds[0].description:
-            content = message.embeds[0].description.strip()
-        else:
-            content = ""
+        content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
     else:
         content = message.content
         
     reference_message = f"Message from {message.author.name}: {content}"
-    
-    # Create and show the modal
-    modal = AIContextMenus.AIReplyModal("gpt", reference_message, interaction.channel)
+    modal = AIContextMenus.AIReplyModal("gpt", reference_message, interaction.channel) 
+    await interaction.response.send_modal(modal)
+
+@app_commands.context_menu(name="Deepseek Reply")
+async def deepseek_context_menu(interaction: Interaction, message: discord.Message):
+    """Context menu for Deepseek replies"""
+    if message.author == interaction.client.user:
+        content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
+    else:
+        content = message.content
+        
+    reference_message = f"Message from {message.author.name}: {content}"
+    modal = AIContextMenus.AIReplyModal("deepseek", reference_message, interaction.channel)
     await interaction.response.send_modal(modal)
 
 @app_commands.context_menu(name="Fun Mode Reply")
 async def fun_context_menu(interaction: Interaction, message: discord.Message):
     """Context menu for Fun Mode replies"""
     if message.author == interaction.client.user:
-        if message.embeds and message.embeds[0].description:
-            content = message.embeds[0].description.strip()
-        else:
-            content = ""
+        content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
     else:
         content = message.content
         
     reference_message = f"Message from {message.author.name}: {content}"
-    
-    # Create and show the modal
     modal = AIContextMenus.AIReplyModal("fun", reference_message, interaction.channel)
     await interaction.response.send_modal(modal)
 
@@ -206,4 +327,5 @@ async def setup(bot: commands.Bot):
     
     # Register context menu commands
     bot.tree.add_command(gpt_context_menu)
+    bot.tree.add_command(deepseek_context_menu)
     bot.tree.add_command(fun_context_menu)
