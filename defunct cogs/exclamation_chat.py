@@ -2,6 +2,7 @@ import logging
 import discord
 from discord.ext import commands
 from generic_chat import prepare_chat_parameters, perform_chat_query
+from embed_utils import send_embed  # Add this import
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,8 @@ class ChatCommands(commands.Cog):
             error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
             error_embed.set_footer(text=f"Error generating reply: {e}")
             return await ctx.reply(embed=error_embed)
+        
         embed = discord.Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
-        await ctx.reply(embed=embed)
-
-async def setup(bot: commands.Bot):
-    await bot.add_cog(ChatCommands(bot))
+        # Use send_embed instead of direct ctx.reply
+        await send_embed(ctx.channel, embed, reply_to=ctx.message)
