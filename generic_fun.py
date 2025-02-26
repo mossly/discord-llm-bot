@@ -15,6 +15,7 @@ async def perform_fun_query(
     channel: discord.TextChannel,
     image_url: str = None,
     reference_message: str = None,
+    show_status: bool = True,  # New parameter
 ) -> (str, float):
     """
     Core logic for a fun mode request.
@@ -23,7 +24,12 @@ async def perform_fun_query(
     • Returns a tuple (result, elapsed_time)
     """
     start_time = time.time()
-    status_msg = await update_status(None, "...generating fun reply...", channel=channel)
+    
+    # Only show status if requested (for text commands)
+    status_msg = None
+    if show_status:
+        status_msg = await update_status(None, "...generating fun reply...", channel=channel)
+        
     try:
         model = "deepseek/deepseek-chat"
         reply_mode = ""  # No extra instructions in fun mode.
@@ -45,9 +51,15 @@ async def perform_fun_query(
                 )
                 break
         elapsed = round(time.time() - start_time, 2)
-        await delete_msg(status_msg)
+        
+        # Clean up status message if it was created
+        if status_msg:
+            await delete_msg(status_msg)
+            
         return result, elapsed
     except Exception as e:
-        await delete_msg(status_msg)
+        # Clean up status message if it was created
+        if status_msg:
+            await delete_msg(status_msg)
         logger.exception("Error in perform_fun_query: %s", e)
         raise

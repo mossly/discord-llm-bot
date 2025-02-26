@@ -121,6 +121,7 @@ async def perform_chat_query(
     model: str = DEFAULT_MODEL,
     reply_mode: str = DEFAULT_REPLY_MODE,
     reply_footer: str = DEFAULT_REPLY_FOOTER,
+    show_status: bool = True,  # New parameter
 ) -> (str, float, str):
     """
     Core logic for a chat request:
@@ -139,7 +140,11 @@ async def perform_chat_query(
         if ddg_summary:
             prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
 
-    status_msg = await update_status(None, "...generating reply...", channel=channel)
+    # Only show status if requested (for text commands)
+    status_msg = None
+    if show_status:
+        status_msg = await update_status(None, "...generating reply...", channel=channel)
+        
     try:
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
@@ -158,9 +163,15 @@ async def perform_chat_query(
                 )
                 break
         elapsed = round(time.time() - start_time, 2)
-        await delete_msg(status_msg)
+        
+        # Clean up status message if it was created
+        if status_msg:
+            await delete_msg(status_msg)
+            
         return result, elapsed, reply_footer
     except Exception as e:
-        await delete_msg(status_msg)
+        # Clean up status message if it was created
+        if status_msg:
+            await delete_msg(status_msg)
         logger.exception("Error in perform_chat_query: %s", e)
         raise

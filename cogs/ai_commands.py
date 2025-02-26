@@ -5,6 +5,7 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
+from status_utils import update_status
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +79,39 @@ class AICommands(commands.Cog):
                 system_prompt = config["system_prompt"]
                 
             try:
-                result, elapsed, _ = await perform_chat_query(
-                    prompt=cleaned_prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    duck_cog=duck_cog,
-                    image_url=img_url,
-                    reference_message=reference_message,
-                    model=model,
-                    reply_mode=system_prompt,
-                    reply_footer=footer
-                )
+                # For text commands (using ctx), use status updates
+                # For slash commands (using interaction), the "thinking" state is already set
+                if ctx:
+                    status_msg = await update_status(None, "...generating reply...", channel=channel)
+                    try:
+                        result, elapsed, _ = await perform_chat_query(
+                            prompt=cleaned_prompt,
+                            api_cog=api_cog,
+                            channel=channel,
+                            duck_cog=duck_cog,
+                            image_url=img_url,
+                            reference_message=reference_message,
+                            model=model,
+                            reply_mode=system_prompt,
+                            reply_footer=footer,
+                            show_status=False  # Don't show status again in the function
+                        )
+                    finally:
+                        from message_utils import delete_msg
+                        await delete_msg(status_msg)
+                else:  # Slash command
+                    result, elapsed, _ = await perform_chat_query(
+                        prompt=cleaned_prompt,
+                        api_cog=api_cog,
+                        channel=channel,
+                        duck_cog=duck_cog,
+                        image_url=img_url,
+                        reference_message=reference_message,
+                        model=model,
+                        reply_mode=system_prompt,
+                        reply_footer=footer,
+                        show_status=False  # Don't show status, Discord's "thinking" state is used
+                    )
                 final_footer = footer
             except Exception as e:
                 logger.exception(f"Error in {model_key} request: %s", e)
@@ -102,13 +125,31 @@ class AICommands(commands.Cog):
         elif config["function"] == "perform_fun_query":
             from generic_fun import perform_fun_query
             try:
-                result, elapsed = await perform_fun_query(
-                    prompt=prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    image_url=image_url,
-                    reference_message=reference_message
-                )
+                # For text commands (using ctx), use status updates
+                # For slash commands (using interaction), the "thinking" state is already set
+                if ctx:
+                    status_msg = await update_status(None, "...generating fun reply...", channel=channel)
+                    try:
+                        result, elapsed = await perform_fun_query(
+                            prompt=prompt,
+                            api_cog=api_cog,
+                            channel=channel,
+                            image_url=image_url,
+                            reference_message=reference_message,
+                            show_status=False  # Don't show status again in the function
+                        )
+                    finally:
+                        from message_utils import delete_msg
+                        await delete_msg(status_msg)
+                else:  # Slash command
+                    result, elapsed = await perform_fun_query(
+                        prompt=prompt,
+                        api_cog=api_cog,
+                        channel=channel,
+                        image_url=image_url,
+                        reference_message=reference_message,
+                        show_status=False  # Don't show status, Discord's "thinking" state is used
+                    )
                 final_footer = config["default_footer"]
             except Exception as e:
                 logger.exception(f"Error in {model_key} request: %s", e)
@@ -163,20 +204,20 @@ class AICommands(commands.Cog):
     # ===== SLASH COMMANDS =====
     
     @app_commands.command(name="gpt", description="Chat with GPT - provide a prompt and optionally attach content")
-    async def gpt_slash(self, interaction: Interaction, prompt: str, attachment: Attachment = None):
-        await interaction.response.defer()
+    async def gpt_slash(self, interaction: Interaction, prompt: str, attachment: Optional[Attachment] = None):
+        await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
         await self._process_ai_request(prompt, "gpt", interaction=interaction, attachments=attachments)
 
     @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
-    async def fun_slash(self, interaction: Interaction, prompt: str, attachment: Attachment = None):
-        await interaction.response.defer()
+    async def fun_slash(self, interaction: Interaction, prompt: str, attachment: Optional[Attachment] = None):
+        await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
         await self._process_ai_request(prompt, "fun", interaction=interaction, attachments=attachments)
     
     @app_commands.command(name="deepseek", description="Chat with Deepseek - provide a prompt and optionally attach content")
-    async def deepseek_slash(self, interaction: Interaction, prompt: str, attachment: Attachment = None):
-        await interaction.response.defer()
+    async def deepseek_slash(self, interaction: Interaction, prompt: str, attachment: Optional[Attachment] = None):
+        await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
         await self._process_ai_request(prompt, "deepseek", interaction=interaction, attachments=attachments)
 
@@ -193,7 +234,7 @@ class AICommands(commands.Cog):
         prompt: str, 
         attachment: Optional[Attachment] = None
     ):
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
         await self._process_ai_request(prompt, model, interaction=interaction, attachments=attachments)
 
@@ -219,7 +260,7 @@ class AIContextMenus(commands.Cog):
             super().__init__(title=f"{self.config['name']} Reply")
             
         async def on_submit(self, interaction: Interaction):
-            await interaction.response.defer()
+            await interaction.response.defer(thinking=True)
             additional_text = self.additional_input.value or ""
 
             ai_commands = interaction.client.get_cog("AICommands")
@@ -263,7 +304,7 @@ class AIContextMenus(commands.Cog):
             # (This is a workaround - in practice, you'd need to use a View)
 
         async def on_submit(self, interaction: Interaction):
-            await interaction.response.defer()
+            await interaction.response.defer(thinking=True)
             additional_text = self.additional_input.value or ""
             
             # This is a workaround since Modal can't have Select components
