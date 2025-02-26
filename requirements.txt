@@ -4,4 +4,4 @@ openai
 aiohttp
 duckduckgo_search
 tenacity
-PIL
+pillow
