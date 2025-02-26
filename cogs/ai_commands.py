@@ -54,9 +54,9 @@ MODEL_CONFIG = {
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        
+    
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, 
-                                 attachments=None, reference_message=None, image_url=None):
+                             attachments=None, reference_message=None, image_url=None):
         """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
@@ -70,7 +70,7 @@ class AICommands(commands.Cog):
             if attachments:
                 has_image = any(att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) for att in attachments)
                 if has_image and not config.get("supports_images", False):
-                    error_embed = Embed(
+                    error_embed = discord.Embed(
                         title="ERROR",
                         description="Image attachments only supported with GPT-4o-mini",
                         color=0xDC143C
@@ -80,6 +80,11 @@ class AICommands(commands.Cog):
                     else:
                         await interaction.followup.send(embed=error_embed)
                     return
+            
+            # Process attachments and extract image URL if present
+            is_slash = interaction is not None
+            from generic_chat import process_attachments
+            final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
                 
             # Check for suffixes that might override model settings
             cleaned_prompt, model_override, reply_mode, reply_footer = extract_suffixes(final_prompt)
@@ -131,7 +136,7 @@ class AICommands(commands.Cog):
                 final_footer = footer
             except Exception as e:
                 logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = Embed(title="ERROR", description="x_x", color=0xDC143C)
+                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
                 error_embed.set_footer(text=f"Error generating reply: {e}")
                 if ctx:
                     return await ctx.reply(embed=error_embed)
@@ -141,16 +146,21 @@ class AICommands(commands.Cog):
         elif config["function"] == "perform_fun_query":
             from generic_fun import perform_fun_query
             try:
+                # Process attachments and extract image URL if present
+                is_slash = interaction is not None
+                from generic_chat import process_attachments
+                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
+                
                 # For text commands (using ctx), use status updates
                 # For slash commands (using interaction), the "thinking" state is already set
                 if ctx:
                     status_msg = await update_status(None, "...generating fun reply...", channel=channel)
                     try:
                         result, elapsed = await perform_fun_query(
-                            prompt=prompt,
+                            prompt=final_prompt,
                             api_cog=api_cog,
                             channel=channel,
-                            image_url=image_url,
+                            image_url=img_url,
                             reference_message=reference_message,
                             show_status=False  # Don't show status again in the function
                         )
@@ -159,17 +169,17 @@ class AICommands(commands.Cog):
                         await delete_msg(status_msg)
                 else:  # Slash command
                     result, elapsed = await perform_fun_query(
-                        prompt=prompt,
+                        prompt=final_prompt,
                         api_cog=api_cog,
                         channel=channel,
-                        image_url=image_url,
+                        image_url=img_url,
                         reference_message=reference_message,
                         show_status=False  # Don't show status, Discord's "thinking" state is used
                     )
                 final_footer = config["default_footer"]
             except Exception as e:
                 logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = Embed(title="ERROR", description="x_x", color=0xDC143C)
+                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
                 error_embed.set_footer(text=f"Error generating reply: {e}")
                 if ctx:
                     return await ctx.reply(embed=error_embed)
@@ -177,14 +187,14 @@ class AICommands(commands.Cog):
                     return await interaction.followup.send(embed=error_embed)
 
         # Create and send the response embed
-        embed = Embed(title="", description=result, color=config["color"])
+        embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
         
         if ctx:  # Text command
             await send_embed(ctx.channel, embed, reply_to=ctx.message)
         else:  # Slash command
             await interaction.followup.send(embed=embed)
-            
+    
     # ===== TEXT COMMANDS =====
     
     @commands.command(name="gpt")
