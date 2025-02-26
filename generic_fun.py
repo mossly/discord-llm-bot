@@ -68,7 +68,7 @@ async def perform_fun_query(
         # Create a combined system prompt with emojis if available
         system_prompt = api_cog.FUN_SYSTEM_PROMPT
         if emoji_list:
-            system_prompt += f"\n\nThe following custom emojis are available in this server: {emoji_list}"
+            system_prompt += f"\n\nHere is a list of server specific emojis you should use: {emoji_list}"
         
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
