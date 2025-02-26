@@ -11,18 +11,29 @@ logger = logging.getLogger(__name__)
 
 # Enhanced model configuration with more details
 MODEL_CONFIG = {
-    "gpt": {
-        "name": "GPT",
-        "function": "perform_chat_query",  # Function in generic_chat.py
+    "gpt-o3-mini": {
+        "name": "GPT-o3-mini",
+        "function": "perform_chat_query",
         "color": 0x32a956,
         "default_model": "o3-mini",
         "default_footer": "o3-mini | default",
         "api_model": "o3-mini",
-        "system_prompt": "Use markdown formatting."
+        "system_prompt": "Use markdown formatting.",
+        "supports_images": False
+    },
+    "gpt-4o-mini": {
+        "name": "GPT-4o-mini",
+        "function": "perform_chat_query",
+        "color": 0x32a956,
+        "default_model": "gpt-4o-mini",
+        "default_footer": "gpt-4o-mini | default",
+        "api_model": "gpt-4o-mini",
+        "system_prompt": "Use markdown formatting.",
+        "supports_images": True
     },
     "deepseek": {
         "name": "Deepseek",
-        "function": "perform_chat_query",  # Reuse the same function 
+        "function": "perform_chat_query",
         "color": 0x32a956, 
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek",
@@ -31,12 +42,12 @@ MODEL_CONFIG = {
     },
     "fun": {
         "name": "Fun Mode",
-        "function": "perform_fun_query",  # Function in generic_fun.py
+        "function": "perform_fun_query",
         "color": 0x32a956,
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek V3 (Fun Mode)",
         "api_model": "deepseek/deepseek-chat",
-        "system_prompt": None  # Fun uses custom system prompt from API cog
+        "system_prompt": None
     }
 }
 
@@ -55,15 +66,20 @@ class AICommands(commands.Cog):
         if config["function"] == "perform_chat_query":
             from generic_chat import prepare_chat_parameters, perform_chat_query, extract_suffixes
             
-            # Process attachments and prepare parameters
+            # Validate image attachments
             if attachments:
-                from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(prompt, attachments, is_slash=bool(interaction))
-                if image_url:  # Override with explicitly provided URL
-                    img_url = image_url
-            else:
-                final_prompt = prompt
-                img_url = image_url
+                has_image = any(att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) for att in attachments)
+                if has_image and not config.get("supports_images", False):
+                    error_embed = Embed(
+                        title="ERROR",
+                        description="Image attachments only supported with GPT-4o-mini",
+                        color=0xDC143C
+                    )
+                    if ctx:
+                        await ctx.reply(embed=error_embed)
+                    else:
+                        await interaction.followup.send(embed=error_embed)
+                    return
                 
             # Check for suffixes that might override model settings
             cleaned_prompt, model_override, reply_mode, reply_footer = extract_suffixes(final_prompt)
@@ -187,7 +203,7 @@ class AICommands(commands.Cog):
         await self._process_ai_request(prompt, "deepseek", ctx=ctx, attachments=ctx.message.attachments)
         
     @commands.command(name="chat")
-    async def chat_text(self, ctx: commands.Context, model: Optional[str] = "gpt", *, prompt: str):
+    async def chat_text(self, ctx: commands.Context, model: Optional[str] = "gpt-o3-mini", *, prompt: str):
         """
         Generic chat command with model selection
         Usage: !chat [model] your message
@@ -230,7 +246,7 @@ class AICommands(commands.Cog):
     async def chat_slash(
         self, 
         interaction: Interaction, 
-        model: Literal["gpt", "deepseek", "fun"],
+        model: Literal["gpt-o3-mini", "gpt-4o-mini", "deepseek", "fun"],
         prompt: str, 
         attachment: Optional[Attachment] = None
     ):
