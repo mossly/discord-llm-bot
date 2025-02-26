@@ -30,7 +30,7 @@ DEFAULT_REPLY_FOOTER = "o3-mini | default"
 async def process_attachments(prompt: str, attachments: list, is_slash: bool = False) -> (str, str):
     """
     Process attachments to update the prompt and extract an image URL if one is attached.
-    For text file attachments, the file’s content replaces the existing prompt.
+    For text file attachments, the file's content replaces the existing prompt.
     For image files, the URL is set (the first found is used).
     """
     image_url = None
@@ -53,8 +53,11 @@ async def process_attachments(prompt: str, attachments: list, is_slash: bool = F
                 except Exception as e:
                     logger.exception("Error processing text attachment: %s", e)
             elif filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and not image_url:
-                image_url = att.url
+                # For image attachments, we just store the attachment URL
+                # The API will fetch the image using proxy=None to allow for Discord CDN URLs
+                image_url = att.proxy_url or att.url  # Use proxy_url if available as it's better for Discord CDN
     return final_prompt, image_url
+
 
 
 def extract_suffixes(prompt: str) -> (str, str, str, str):
