@@ -4,6 +4,11 @@ import logging
 import openai
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+import base64
+import aiohttp
+import io
+from PIL import Image
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +65,6 @@ class APIUtils(commands.Cog):
                 
                 # If we have an image URL from Discord, download it and convert to base64
                 if image_url and ("cdn.discordapp.com" in image_url or "media.discordapp.net" in image_url):
-                    import base64
-                    import aiohttp
-                    import io
-                    from PIL import Image
                     
                     # Download the image
                     async with aiohttp.ClientSession() as session:
