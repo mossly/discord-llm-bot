@@ -38,7 +38,8 @@ MODEL_CONFIG = {
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek",
         "api_model": "deepseek/deepseek-chat",
-        "system_prompt": "Use markdown formatting."
+        "system_prompt": "Use markdown formatting.",
+        "supports_images": False
     },
     "fun": {
         "name": "Fun Mode",
@@ -47,7 +48,8 @@ MODEL_CONFIG = {
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek V3 (Fun Mode)",
         "api_model": "deepseek/deepseek-chat",
-        "system_prompt": None
+        "system_prompt": None,
+        "supports_images": False
     }
 }
 
