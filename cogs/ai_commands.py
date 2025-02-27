@@ -354,6 +354,13 @@ class ModelSelectionView(discord.ui.View):
     
     async def submit_button_callback(self, interaction: discord.Interaction):
         """Process the submission with the selected model"""
+        # First, dismiss the model selection modal by deleting it
+        try:
+            await interaction.delete_original_response()
+        except Exception as e:
+            logger.warning(f"Failed to delete model selection modal: {e}")
+        
+        # Start a deferred response to show the bot is thinking
         await interaction.response.defer(thinking=True)
         
         model_key = self.selected_model
@@ -374,19 +381,52 @@ class ModelSelectionView(discord.ui.View):
             return
         
         try:
-            # Remove the model selection view
-            await interaction.delete_original_response()
-            
             logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
             
-            # Process the AI request - the defer(thinking=True) will show the typing indicator
-            await ai_commands._process_ai_request(
-                prompt=self.additional_text,
-                model_key=model_key,
-                interaction=interaction,
-                reference_message=self.reference_message,
-                image_url=image_url
-            )
+            # Get the AI response
+            config = ai_commands.MODEL_CONFIG[model_key]
+            api_cog = interaction.client.get_cog("APIUtils")
+            duck_cog = interaction.client.get_cog("DuckDuckGo")
+            
+            if config["function"] == "perform_chat_query":
+                from generic_chat import perform_chat_query
+                
+                # Process the AI request directly
+                result, elapsed, footer = await perform_chat_query(
+                    prompt=self.additional_text,
+                    api_cog=api_cog,
+                    channel=interaction.channel,
+                    duck_cog=duck_cog,
+                    image_url=image_url,
+                    reference_message=self.reference_message,
+                    model=config["api_model"],
+                    reply_mode=config["system_prompt"],
+                    reply_footer=config["default_footer"],
+                    show_status=False
+                )
+            elif config["function"] == "perform_fun_query":
+                from generic_fun import perform_fun_query
+                
+                # Process the AI fun request directly
+                result, elapsed = await perform_fun_query(
+                    prompt=self.additional_text,
+                    api_cog=api_cog,
+                    channel=interaction.channel,
+                    image_url=image_url,
+                    reference_message=self.reference_message,
+                    show_status=False
+                )
+                footer = config["default_footer"]
+            
+            # Create and send the response as a direct reply to the original message
+            embed = discord.Embed(title="", description=result, color=config["color"])
+            embed.set_footer(text=f"{footer} | generated in {elapsed} seconds")
+            
+            # Send as a reply to the original message (not as an interaction response)
+            await self.original_message.reply(embed=embed)
+            
+            # Send a hidden confirmation message for the interaction
+            await interaction.followup.send("Response sent!", ephemeral=True)
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
