@@ -411,8 +411,12 @@ class ModelSelectionView(discord.ui.View):
             return
         
         try:
-            # Remove the view entirely without showing "Processing your request..."
-            await interaction.edit_original_response(view=None)
+            # Instead of updating with an empty message, delete the original response
+            try:
+                await interaction.delete_original_response()
+            except:
+                # If deletion fails, just ignore and continue
+                pass
             
             # Process the AI request with the image_url
             await ai_commands._process_ai_request(
@@ -426,6 +430,7 @@ class ModelSelectionView(discord.ui.View):
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
             await interaction.followup.send(f"Error: {e}", ephemeral=True)
+
 
 
 @app_commands.context_menu(name="AI Reply")
