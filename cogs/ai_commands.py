@@ -288,9 +288,6 @@ class AIContextMenus(commands.Cog):
             
             title = "AI Reply" + (" (Image detected)" if self.has_image else "")
             super().__init__(title=title)
-            
-            # Add model selector
-            self.add_model_selector()
         
         def _check_for_images(self, message):
             """Check if the message contains image attachments"""
@@ -299,110 +296,141 @@ class AIContextMenus(commands.Cog):
                            for att in message.attachments)
             return False
             
-        def add_model_selector(self):
-            """Add appropriate model selection based on whether images are present"""
-            options = []
+        async def on_submit(self, interaction: discord.Interaction):
+            # Get the additional text input
+            additional_text = self.additional_input.value or ""
             
-            # Always include GPT-4o-mini as an option
-            options.append(discord.SelectOption(
-                label="GPT-4o-mini", 
-                value="gpt-4o-mini",
-                description="OpenAI model with image support",
-                default=self.has_image  # Make it the default if images are present
-            ))
-            
-            # Only add other models if no images are present
-            if not self.has_image:
-                options.extend([
-                    discord.SelectOption(
-                        label="GPT-o3-mini", 
-                        value="gpt-o3-mini", 
-                        description="OpenAI standard model",
-                        default=True  # Make this the default if no images
-                    ),
-                    discord.SelectOption(
-                        label="Deepseek", 
-                        value="deepseek", 
-                        description="Deepseek standard model"
-                    ),
-                    discord.SelectOption(
-                        label="Fun Mode", 
-                        value="fun", 
-                        description="Deepseek with fun personality"
-                    )
-                ])
-            
-            self.model_select = discord.ui.Select(
-                placeholder="Choose AI model",
-                options=options
+            # Create and show model selection view
+            view = ModelSelectionView(
+                has_image=self.has_image,
+                reference_message=self.reference_message,
+                original_message=self.original_message,
+                additional_text=additional_text
             )
             
-            # Set up callback for selection changes
-            self.model_select.callback = self.on_model_select
-            
-            # Add the select to a view that will be shown after the modal
-            self.model_view = discord.ui.View(timeout=120)
-            self.model_view.add_item(self.model_select)
-            
-        async def on_model_select(self, interaction: discord.Interaction):
-            """Handle model selection change"""
-            await interaction.response.defer()
-            
-        async def on_submit(self, interaction: discord.Interaction):
-            # First acknowledge the modal submission
             await interaction.response.send_message(
-                "Please select the AI model to use for your reply:",
-                view=self.model_view,
+                "Please select an AI model and click Submit:",
+                view=view,
                 ephemeral=True
             )
-            
-            # Store the interaction and input for use in the select callback
-            self.model_view.interaction = interaction
-            self.model_view.additional_text = self.additional_input.value or ""
-            
-            # Update the select callback to use our data
-            self.model_select.callback = self.process_model_selection
-            
-        async def process_model_selection(self, interaction: discord.Interaction):
-            """Process the model selection and send the AI request"""
-            await interaction.response.defer(thinking=True)
-            
-            model_key = self.model_select.values[0]
-            additional_text = self.model_view.additional_text
-            
-            # Get image URL if present
-            image_url = None
-            if self.has_image and model_key == "gpt-4o-mini":
-                for att in self.original_message.attachments:
-                    if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-                        image_url = att.url
-                        break
-            
-            # If user selected a non-4o model for an image, show error
-            if self.has_image and model_key != "gpt-4o-mini":
-                await interaction.followup.send(
-                    "Error: Only GPT-4o-mini can process images. Please select GPT-4o-mini or use a message without images.",
-                    ephemeral=True
+
+
+class ModelSelectionView(discord.ui.View):
+    def __init__(self, has_image, reference_message, original_message, additional_text):
+        super().__init__(timeout=120)
+        self.has_image = has_image
+        self.reference_message = reference_message
+        self.original_message = original_message
+        self.additional_text = additional_text
+        self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
+        
+        # Add the model dropdown
+        options = []
+        
+        # Always include GPT-4o-mini as an option
+        options.append(discord.SelectOption(
+            label="GPT-4o-mini", 
+            value="gpt-4o-mini",
+            description="OpenAI model with image support",
+            default=self.has_image  # Make it the default if images are present
+        ))
+        
+        # Only add other models if no images are present
+        if not self.has_image:
+            options.extend([
+                discord.SelectOption(
+                    label="GPT-o3-mini", 
+                    value="gpt-o3-mini", 
+                    description="OpenAI standard model",
+                    default=True  # Make this the default if no images
+                ),
+                discord.SelectOption(
+                    label="Deepseek", 
+                    value="deepseek", 
+                    description="Deepseek standard model"
+                ),
+                discord.SelectOption(
+                    label="Fun Mode", 
+                    value="fun", 
+                    description="Deepseek with fun personality"
                 )
-                return
+            ])
+        
+        self.model_select = discord.ui.Select(
+            placeholder="Choose AI model",
+            options=options
+        )
+        
+        # Set up callback for selection changes - just stores the value, doesn't trigger generation
+        self.model_select.callback = self.on_model_select
+        
+        # Add the select to the view
+        self.add_item(self.model_select)
+        
+        # Add the submit button to the view
+        submit_button = discord.ui.Button(
+            label="Submit",
+            style=discord.ButtonStyle.primary,
+            custom_id="submit_button"
+        )
+        submit_button.callback = self.submit_button_callback
+        self.add_item(submit_button)
+    
+    async def on_model_select(self, interaction: discord.Interaction):
+        """Store the selected model value without triggering generation"""
+        self.selected_model = self.model_select.values[0]
+        
+        # If user selected a non-4o model for an image, show warning
+        if self.has_image and self.selected_model != "gpt-4o-mini":
+            await interaction.response.send_message(
+                "Warning: Only GPT-4o-mini can process images. Using other models will ignore the image.",
+                ephemeral=True
+            )
+        else:
+            # Just acknowledge the selection without further action
+            await interaction.response.defer()
+    
+    async def submit_button_callback(self, interaction: discord.Interaction):
+        """Process the submission with the selected model"""
+        await interaction.response.defer(thinking=True)
+        
+        model_key = self.selected_model
+        
+        # Get image URL if present and using compatible model
+        image_url = None
+        if self.has_image and model_key == "gpt-4o-mini":
+            for att in self.original_message.attachments:
+                if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                    image_url = att.url
+                    break
+        
+        # Get the AI commands cog and process the request
+        ai_commands = interaction.client.get_cog("AICommands")
+        if not ai_commands:
+            await interaction.followup.send("AI commands not available", ephemeral=True)
+            return
+        
+        try:
+            await ai_commands._process_ai_request(
+                prompt=self.additional_text,
+                model_key=model_key,
+                interaction=interaction,
+                reference_message=self.reference_message,
+                image_url=image_url
+            )
             
-            # Get the AI commands cog and process the request
-            ai_commands = interaction.client.get_cog("AICommands")
-            if not ai_commands:
-                await interaction.followup.send("AI commands not available", ephemeral=True)
-                return
+            # Disable all components after successful submission
+            for item in self.children:
+                item.disabled = True
             
-            try:
-                await ai_commands._process_ai_request(
-                    prompt=additional_text,
-                    model_key=model_key,
-                    interaction=interaction,
-                    reference_message=self.reference_message,
-                    image_url=image_url
-                )
-            except Exception as e:
-                logger.exception(f"Error processing AI request: {e}")
-                await interaction.followup.send(f"Error: {e}", ephemeral=True)
+            await interaction.edit_original_response(
+                content="Your AI response has been generated!",
+                view=self
+            )
+            
+        except Exception as e:
+            logger.exception(f"Error processing AI request: {e}")
+            await interaction.followup.send(f"Error: {e}", ephemeral=True)
 
 
 @app_commands.context_menu(name="AI Reply")
