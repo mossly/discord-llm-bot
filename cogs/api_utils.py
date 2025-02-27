@@ -9,7 +9,6 @@ import aiohttp
 import io
 from PIL import Image
 
-
 logger = logging.getLogger(__name__)
 
 class APIUtils(commands.Cog):
@@ -24,7 +23,7 @@ class APIUtils(commands.Cog):
         # Global settings.
         self.SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
         self.BOT_TAG = os.getenv("BOT_TAG", "")
-        self.FUN_SYSTEM_PROMPT = os.getenv("FUN_PROMPT", "Let's have some fun!")
+        self.FUN_SYSTEM_PROMPT = os.getenv("FUN_PROMPT", "Write an amusing and sarcastic!")
 
     async def send_request(
         self,

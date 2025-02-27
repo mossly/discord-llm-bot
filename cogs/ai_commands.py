@@ -269,8 +269,8 @@ class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         
-    # Context menu base modal class
-    class AIReplyModal(discord.ui.Modal):
+    # Base modal class with model selection
+    class ModelSelectModal(discord.ui.Modal):
         additional_input = discord.ui.TextInput(
             label="Additional Input (Optional)",
             style=discord.TextStyle.long,
@@ -278,121 +278,146 @@ class AIContextMenus(commands.Cog):
             placeholder="Add any extra context or instructions..."
         )
         
-        def __init__(self, model_key, reference_message, channel):
-            self.model_key = model_key
+        def __init__(self, reference_message, original_message, channel):
             self.reference_message = reference_message
+            self.original_message = original_message
             self.channel = channel
-            self.config = MODEL_CONFIG[model_key]
-            super().__init__(title=f"{self.config['name']} Reply")
+            self.has_image = self._check_for_images(original_message)
             
-        async def on_submit(self, interaction: Interaction):
-            await interaction.response.defer(thinking=True)
-            additional_text = self.additional_input.value or ""
-
-            ai_commands = interaction.client.get_cog("AICommands")
-            if not ai_commands:
-                await interaction.followup.send("AI commands not available", ephemeral=True)
-                return
-                
-            await ai_commands._process_ai_request(
-                prompt=additional_text,
-                model_key=self.model_key,
-                interaction=interaction,
-                reference_message=self.reference_message
-            )
-
-    # Generic Reply modal with model selection
-    class ModelSelectModal(discord.ui.Modal, title="AI Reply"):
-        additional_input = discord.ui.TextInput(
-            label="Additional Input (Optional)",
-            style=discord.TextStyle.long,
-            required=False,
-            placeholder="Add any extra context or instructions..."
-        )
+            title = "AI Reply" + (" (Image detected)" if self.has_image else "")
+            super().__init__(title=title)
+            
+            # Add model selector
+            self.add_model_selector()
         
-        def __init__(self, reference_message, channel):
-            super().__init__()
-            self.reference_message = reference_message
-            self.channel = channel
-            self.add_model_select()
+        def _check_for_images(self, message):
+            """Check if the message contains image attachments"""
+            if message.attachments:
+                return any(att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) 
+                           for att in message.attachments)
+            return False
             
-        def add_model_select(self):
-            # Create a select menu for model selection
+        def add_model_selector(self):
+            """Add appropriate model selection based on whether images are present"""
+            options = []
+            
+            # Always include GPT-4o-mini as an option
+            options.append(discord.SelectOption(
+                label="GPT-4o-mini", 
+                value="gpt-4o-mini",
+                description="OpenAI model with image support",
+                default=self.has_image  # Make it the default if images are present
+            ))
+            
+            # Only add other models if no images are present
+            if not self.has_image:
+                options.extend([
+                    discord.SelectOption(
+                        label="GPT-o3-mini", 
+                        value="gpt-o3-mini", 
+                        description="OpenAI standard model",
+                        default=True  # Make this the default if no images
+                    ),
+                    discord.SelectOption(
+                        label="Deepseek", 
+                        value="deepseek", 
+                        description="Deepseek standard model"
+                    ),
+                    discord.SelectOption(
+                        label="Fun Mode", 
+                        value="fun", 
+                        description="Deepseek with fun personality"
+                    )
+                ])
+            
             self.model_select = discord.ui.Select(
                 placeholder="Choose AI model",
-                options=[
-                    discord.SelectOption(label="GPT", value="gpt", description="OpenAI GPT model"),
-                    discord.SelectOption(label="Deepseek", value="deepseek", description="Deepseek standard model"),
-                    discord.SelectOption(label="Fun Mode", value="fun", description="Deepseek with fun personality")
-                ]
+                options=options
             )
-            # Create placeholder item since Modal can't have selects directly
-            # (This is a workaround - in practice, you'd need to use a View)
-
-        async def on_submit(self, interaction: Interaction):
-            await interaction.response.defer(thinking=True)
-            additional_text = self.additional_input.value or ""
             
-            # This is a workaround since Modal can't have Select components
-            # In a real implementation, you'd need to show a follow-up view with the Select
-            # For this example, we'll default to GPT
-            model_key = "gpt"
-
+            # Set up callback for selection changes
+            self.model_select.callback = self.on_model_select
+            
+            # Add the select to a view that will be shown after the modal
+            self.model_view = discord.ui.View(timeout=120)
+            self.model_view.add_item(self.model_select)
+            
+        async def on_model_select(self, interaction: discord.Interaction):
+            """Handle model selection change"""
+            await interaction.response.defer()
+            
+        async def on_submit(self, interaction: discord.Interaction):
+            # First acknowledge the modal submission
+            await interaction.response.send_message(
+                "Please select the AI model to use for your reply:",
+                view=self.model_view,
+                ephemeral=True
+            )
+            
+            # Store the interaction and input for use in the select callback
+            self.model_view.interaction = interaction
+            self.model_view.additional_text = self.additional_input.value or ""
+            
+            # Update the select callback to use our data
+            self.model_select.callback = self.process_model_selection
+            
+        async def process_model_selection(self, interaction: discord.Interaction):
+            """Process the model selection and send the AI request"""
+            await interaction.response.defer(thinking=True)
+            
+            model_key = self.model_select.values[0]
+            additional_text = self.model_view.additional_text
+            
+            # Get image URL if present
+            image_url = None
+            if self.has_image and model_key == "gpt-4o-mini":
+                for att in self.original_message.attachments:
+                    if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                        image_url = att.url
+                        break
+            
+            # If user selected a non-4o model for an image, show error
+            if self.has_image and model_key != "gpt-4o-mini":
+                await interaction.followup.send(
+                    "Error: Only GPT-4o-mini can process images. Please select GPT-4o-mini or use a message without images.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get the AI commands cog and process the request
             ai_commands = interaction.client.get_cog("AICommands")
             if not ai_commands:
                 await interaction.followup.send("AI commands not available", ephemeral=True)
                 return
-                
-            await ai_commands._process_ai_request(
-                prompt=additional_text,
-                model_key=model_key,
-                interaction=interaction,
-                reference_message=self.reference_message
-            )
+            
+            try:
+                await ai_commands._process_ai_request(
+                    prompt=additional_text,
+                    model_key=model_key,
+                    interaction=interaction,
+                    reference_message=self.reference_message,
+                    image_url=image_url
+                )
+            except Exception as e:
+                logger.exception(f"Error processing AI request: {e}")
+                await interaction.followup.send(f"Error: {e}", ephemeral=True)
 
-# ===== CONTEXT MENU COMMANDS =====
 
-@app_commands.context_menu(name="GPT Reply")
-async def gpt_context_menu(interaction: Interaction, message: discord.Message):
-    """Context menu for GPT replies"""
+@app_commands.context_menu(name="AI Reply")
+async def ai_context_menu(interaction: Interaction, message: discord.Message):
+    """Unified context menu for AI replies with model selection"""
     if message.author == interaction.client.user:
         content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
     else:
         content = message.content
-        
+    
     reference_message = f"Message from {message.author.name}: {content}"
-    modal = AIContextMenus.AIReplyModal("gpt", reference_message, interaction.channel) 
+    modal = AIContextMenus.ModelSelectModal(reference_message, message, interaction.channel)
     await interaction.response.send_modal(modal)
 
-@app_commands.context_menu(name="Deepseek Reply")
-async def deepseek_context_menu(interaction: Interaction, message: discord.Message):
-    """Context menu for Deepseek replies"""
-    if message.author == interaction.client.user:
-        content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
-    else:
-        content = message.content
-        
-    reference_message = f"Message from {message.author.name}: {content}"
-    modal = AIContextMenus.AIReplyModal("deepseek", reference_message, interaction.channel)
-    await interaction.response.send_modal(modal)
-
-@app_commands.context_menu(name="Fun Mode Reply")
-async def fun_context_menu(interaction: Interaction, message: discord.Message):
-    """Context menu for Fun Mode replies"""
-    if message.author == interaction.client.user:
-        content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
-    else:
-        content = message.content
-        
-    reference_message = f"Message from {message.author.name}: {content}"
-    modal = AIContextMenus.AIReplyModal("fun", reference_message, interaction.channel)
-    await interaction.response.send_modal(modal)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(AICommands(bot))
     await bot.add_cog(AIContextMenus(bot))
     
-    # Register context menu commands
-    bot.tree.add_command(gpt_context_menu)
-    bot.tree.add_command(deepseek_context_menu)
-    bot.tree.add_command(fun_context_menu)
+    bot.tree.add_command(ai_context_menu)
