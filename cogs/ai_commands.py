@@ -398,7 +398,7 @@ class ModelSelectionView(discord.ui.View):
         
         # Get image URL if present and using compatible model
         image_url = None
-        if self.has_image and model_key == "gpt-4o-mini":
+        if self.has_image:
             for att in self.original_message.attachments:
                 if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                     image_url = att.url
@@ -411,19 +411,16 @@ class ModelSelectionView(discord.ui.View):
             return
         
         try:
-            # Instead of keeping the view visible after submission, remove it entirely
-            await interaction.edit_original_response(
-                content="Processing your request...",
-                view=None  # Remove the view completely
-            )
+            # Remove the view entirely without showing "Processing your request..."
+            await interaction.edit_original_response(view=None)
             
-            # Process the AI request - passing the image URL correctly
+            # Process the AI request with the image_url
             await ai_commands._process_ai_request(
                 prompt=self.additional_text,
                 model_key=model_key,
                 interaction=interaction,
                 reference_message=self.reference_message,
-                image_url=image_url
+                image_url=image_url  # Pass the image URL directly
             )
             
         except Exception as e:
