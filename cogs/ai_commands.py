@@ -58,7 +58,7 @@ class AICommands(commands.Cog):
         self.bot = bot
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, 
-                             attachments=None, reference_message=None, image_url=None):
+                            attachments=None, reference_message=None, image_url=None):
         """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
@@ -68,26 +68,30 @@ class AICommands(commands.Cog):
         if config["function"] == "perform_chat_query":
             from generic_chat import prepare_chat_parameters, perform_chat_query, extract_suffixes
             
-            # Validate image attachments
-            if attachments:
-                has_image = any(att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) for att in attachments)
-                if has_image and not config.get("supports_images", False):
-                    error_embed = discord.Embed(
-                        title="ERROR",
-                        description="Image attachments only supported with GPT-4o-mini",
-                        color=0xDC143C
-                    )
-                    if ctx:
-                        await ctx.reply(embed=error_embed)
-                    else:
-                        await interaction.followup.send(embed=error_embed)
-                    return
+            # Check for direct image_url parameter (from context menu)
+            if image_url and not config.get("supports_images", False):
+                error_embed = discord.Embed(
+                    title="ERROR",
+                    description="Image attachments only supported with GPT-4o-mini",
+                    color=0xDC143C
+                )
+                if ctx:
+                    await ctx.reply(embed=error_embed)
+                else:
+                    await interaction.followup.send(embed=error_embed)
+                return
             
-            # Process attachments and extract image URL if present
-            is_slash = interaction is not None
-            from generic_chat import process_attachments
-            final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
-                
+            # Process attachments only if no direct image_url was provided
+            if not image_url:
+                # Process attachments and extract image URL if present
+                is_slash = interaction is not None
+                from generic_chat import process_attachments
+                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
+            else:
+                # If image_url was directly provided, use it
+                final_prompt = prompt
+                img_url = image_url
+                    
             # Check for suffixes that might override model settings
             cleaned_prompt, model_override, reply_mode, reply_footer = extract_suffixes(final_prompt)
             
@@ -144,49 +148,7 @@ class AICommands(commands.Cog):
                     return await ctx.reply(embed=error_embed)
                 else:
                     return await interaction.followup.send(embed=error_embed)
-                    
-        elif config["function"] == "perform_fun_query":
-            from generic_fun import perform_fun_query
-            try:
-                # Process attachments and extract image URL if present
-                is_slash = interaction is not None
-                from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
-                
-                # For text commands (using ctx), use status updates
-                # For slash commands (using interaction), the "thinking" state is already set
-                if ctx:
-                    status_msg = await update_status(None, "...generating fun reply...", channel=channel)
-                    try:
-                        result, elapsed = await perform_fun_query(
-                            prompt=final_prompt,
-                            api_cog=api_cog,
-                            channel=channel,
-                            image_url=img_url,
-                            reference_message=reference_message,
-                            show_status=False  # Don't show status again in the function
-                        )
-                    finally:
-                        from message_utils import delete_msg
-                        await delete_msg(status_msg)
-                else:  # Slash command
-                    result, elapsed = await perform_fun_query(
-                        prompt=final_prompt,
-                        api_cog=api_cog,
-                        channel=channel,
-                        image_url=img_url,
-                        reference_message=reference_message,
-                        show_status=False  # Don't show status, Discord's "thinking" state is used
-                    )
-                final_footer = config["default_footer"]
-            except Exception as e:
-                logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                error_embed.set_footer(text=f"Error generating reply: {e}")
-                if ctx:
-                    return await ctx.reply(embed=error_embed)
-                else:
-                    return await interaction.followup.send(embed=error_embed)
+
 
         # Create and send the response embed
         embed = discord.Embed(title="", description=result, color=config["color"])
@@ -396,12 +358,13 @@ class ModelSelectionView(discord.ui.View):
         
         model_key = self.selected_model
         
-        # Get image URL if present and using compatible model
+        # Get image URL if present
         image_url = None
         if self.has_image:
             for att in self.original_message.attachments:
                 if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                     image_url = att.url
+                    logger.info(f"Found image attachment: {image_url}")
                     break
         
         # Get the AI commands cog and process the request
@@ -411,26 +374,23 @@ class ModelSelectionView(discord.ui.View):
             return
         
         try:
-            # Instead of updating with an empty message, delete the original response
-            try:
-                await interaction.delete_original_response()
-            except:
-                # If deletion fails, just ignore and continue
-                pass
+            # Remove the model selection view
+            await interaction.delete_original_response()
             
-            # Process the AI request with the image_url
+            logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
+            
+            # Process the AI request - the defer(thinking=True) will show the typing indicator
             await ai_commands._process_ai_request(
                 prompt=self.additional_text,
                 model_key=model_key,
                 interaction=interaction,
                 reference_message=self.reference_message,
-                image_url=image_url  # Pass the image URL directly
+                image_url=image_url
             )
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
             await interaction.followup.send(f"Error: {e}", ephemeral=True)
-
 
 
 @app_commands.context_menu(name="AI Reply")
