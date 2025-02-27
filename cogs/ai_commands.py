@@ -354,13 +354,7 @@ class ModelSelectionView(discord.ui.View):
     
     async def submit_button_callback(self, interaction: discord.Interaction):
         """Process the submission with the selected model"""
-        # First, dismiss the model selection modal by deleting it
-        try:
-            await interaction.delete_original_response()
-        except Exception as e:
-            logger.warning(f"Failed to delete model selection modal: {e}")
-        
-        # Start a deferred response to show the bot is thinking
+        # First, defer the response to show the bot is thinking
         await interaction.response.defer(thinking=True)
         
         model_key = self.selected_model
@@ -422,15 +416,17 @@ class ModelSelectionView(discord.ui.View):
             embed = discord.Embed(title="", description=result, color=config["color"])
             embed.set_footer(text=f"{footer} | generated in {elapsed} seconds")
             
-            # Send as a reply to the original message (not as an interaction response)
+            # Send as a reply to the original message
             await self.original_message.reply(embed=embed)
             
-            # Send a hidden confirmation message for the interaction
-            await interaction.followup.send("Response sent!", ephemeral=True)
+            # End the interaction with a hidden confirmation message
+            # This also effectively dismisses the model selection UI
+            await interaction.followup.send("Response complete!", ephemeral=True)
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
             await interaction.followup.send(f"Error: {e}", ephemeral=True)
+
 
 
 @app_commands.context_menu(name="AI Reply")
