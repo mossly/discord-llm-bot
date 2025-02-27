@@ -411,21 +411,19 @@ class ModelSelectionView(discord.ui.View):
             return
         
         try:
+            # Instead of keeping the view visible after submission, remove it entirely
+            await interaction.edit_original_response(
+                content="Processing your request...",
+                view=None  # Remove the view completely
+            )
+            
+            # Process the AI request - passing the image URL correctly
             await ai_commands._process_ai_request(
                 prompt=self.additional_text,
                 model_key=model_key,
                 interaction=interaction,
                 reference_message=self.reference_message,
                 image_url=image_url
-            )
-            
-            # Disable all components after successful submission
-            for item in self.children:
-                item.disabled = True
-            
-            await interaction.edit_original_response(
-                content="Your AI response has been generated!",
-                view=self
             )
             
         except Exception as e:
@@ -441,7 +439,18 @@ async def ai_context_menu(interaction: Interaction, message: discord.Message):
     else:
         content = message.content
     
+    # Get image URLs from original message if it has images
+    has_images = False
+    for att in message.attachments:
+        if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            has_images = True
+            break
+    
+    # Format reference message
     reference_message = f"Message from {message.author.name}: {content}"
+    if has_images:
+        reference_message += " [This message contains an image attachment]"
+    
     modal = AIContextMenus.ModelSelectModal(reference_message, message, interaction.channel)
     await interaction.response.send_modal(modal)
 
@@ -450,4 +459,5 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(AICommands(bot))
     await bot.add_cog(AIContextMenus(bot))
     
+    # Register the unified context menu command
     bot.tree.add_command(ai_context_menu)
