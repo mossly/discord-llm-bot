@@ -160,31 +160,7 @@ class AICommands(commands.Cog):
             await send_embed(channel, embed, reply_to=message_to_reply)
         else:
             await interaction.followup.send(embed=embed)
-    
-    # ===== TEXT COMMANDS =====
-    
-    @commands.command(name="gpt")
-    async def gpt_text(self, ctx: commands.Context, *, prompt: str):
-        """Chat with GPT - text command"""
-        await self._process_ai_request(prompt, "gpt", ctx=ctx, attachments=ctx.message.attachments)
-
-    @commands.command(name="fun")
-    async def fun_text(self, ctx: commands.Context, *, prompt: str):
-        """Fun mode chat - text command"""
-        await self._process_ai_request(prompt, "fun", ctx=ctx, attachments=ctx.message.attachments)
-    
-    @commands.command(name="deepseek")
-    async def deepseek_text(self, ctx: commands.Context, *, prompt: str):
-        """Chat with Deepseek - text command"""
-        await self._process_ai_request(prompt, "deepseek", ctx=ctx, attachments=ctx.message.attachments)
         
-    @commands.command(name="chat")
-    async def chat_text(self, ctx: commands.Context, model: Optional[str] = "gpt-o3-mini", *, prompt: str):
-        """
-        Generic chat command with model selection
-        Usage: !chat [model] your message
-        Models: gpt, deepseek, fun
-        """
         # Normalize model name and validate
         model_key = model.lower()
         if model_key not in MODEL_CONFIG:
@@ -194,28 +170,14 @@ class AICommands(commands.Cog):
         await self._process_ai_request(prompt, model_key, ctx=ctx, attachments=ctx.message.attachments)
         
     # ===== SLASH COMMANDS =====
-    
-    @app_commands.command(name="gpt", description="Chat with GPT - provide a prompt and optionally attach content")
-    async def gpt_slash(self, interaction: Interaction, prompt: str, attachment: Optional[Attachment] = None):
-        await interaction.response.defer(thinking=True)
-        attachments = [attachment] if attachment else []
-        await self._process_ai_request(prompt, "gpt", interaction=interaction, attachments=attachments)
-
     @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
-    async def fun_slash(self, interaction: Interaction, prompt: str, attachment: Optional[Attachment] = None):
+    async def fun_slash(self, interaction: Interaction, prompt: str):
         await interaction.response.defer(thinking=True)
-        attachments = [attachment] if attachment else []
-        await self._process_ai_request(prompt, "fun", interaction=interaction, attachments=attachments)
-    
-    @app_commands.command(name="deepseek", description="Chat with Deepseek - provide a prompt and optionally attach content")
-    async def deepseek_slash(self, interaction: Interaction, prompt: str, attachment: Optional[Attachment] = None):
-        await interaction.response.defer(thinking=True)
-        attachments = [attachment] if attachment else []
-        await self._process_ai_request(prompt, "deepseek", interaction=interaction, attachments=attachments)
+        await self._process_ai_request(prompt, "fun", interaction=interaction, attachments=None)
 
-    @app_commands.command(name="chat", description="Generic AI chat with model selection")
+    @app_commands.command(name="chat", description="Select a model and provide a prompt")
     @app_commands.describe(
-        model="The AI model to use for the response",
+        model="Model to use for the response",
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)"
     )
