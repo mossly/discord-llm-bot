@@ -57,8 +57,7 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, 
-                            attachments=None, reference_message=None, image_url=None):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None,attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
         """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
@@ -154,9 +153,12 @@ class AICommands(commands.Cog):
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
         
-        if ctx:  # Text command
-            await send_embed(ctx.channel, embed, reply_to=ctx.message)
-        else:  # Slash command
+        # Use the "reply message" (if provided) as the message to reply to.
+        if ctx or reply_msg:
+            channel = ctx.channel if ctx else reply_msg.channel
+            message_to_reply = ctx.message if ctx else reply_msg
+            await send_embed(channel, embed, reply_to=message_to_reply)
+        else:
             await interaction.followup.send(embed=embed)
     
     # ===== TEXT COMMANDS =====
@@ -375,7 +377,7 @@ class ModelSelectionView(discord.ui.View):
         
         try:
             # Remove the model selection view
-            await interaction.delete_original_response()
+            # await interaction.delete_original_response()
             
             logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
             
@@ -385,7 +387,8 @@ class ModelSelectionView(discord.ui.View):
                 model_key=model_key,
                 interaction=interaction,
                 reference_message=self.reference_message,
-                image_url=image_url
+                image_url=image_url,
+                reply_msg=self.original_message
             )
             
         except Exception as e:
