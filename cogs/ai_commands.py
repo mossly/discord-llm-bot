@@ -279,8 +279,7 @@ class ModelSelectionView(discord.ui.View):
             await interaction.response.defer()
     
     async def submit_button_callback(self, interaction: discord.Interaction):
-        """Process the submission with the selected model"""
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(thinking=True, ephemeral=False)
         
         model_key = self.selected_model
         
@@ -297,36 +296,22 @@ class ModelSelectionView(discord.ui.View):
             await interaction.followup.send("AI commands not available", ephemeral=True)
             return
         
-        try:
+        try:            
             logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
             
-            thinking_embed = discord.Embed(
-                title="", 
-                description="...generating reply...", 
-                color=0xFDDA0D
+            await ai_commands._process_ai_request(
+                prompt=self.additional_text,
+                model_key=model_key,
+                interaction=interaction,
+                reference_message=self.reference_message,
+                image_url=image_url,
+                reply_msg=self.original_message
             )
-            thinking_msg = await self.original_message.reply(embed=thinking_embed)
             
             try:
-                await ai_commands._process_ai_request(
-                    prompt=self.additional_text,
-                    model_key=model_key,
-                    interaction=interaction,
-                    reference_message=self.reference_message,
-                    image_url=image_url,
-                    reply_msg=self.original_message
-                )
-            finally:
-                try:
-                    await thinking_msg.delete()
-                except discord.HTTPException:
-                    pass
-            
-            try:
-                await interaction.followup.send("Response generated successfully!", ephemeral=True)
                 await interaction.delete_original_response()
             except discord.HTTPException as e:
-                logger.warning(f"Could not handle interaction response: {e}")
+                logger.warning(f"Could not delete original response: {e}")
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
