@@ -46,7 +46,6 @@ async def perform_fun_query(
     
     try:
         model = "deepseek/deepseek-chat"
-        reply_mode = ""
         
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
@@ -57,7 +56,6 @@ async def perform_fun_query(
             with attempt:
                 result = await api_cog.send_request(
                     model=model,
-                    reply_mode=reply_mode,
                     message_content=prompt,
                     reference_message=reference_message,
                     image_url=image_url,

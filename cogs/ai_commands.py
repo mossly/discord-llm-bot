@@ -105,7 +105,6 @@ class AICommands(commands.Cog):
                             image_url=img_url,
                             reference_message=reference_message,
                             model=model,
-                            reply_mode=system_prompt,
                             reply_footer=footer,
                             show_status=False,
                             api=api
@@ -122,7 +121,6 @@ class AICommands(commands.Cog):
                         image_url=img_url,
                         reference_message=reference_message,
                         model=model,
-                        reply_mode=system_prompt,
                         reply_footer=footer,
                         show_status=False,
                         api=api

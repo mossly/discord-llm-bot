@@ -26,7 +26,6 @@ class APIUtils(commands.Cog):
     async def send_request(
         self,
         model: str,
-        reply_mode: str,
         message_content: str,
         reference_message: str = None,
         image_url: str = None,
@@ -47,7 +46,7 @@ class APIUtils(commands.Cog):
         
         message_content = message_content.replace(self.BOT_TAG, "")
 
-        messages_input = [{"role": "system", "content": f"{system_used} {reply_mode}"}]
+        messages_input = [{"role": "system", "content": f"{system_used}"}]
         if reference_message:
             messages_input.append({"role": "user", "content": reference_message})
         

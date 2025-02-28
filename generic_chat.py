@@ -65,13 +65,13 @@ async def get_reference_message(ctx) -> str:
 async def prepare_chat_parameters(prompt: str, attachments: list = None, ctx=None, is_slash: bool = False) -> (str, str, str, str, str, str):
     final_prompt, image_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
 
-    model, reply_mode, reply_footer = DEFAULT_MODEL, DEFAULT_REPLY_MODE, DEFAULT_REPLY_FOOTER
+    model, reply_footer = DEFAULT_MODEL, DEFAULT_REPLY_FOOTER
     
     reference_message = ""
     if not is_slash and ctx is not None:
         reference_message = await get_reference_message(ctx)
         
-    return final_prompt, image_url, model, reply_mode, reply_footer, reference_message
+    return final_prompt, image_url, model, reply_footer, reference_message
 
 async def perform_chat_query(
     prompt: str,
@@ -81,7 +81,6 @@ async def perform_chat_query(
     image_url: str = None,
     reference_message: str = None,
     model: str = DEFAULT_MODEL,
-    reply_mode: str = DEFAULT_REPLY_MODE,
     reply_footer: str = DEFAULT_REPLY_FOOTER,
     show_status: bool = True,
     api: str = "openai",
@@ -115,7 +114,6 @@ async def perform_chat_query(
             with attempt:
                 result = await api_cog.send_request(
                     model=model,
-                    reply_mode=reply_mode,
                     message_content=prompt,
                     reference_message=reference_message,
                     image_url=image_url,
