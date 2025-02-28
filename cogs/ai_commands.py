@@ -68,30 +68,69 @@ class AICommands(commands.Cog):
         if config["function"] == "perform_chat_query":
             from generic_chat import prepare_chat_parameters, perform_chat_query
             
-            if image_url and not config.get("supports_images", False):
-                error_embed = discord.Embed(
-                    title="ERROR",
-                    description="Image attachments only supported with GPT-4o-mini",
-                    color=0xDC143C
-                )
-                if ctx:
-                    await ctx.reply(embed=error_embed)
-                else:
-                    await interaction.followup.send(embed=error_embed)
-                return
+            img_url = None
+            extracted_image_description = None
             
-            if not image_url:
+            if attachments:
                 from generic_chat import process_attachments
                 final_prompt, img_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
-            else:
+            elif image_url:
                 final_prompt = formatted_prompt
                 img_url = image_url
-
+            else:
+                final_prompt = formatted_prompt
+            
+            if img_url and not config.get("supports_images", False):
+                try:
+                    if ctx:
+                        status_msg = await update_status(None, "...analyzing image...", channel=channel)
+                    elif interaction and not interaction.response.is_done():
+                        await interaction.followup.send("Analyzing image content for compatibility with your selected model...", ephemeral=True)
+                    
+                    image_description_result, _, _ = await perform_chat_query(
+                        prompt="Describe this image in detail. Focus on key visual elements that would be most relevant to understanding its content.",
+                        api_cog=api_cog,
+                        channel=channel,
+                        image_url=img_url,
+                        model="gpt-4o-mini",
+                        reply_footer="GPT-4o-mini | image analysis",
+                        show_status=False,
+                        api="openai"
+                    )
+                    
+                    extracted_image_description = f"\n\n[Image Description: {image_description_result}]"
+                    final_prompt += extracted_image_description
+                    
+                    if 'status_msg' in locals():
+                        from message_utils import delete_msg
+                        await delete_msg(status_msg)
+                    
+                except Exception as e:
+                    logger.exception(f"Error describing image with GPT-4o-mini: %s", e)
+                    if 'status_msg' in locals():
+                        from message_utils import delete_msg
+                        await delete_msg(status_msg)
+                    
+                    error_embed = discord.Embed(
+                        title="Warning",
+                        description=f"Could not process image for {config['name']}. Proceeding with text-only response.",
+                        color=0xFFA500
+                    )
+                    if ctx:
+                        await ctx.reply(embed=error_embed)
+                    else:
+                        await interaction.followup.send(embed=error_embed)
+                    
+                    img_url = None
+            
             cleaned_prompt = final_prompt
             model = config["api_model"]
             footer = config["default_footer"]
             system_prompt = api_cog.SYSTEM_PROMPT
             api = config.get("api", "openai")
+            
+            if extracted_image_description and not config.get("supports_images", False):
+                footer += " | with image summary from GPT-4o-mini"
                 
             try:
                 if ctx:
@@ -102,7 +141,7 @@ class AICommands(commands.Cog):
                             api_cog=api_cog,
                             channel=channel,
                             duck_cog=duck_cog,
-                            image_url=img_url,
+                            image_url=img_url if config.get("supports_images", False) else None,
                             reference_message=reference_message,
                             model=model,
                             reply_footer=footer,
@@ -118,7 +157,7 @@ class AICommands(commands.Cog):
                         api_cog=api_cog,
                         channel=channel,
                         duck_cog=duck_cog,
-                        image_url=img_url,
+                        image_url=img_url if config.get("supports_images", False) else None,
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
@@ -126,6 +165,7 @@ class AICommands(commands.Cog):
                         api=api
                     )
                 final_footer = footer
+                
             except Exception as e:
                 logger.exception(f"Error in {model_key} request: %s", e)
                 error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
