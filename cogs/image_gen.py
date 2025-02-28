@@ -1,4 +1,5 @@
 import time
+import asyncio
 import discord
 import openai
 import logging
@@ -7,6 +8,9 @@ from discord import app_commands
 from typing import Literal
 import aiohttp
 import io
+
+from message_utils import delete_msg
+from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
@@ -17,30 +21,38 @@ class ImageGen(commands.Cog):
     async def generate_image(self, img_prompt: str, img_quality: str, img_size: str):
         logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s'",
                     img_prompt, img_quality, img_size)
-        response = openai.images.generate(
-            model="dall-e-3",
-            prompt=img_prompt,
-            size=img_size,
-            quality=img_quality,
-            n=1,
+        loop = asyncio.get_running_loop()
+        # Offload the blocking call to the default executor
+        response = await loop.run_in_executor(
+            None,
+            lambda: openai.images.generate(
+                model="dall-e-3",
+                prompt=img_prompt,
+                size=img_size,
+                quality=img_quality,
+                n=1,
+            )
         )
         image_urls = [data.url for data in response.data]
         logger.info("Generated image URL(s): %s", image_urls)
         return image_urls
 
     @app_commands.command(name="gen", description="Generate an image using DALL·E 3")
-    @app_commands.describe(prompt="The prompt for the image",
-                           hd="Return image in HD quality",
-                           orientation="Choose the image orientation")
-    async def gen(self,
-                  interaction: discord.Interaction,
-                  prompt: str,
-                  hd: bool = False,
-                  orientation: Literal["Square", "Landscape", "Portrait"] = "Square"):
+    @app_commands.describe(
+        prompt="The prompt for the image",
+        hd="Return image in HD quality",
+        orientation="Choose the image orientation (Square, Landscape, or Portrait)"
+    )
+    async def gen(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        hd: bool = False,
+        orientation: Literal["Square", "Landscape", "Portrait"] = "Square"
+    ):
         await interaction.response.defer()
         start_time = time.time()
 
-        # Set quality and size based on options.
         quality = "hd" if hd else "standard"
         if orientation == "Landscape":
             size = "1792x1024"
@@ -66,7 +78,7 @@ class ImageGen(commands.Cog):
         footer_text_parts.append(f"generated in {generation_time} seconds")
         footer_text = " | ".join(footer_text_parts)
 
-        # For each URL, download the image data and send it as an attachment.
+        # Download each image and send it as an attachment to ensure it displays in the embed.
         for idx, url in enumerate(result_urls):
             try:
                 async with aiohttp.ClientSession() as session:
@@ -81,10 +93,9 @@ class ImageGen(commands.Cog):
                 await interaction.followup.send(f"Error downloading image: {e}")
                 continue
 
-            # Create a file attachment from the image data.
             file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
             embed = discord.Embed(title="", description=prompt, color=0x32a956)
-            # Note the attachment:// prefix tells Discord to look for the attachment.
+            # Use the 'attachment://' URL to reference the file attached below.
             embed.set_image(url=f"attachment://generated_image_{idx}.png")
             embed.set_footer(text=footer_text)
             await interaction.followup.send(file=file, embed=embed)
