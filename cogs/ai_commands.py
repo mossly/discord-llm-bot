@@ -375,10 +375,7 @@ class ModelSelectionView(discord.ui.View):
             await interaction.followup.send("AI commands not available", ephemeral=True)
             return
         
-        try:
-            # Remove the model selection view
-            # await interaction.delete_original_response()
-            
+        try:            
             logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
             
             # Process the AI request - the defer(thinking=True) will show the typing indicator
@@ -390,6 +387,9 @@ class ModelSelectionView(discord.ui.View):
                 image_url=image_url,
                 reply_msg=self.original_message
             )
+            
+            #Remove the model selection view
+            await interaction.delete_original_response()
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
