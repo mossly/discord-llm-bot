@@ -389,7 +389,10 @@ class ModelSelectionView(discord.ui.View):
             )
             
             #Remove the model selection view
-            await interaction.delete_original_response()
+            try:
+                await interaction.delete_original_response()
+            except discord.HTTPException as e:
+                logger.warning(f"Could not delete original response: {e}")
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
