@@ -5,14 +5,10 @@ from embed_utils import send_embed
 from duckduckgo_search import DDGS
 import discord
 from discord.ext import commands
-import openai
-from openai import OpenAI
 import time
 from status_utils import update_status
 
 logger = logging.getLogger(__name__)
-
-oaiclient = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class DuckDuckGo(commands.Cog):
     def __init__(self, bot):
@@ -21,34 +17,34 @@ class DuckDuckGo(commands.Cog):
 
     async def extract_search_query(self, user_message: str) -> str:
         logger.info("Extracting search query for message: %s", user_message)
-        def _extract_search_query(user_message):
-            try:
-                response = oaiclient.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Determine if a web search would help resolve the users last message. This will apply in all cases if the user asks a question that would benefit from information retrieval."
-                                "Try not to make any assumptions, particularly about dates, and definitely search for any information the user requests that is after your knowledge cutoff."
-                                "If a search would not be helpful, return NO_SEARCH."
-                                "If a search would be helpful, return only a concise search query string, informed by the following text, that captures its key intent."
-                                "Always return a search query if the user explicitly requests a web search."
-                            ),
-                        },
-                        {"role": "user", "content": user_message},
-                    ],
+        api_utils = self.bot.get_cog("APIUtils")
+        if not api_utils:
+            logger.error("APIUtils cog not found")
+            return ""
+        
+        try:
+            extracted_query = await api_utils.send_request(
+                model="gpt-4o-mini",
+                message_content=(
+                    "Determine if a web search would help resolve the users last message. This will apply in all cases if the user asks a question that would benefit from information retrieval. "
+                    "Try not to make any assumptions, particularly about dates, and definitely search for any information the user requests that is after your knowledge cutoff. "
+                    "If a search would not be helpful, return NO_SEARCH. "
+                    "If a search would be helpful, return only a concise search query string, informed by the following text, that captures its key intent. "
+                    "Always return a search query if the user explicitly requests a web search.\n\n"
+                    f"User message: {user_message}"
                 )
-                extracted_query = response.choices[0].message.content.strip()
-                if extracted_query.upper() == "NO_SEARCH":
-                    logger.info("Extracted query indicates NO_SEARCH; skipping search.")
-                    return ""
-                logger.info("Extracted search query: %s", extracted_query)
-                return extracted_query
-            except Exception as e:
-                logger.exception("Error extracting search query: %s", e)
+            )
+            
+            extracted_query = extracted_query.strip()
+            if extracted_query.upper() == "NO_SEARCH":
+                logger.info("Extracted query indicates NO_SEARCH; skipping search.")
                 return ""
-        return await asyncio.to_thread(_extract_search_query, user_message)
+            logger.info("Extracted search query: %s", extracted_query)
+            return extracted_query
+            
+        except Exception as e:
+            logger.exception("Error extracting search query: %s", e)
+            return ""
 
     async def perform_ddg_search(self, query: str) -> str:
         logger.info("Performing DDG search for query: %s", query)
@@ -79,29 +75,25 @@ class DuckDuckGo(commands.Cog):
 
     async def summarize_search_results(self, search_results: str) -> str:
         logger.info("Summarizing search results")
-        def _summarize(text):
-            try:
-                response = oaiclient.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Please summarize the following DuckDuckGo search results."
-                                "Extract and present only the key information in a concise summary, and return just the summary."
-                            )
-                        },
-                        {"role": "user", "content": text},
-                    ],
+        api_utils = self.bot.get_cog("APIUtils")
+        if not api_utils:
+            logger.error("APIUtils cog not found")
+            return search_results
+        
+        try:
+            summary = await api_utils.send_request(
+                model="gpt-4o-mini",
+                message_content=(
+                    "Please summarize the following DuckDuckGo search results. "
+                    "Extract and present only the key information in a concise summary, and return just the summary.\n\n"
+                    f"{search_results}"
                 )
-                summary = response.choices[0].message.content.strip()
-                logger.info("Summary generated: %s", summary)
-                return summary
-            except Exception as e:
-                logger.exception("Error summarizing search results: %s", e)
-                return text
-        summary_text = await asyncio.to_thread(_summarize, search_results)
-        return summary_text
+            )
+            logger.info("Summary generated: %s", summary)
+            return summary
+        except Exception as e:
+            logger.exception("Error summarizing search results: %s", e)
+            return search_results
 
     async def search_and_summarize(self, full_message: str) -> str:
         logger.info("Running combined search and summarization for message: %s", full_message)
