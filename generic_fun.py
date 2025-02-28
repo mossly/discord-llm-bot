@@ -25,9 +25,6 @@ async def get_guild_emoji_list(guild: discord.Guild) -> str:
     logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
     return emoji_string
 
-# Changes to generic_fun.py - perform_fun_query function
-# Modify to ensure it uses FUN_PROMPT consistently
-
 async def perform_fun_query(
     prompt: str,
     api_cog,

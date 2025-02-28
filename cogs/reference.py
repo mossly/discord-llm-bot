@@ -27,15 +27,6 @@ class ReferenceCog(commands.Cog):
                 return ""
         return ""
 
-    @commands.command(name="ref")
-    async def ref(self, ctx: commands.Context):
-
-        reference_text = await self.get_reference_message(ctx)
-        if reference_text:
-            await ctx.send(f"Referenced message: {reference_text}")
-        else:
-            await ctx.send("No reference message found or it is empty.")
-
     async def cog_load(self):
         logger.info("ReferenceCog loaded.")
 
