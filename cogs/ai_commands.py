@@ -57,7 +57,7 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None,attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
         """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
@@ -137,7 +137,6 @@ class AICommands(commands.Cog):
                 else:
                     return await interaction.followup.send(embed=error_embed)
 
-
         # Create and send the response embed
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
@@ -149,15 +148,8 @@ class AICommands(commands.Cog):
             await send_embed(channel, embed, reply_to=message_to_reply)
         else:
             await interaction.followup.send(embed=embed)
-        
-        # Normalize model name and validate
-        model_key = model.lower()
-        if model_key not in MODEL_CONFIG:
-            await ctx.reply(f"Unknown model '{model}'. Available models: {', '.join(MODEL_CONFIG.keys())}")
-            return
-            
-        await self._process_ai_request(prompt, model_key, ctx=ctx, attachments=ctx.message.attachments)
-        
+
+
     # ===== SLASH COMMANDS =====
     @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
     async def fun_slash(self, interaction: Interaction, prompt: str):
@@ -307,7 +299,8 @@ class ModelSelectionView(discord.ui.View):
     
     async def submit_button_callback(self, interaction: discord.Interaction):
         """Process the submission with the selected model"""
-        await interaction.response.defer(thinking=True)
+        # Acknowledge the interaction without showing a visible response
+        await interaction.response.defer(ephemeral=True)
         
         model_key = self.selected_model
         
@@ -326,24 +319,40 @@ class ModelSelectionView(discord.ui.View):
             await interaction.followup.send("AI commands not available", ephemeral=True)
             return
         
-        try:            
+        try:
             logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
             
-            # Process the AI request - the defer(thinking=True) will show the typing indicator
-            await ai_commands._process_ai_request(
-                prompt=self.additional_text,
-                model_key=model_key,
-                interaction=interaction,
-                reference_message=self.reference_message,
-                image_url=image_url,
-                reply_msg=self.original_message
+            # Create a custom "thinking" message that replies to the original message
+            thinking_embed = discord.Embed(
+                title="", 
+                description="...generating reply...", 
+                color=0xFDDA0D
             )
+            thinking_msg = await self.original_message.reply(embed=thinking_embed)
             
-            #Remove the model selection view
             try:
+                # Process the AI request
+                await ai_commands._process_ai_request(
+                    prompt=self.additional_text,
+                    model_key=model_key,
+                    interaction=interaction,
+                    reference_message=self.reference_message,
+                    image_url=image_url,
+                    reply_msg=self.original_message
+                )
+            finally:
+                # Delete the thinking message regardless of success/failure
+                try:
+                    await thinking_msg.delete()
+                except discord.HTTPException:
+                    pass
+            
+            # Send a confirmation message and remove the model selection view
+            try:
+                await interaction.followup.send("Response generated successfully!", ephemeral=True)
                 await interaction.delete_original_response()
             except discord.HTTPException as e:
-                logger.warning(f"Could not delete original response: {e}")
+                logger.warning(f"Could not handle interaction response: {e}")
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
