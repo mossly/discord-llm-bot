@@ -195,14 +195,61 @@ class AICommands(commands.Cog):
             has_image = attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
         
         if has_image and not MODEL_CONFIG[model].get("supports_images", False):
-            await interaction.followup.send(
-                f"⚠️ Automatically switched to GPT-4o-mini because you attached an image " 
-                f"and {MODEL_CONFIG[model]['name']} doesn't support image processing.",
-                ephemeral=True
-            )
             model = "gpt-4o-mini"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments)
+
+
+    @app_commands.command(
+        name="conversation",
+        description="Start an AI conversation in a new thread. Every message in the thread will be used as context."
+    )
+    @app_commands.describe(
+        model="Choose which model to use",
+        prompt="Your initial message",
+        attachment="Optional attachment (image or text file)"
+    )
+    async def conversation_slash(
+        self,
+        interaction: Interaction,
+        prompt: str,
+        model: Literal["gpt-o3-mini", "gpt-4o-mini", "deepseek", "fun"] = "gpt-o3-mini",
+        attachment: Optional[Attachment] = None
+    ):
+        await interaction.response.defer(thinking=True)
+        formatted_prompt = f"Message from {interaction.user.name}: {prompt}"
+        
+        initial_msg = await interaction.followup.send(
+            content=f"Starting conversation: {prompt}",
+            wait=True
+        )
+        
+        thread_name = f"Conversation with {interaction.user.display_name} [{model}]"
+        thread = await initial_msg.create_thread(name=thread_name)
+        
+        thread_initial = await thread.send(content=formatted_prompt)
+        
+        await self._process_ai_request(formatted_prompt, model, reply_msg=thread_initial)
+        
+        self.conversation_sessions[thread.id] = {"model": model}
+        
+        await thread.send("Conversation session started. Every message you post here will be fed as context to the AI.")
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
+
+        if isinstance(message.channel, discord.Thread) and message.channel.id in self.conversation_sessions:
+            conversation_history = []
+            async for msg in message.channel.history(limit=50, oldest_first=True):
+                conversation_history.append(f"Message from {msg.author.display_name}: {msg.content}")
+            full_context = "\n\n".join(conversation_history)
+
+            model_key = self.conversation_sessions[message.channel.id]["model"]
+
+            await self._process_ai_request(full_context, model_key, reply_msg=message)
+
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
