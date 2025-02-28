@@ -56,7 +56,17 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
+    async def _process_ai_request(
+        self,
+        prompt,
+        model_key,
+        ctx=None,
+        interaction=None,
+        attachments=None,
+        reference_message=None,
+        image_url=None,
+        reply_msg: Optional[discord.Message] = None
+    ):
         config = MODEL_CONFIG[model_key]
         user = ctx.author if ctx else (interaction.user if interaction else (reply_msg.author if reply_msg else None))
         username = user.name if user else "Unknown User"
@@ -64,35 +74,52 @@ class AICommands(commands.Cog):
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
-        
+
         if config["function"] == "perform_chat_query":
-            from generic_chat import prepare_chat_parameters, perform_chat_query
-            
+            from generic_chat import perform_chat_query, process_attachments
+
             if image_url and not config.get("supports_images", False):
-                error_embed = discord.Embed(
-                    title="ERROR",
-                    description="Image attachments only supported with GPT-4o-mini",
-                    color=0xDC143C
-                )
-                if ctx:
-                    await ctx.reply(embed=error_embed)
-                else:
-                    await interaction.followup.send(embed=error_embed)
-                return
-            
-            if not image_url:
-                from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
+                try:
+                    status_msg = await update_status(None, "...generating image summary...", channel=channel)
+                    summary_prompt = "Provide a concise description of the attached image."
+                    image_summary, image_elapsed, _ = await perform_chat_query(
+                        prompt=summary_prompt,
+                        api_cog=api_cog,
+                        channel=channel,
+                        duck_cog=duck_cog,
+                        image_url=image_url,
+                        reference_message=reference_message,
+                        model=MODEL_CONFIG["gpt-4o-mini"]["api_model"],
+                        reply_footer="gpt-4o-mini | summary",
+                        show_status=False,
+                        api=config.get("api", "openai")
+                    )
+                    await delete_msg(status_msg)
+                    final_prompt = f"{formatted_prompt}\n\nImage Description: {image_summary}"
+                    image_url = None
+                except Exception as e:
+                    logger.exception("Error summarizing image: %s", e)
+                    error_embed = discord.Embed(
+                        title="ERROR",
+                        description="Error summarizing the image.",
+                        color=0xDC143C
+                    )
+                    if ctx:
+                        return await ctx.reply(embed=error_embed)
+                    else:
+                        return await interaction.followup.send(embed=error_embed)
             else:
-                final_prompt = formatted_prompt
-                img_url = image_url
+                if not image_url:
+                    final_prompt, image_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
+                else:
+                    final_prompt = formatted_prompt
 
             cleaned_prompt = final_prompt
             model = config["api_model"]
             footer = config["default_footer"]
             system_prompt = api_cog.SYSTEM_PROMPT
             api = config.get("api", "openai")
-                
+
             try:
                 if ctx:
                     status_msg = await update_status(None, "...generating reply...", channel=channel)
@@ -102,7 +129,7 @@ class AICommands(commands.Cog):
                             api_cog=api_cog,
                             channel=channel,
                             duck_cog=duck_cog,
-                            image_url=img_url,
+                            image_url=image_url,
                             reference_message=reference_message,
                             model=model,
                             reply_footer=footer,
@@ -118,7 +145,7 @@ class AICommands(commands.Cog):
                         api_cog=api_cog,
                         channel=channel,
                         duck_cog=duck_cog,
-                        image_url=img_url,
+                        image_url=image_url,
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
@@ -134,30 +161,10 @@ class AICommands(commands.Cog):
                     return await ctx.reply(embed=error_embed)
                 else:
                     return await interaction.followup.send(embed=error_embed)
-        elif config["function"] == "perform_fun_query":
-            from generic_fun import perform_fun_query
-            try:
-                result, elapsed = await perform_fun_query(
-                    prompt=formatted_prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    image_url=image_url,
-                    reference_message=reference_message,
-                    show_status=False
-                )
-                final_footer = config["default_footer"]
-            except Exception as e:
-                logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                error_embed.set_footer(text=f"Error generating reply: {e}")
-                if ctx:
-                    return await ctx.reply(embed=error_embed)
-                else:
-                    return await interaction.followup.send(embed=error_embed)
 
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
-        
+
         if ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel
             message_to_reply = ctx.message if ctx else reply_msg
@@ -195,14 +202,61 @@ class AICommands(commands.Cog):
             has_image = attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
         
         if has_image and not MODEL_CONFIG[model].get("supports_images", False):
-            await interaction.followup.send(
-                f"⚠️ Automatically switched to GPT-4o-mini because you attached an image " 
-                f"and {MODEL_CONFIG[model]['name']} doesn't support image processing.",
-                ephemeral=True
-            )
             model = "gpt-4o-mini"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments)
+
+
+    @app_commands.command(
+        name="conversation",
+        description="Start an AI conversation in a new thread. Every message in the thread will be used as context."
+    )
+    @app_commands.describe(
+        model="Choose which model to use",
+        prompt="Your initial message",
+        attachment="Optional attachment (image or text file)"
+    )
+    async def conversation_slash(
+        self,
+        interaction: Interaction,
+        prompt: str,
+        model: Literal["gpt-o3-mini", "gpt-4o-mini", "deepseek", "fun"] = "gpt-o3-mini",
+        attachment: Optional[Attachment] = None
+    ):
+        await interaction.response.defer(thinking=True)
+        formatted_prompt = f"Message from {interaction.user.name}: {prompt}"
+        
+        initial_msg = await interaction.followup.send(
+            content=f"Starting conversation: {prompt}",
+            wait=True
+        )
+        
+        thread_name = f"Conversation with {interaction.user.display_name} [{model}]"
+        thread = await initial_msg.create_thread(name=thread_name)
+        
+        thread_initial = await thread.send(content=formatted_prompt)
+        
+        await self._process_ai_request(formatted_prompt, model, reply_msg=thread_initial)
+        
+        self.conversation_sessions[thread.id] = {"model": model}
+        
+        await thread.send("Conversation session started. Every message you post here will be fed as context to the AI.")
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
+
+        if isinstance(message.channel, discord.Thread) and message.channel.id in self.conversation_sessions:
+            conversation_history = []
+            async for msg in message.channel.history(limit=50, oldest_first=True):
+                conversation_history.append(f"Message from {msg.author.display_name}: {msg.content}")
+            full_context = "\n\n".join(conversation_history)
+
+            model_key = self.conversation_sessions[message.channel.id]["model"]
+
+            await self._process_ai_request(full_context, model_key, reply_msg=message)
+
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
