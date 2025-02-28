@@ -189,6 +189,19 @@ class AICommands(commands.Cog):
         attachments = [attachment] if attachment else []
         username = interaction.user.name
         formatted_prompt = f"Message from {username}: {prompt}"
+        
+        has_image = False
+        if attachment:
+            has_image = attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
+        
+        if has_image and not MODEL_CONFIG[model].get("supports_images", False):
+            await interaction.followup.send(
+                f"⚠️ Automatically switched to GPT-4o-mini because you attached an image " 
+                f"and {MODEL_CONFIG[model]['name']} doesn't support image processing.",
+                ephemeral=True
+            )
+            model = "gpt-4o-mini"
+        
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments)
 
 class AIContextMenus(commands.Cog):
