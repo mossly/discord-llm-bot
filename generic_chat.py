@@ -30,9 +30,14 @@ async def process_attachments(prompt: str, attachments: list, is_slash: bool = F
             filename = att.filename.lower()
             if filename.endswith(".txt"):
                 try:
+                    username_prefix = ""
+                    if prompt.startswith("Message from "):
+                        parts = prompt.split(":", 1)
+                        if len(parts) > 1:
+                            username_prefix = parts[0] + ": "
                     if is_slash:
                         file_bytes = await att.read()
-                        final_prompt = file_bytes.decode("utf-8")
+                        final_prompt = username_prefix + file_bytes.decode("utf-8")
                     else:
                         async with aiohttp.ClientSession() as session:
                             async with session.get(att.url) as response:
@@ -55,11 +60,12 @@ async def get_reference_message(ctx) -> str:
                 ref_msg = ctx.message.reference.cached_message
             else:
                 ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            
             if ref_msg.author.id == ctx.bot.user.id:
                 if ref_msg.embeds and ref_msg.embeds[0].description:
                     reference_message = ref_msg.embeds[0].description.strip()
             else:
-                reference_message = ref_msg.content
+                reference_message = f"Message from {ref_msg.author.name}: {ref_msg.content}"
         except Exception as e:
             logger.exception("Failed to fetch reference message: %s", e)
     return reference_message
@@ -91,6 +97,10 @@ async def perform_chat_query(
 ) -> (str, float, str):
     start_time = time.time()
     original_prompt = prompt
+    
+    if not prompt.startswith("Message from"):
+        logger.warning("Prompt missing username prefix, this should be handled by the caller")
+    
     if duck_cog is not None:
         try:
             ddg_summary = await duck_cog.search_and_summarize(original_prompt)

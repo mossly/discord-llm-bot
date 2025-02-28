@@ -63,6 +63,9 @@ class AICommands(commands.Cog):
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
         """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
+        user = ctx.author if ctx else (interaction.user if interaction else (reply_msg.author if reply_msg else None))
+        username = user.name if user else "Unknown User"
+        formatted_prompt = f"Message from {username}: {prompt}"
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
@@ -84,9 +87,9 @@ class AICommands(commands.Cog):
             
             if not image_url:
                 from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
+                final_prompt, img_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
             else:
-                final_prompt = prompt
+                final_prompt = formatted_prompt
                 img_url = image_url
 
             cleaned_prompt = final_prompt
@@ -153,7 +156,9 @@ class AICommands(commands.Cog):
     @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
     async def fun_slash(self, interaction: Interaction, prompt: str):
         await interaction.response.defer(thinking=True)
-        await self._process_ai_request(prompt, "fun", interaction=interaction, attachments=None)
+        username = interaction.user.name
+        formatted_prompt = f"Message from {username}: {prompt}"
+        await self._process_ai_request(formatted_prompt, "fun", interaction=interaction, attachments=None)
 
     @app_commands.command(name="chat", description="Select a model and provide a prompt")
     @app_commands.describe(
@@ -170,7 +175,9 @@ class AICommands(commands.Cog):
     ):
         await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
-        await self._process_ai_request(prompt, model, interaction=interaction, attachments=attachments)
+        username = interaction.user.name
+        formatted_prompt = f"Message from {username}: {prompt}"
+        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments)
 
 class AIContextMenus(commands.Cog):
     """Separate cog for context menu commands"""
