@@ -68,9 +68,6 @@ class AICommands(commands.Cog):
         if config["function"] == "perform_chat_query":
             from generic_chat import prepare_chat_parameters, perform_chat_query
             
-            img_url = None
-            extracted_image_description = None
-            
             if attachments:
                 from generic_chat import process_attachments
                 final_prompt, img_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
@@ -79,76 +76,66 @@ class AICommands(commands.Cog):
                 img_url = image_url
             else:
                 final_prompt = formatted_prompt
+                img_url = None
             
-            if img_url and not config.get("supports_images", False):
-                try:
-                    # Notify user we're processing the image
-                    if ctx:
+            if img_url:
+                if not config.get("supports_images", False):
+                    try:
                         status_msg = await update_status(None, "...analyzing image...", channel=channel)
-                    elif interaction and not interaction.response.is_done():
-                        await interaction.followup.send("⚠️ Analyzing image content for compatibility with your selected model...", ephemeral=True)
-                    
-                    # Use GPT-4o-mini to describe the image
-                    image_description_result, _, _ = await perform_chat_query(
-                        prompt="Describe this image in detail. Focus on key visual elements that would be most relevant to understanding its content.",
-                        api_cog=api_cog,
-                        channel=channel,
-                        image_url=img_url,
-                        model="gpt-4o-mini",
-                        reply_footer="GPT-4o-mini | image analysis",
-                        show_status=False,
-                        api="openai"
-                    )
-                    
-                    extracted_image_description = f"\n\n[Image Description: {image_description_result}]"
-                    final_prompt += extracted_image_description
-                    
-                    if 'status_msg' in locals():
+                        
+                        image_analysis_prompt = "Describe this image in detail, focusing on key visual elements that would be relevant to understanding its content."
+                        
+                        image_analysis_result = await api_cog.send_request(
+                            model="gpt-4o-mini",
+                            message_content=image_analysis_prompt,
+                            image_url=img_url,
+                            api="openai"
+                        )
+                        
                         from message_utils import delete_msg
                         await delete_msg(status_msg)
-                    
-                    processed_img_url = None
-                    
-                except Exception as e:
-                    logger.exception(f"Error describing image with GPT-4o-mini: %s", e)
-                    if 'status_msg' in locals():
-                        from message_utils import delete_msg
-                        await delete_msg(status_msg)
-                    
-                    error_embed = discord.Embed(
-                        title="Warning",
-                        description=f"Could not process image for {config['name']}. Proceeding with text-only response.",
-                        color=0xFFA500
-                    )
-                    if ctx:
-                        await ctx.reply(embed=error_embed)
-                    else:
-                        await interaction.followup.send(embed=error_embed)
-                    
-                    processed_img_url = None
-                    extracted_image_description = None
+                        
+                        final_prompt += f"\n\n[Image Description: {image_analysis_result}]"
+                        
+                        img_url = None
+                        
+                        footer = config["default_footer"].replace(" | default", "") + " | with image description"
+                        
+                    except Exception as e:
+                        logger.exception(f"Error analyzing image: %s", e)
+                        if 'status_msg' in locals():
+                            from message_utils import delete_msg
+                            await delete_msg(status_msg)
+                        
+                        error_embed = discord.Embed(
+                            title="Warning",
+                            description=f"Could not analyze image for {config['name']}. Proceeding with text-only response.",
+                            color=0xFFA500
+                        )
+                        if ctx:
+                            await ctx.reply(embed=error_embed)
+                        else:
+                            await interaction.followup.send(embed=error_embed)
+                        
+                        footer = config["default_footer"]
+                else:
+                    footer = config["default_footer"]
             else:
-                processed_img_url = img_url
+                footer = config["default_footer"]
             
-            cleaned_prompt = final_prompt
             model = config["api_model"]
-            footer = config["default_footer"]
-            system_prompt = api_cog.SYSTEM_PROMPT
             api = config.get("api", "openai")
-            
-            if extracted_image_description and not config.get("supports_images", False):
-                footer = footer.replace(" | default", "") + " | with image description"
-                
+                    
             try:
                 if ctx:
                     status_msg = await update_status(None, "...generating reply...", channel=channel)
                     try:
                         result, elapsed, _ = await perform_chat_query(
-                            prompt=cleaned_prompt,
+                            prompt=final_prompt,
                             api_cog=api_cog,
                             channel=channel,
                             duck_cog=duck_cog,
-                            image_url=processed_img_url,
+                            image_url=img_url,
                             reference_message=reference_message,
                             model=model,
                             reply_footer=footer,
@@ -160,11 +147,11 @@ class AICommands(commands.Cog):
                         await delete_msg(status_msg)
                 else:
                     result, elapsed, _ = await perform_chat_query(
-                        prompt=cleaned_prompt,
+                        prompt=final_prompt,
                         api_cog=api_cog,
                         channel=channel,
                         duck_cog=duck_cog,
-                        image_url=processed_img_url,
+                        image_url=img_url,
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
