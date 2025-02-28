@@ -25,6 +25,9 @@ async def get_guild_emoji_list(guild: discord.Guild) -> str:
     logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
     return emoji_string
 
+# Changes to generic_fun.py - perform_fun_query function
+# Modify to ensure it uses FUN_PROMPT consistently
+
 async def perform_fun_query(
     prompt: str,
     api_cog,
@@ -45,10 +48,6 @@ async def perform_fun_query(
         model = "deepseek/deepseek-chat"
         reply_mode = ""
         
-        system_prompt = api_cog.FUN_SYSTEM_PROMPT
-        if emoji_list:
-            system_prompt += f"\n\nHere is a list of server specific emojis you should use: {emoji_list}"
-        
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
             wait=wait_exponential(min=1, max=10),
@@ -62,8 +61,8 @@ async def perform_fun_query(
                     message_content=prompt,
                     reference_message=reference_message,
                     image_url=image_url,
-                    custom_system_prompt=system_prompt,
                     use_fun=True,
+                    api="openrouter"
                 )
                 break
         elapsed = round(time.time() - start_time, 2)

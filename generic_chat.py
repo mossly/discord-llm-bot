@@ -10,17 +10,8 @@ from message_utils import delete_msg
 
 logger = logging.getLogger(__name__)
 
-O3MINI_PROMPT = "Use markdown formatting."
-VERBOSE_PROMPT = "You are detailed & articulate. Include evidence and reasoning in your answers."
-CREATIVE_PROMPT = (
-    "You are a creative chatbot. Do your best to suggest original ideas and avoid cliches. "
-    "Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. "
-    "Never use the passive voice where you can use the active voice. Do not end your message with a summary."
-)
 DEFAULT_MODEL = "o3-mini"
-DEFAULT_REPLY_MODE = O3MINI_PROMPT
 DEFAULT_REPLY_FOOTER = "o3-mini | default"
-
 
 async def process_attachments(prompt: str, attachments: list, is_slash: bool = False) -> (str, str):
     image_url = None
@@ -128,7 +119,6 @@ async def perform_chat_query(
                     message_content=prompt,
                     reference_message=reference_message,
                     image_url=image_url,
-                    custom_system_prompt=None,
                     api=api,
                 )
                 break

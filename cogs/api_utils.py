@@ -30,7 +30,6 @@ class APIUtils(commands.Cog):
         message_content: str,
         reference_message: str = None,
         image_url: str = None,
-        custom_system_prompt: str = None,
         use_fun: bool = False,
         api: str = "openai"
     ) -> str:
@@ -41,7 +40,11 @@ class APIUtils(commands.Cog):
             api_client = self.OAICLIENT
             logger.info(f"Using OpenAI API for model: {model}")
             
-        system_used = custom_system_prompt if custom_system_prompt is not None else self.SYSTEM_PROMPT
+        if use_fun:
+            system_used = self.FUN_SYSTEM_PROMPT
+        else:
+            system_used = self.SYSTEM_PROMPT
+        
         message_content = message_content.replace(self.BOT_TAG, "")
 
         messages_input = [{"role": "system", "content": f"{system_used} {reply_mode}"}]

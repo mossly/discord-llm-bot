@@ -17,7 +17,6 @@ MODEL_CONFIG = {
         "default_model": "o3-mini",
         "default_footer": "o3-mini | default",
         "api_model": "o3-mini",
-        "system_prompt": "Use markdown formatting.",
         "supports_images": False,
         "api": "openai"
     },
@@ -28,7 +27,6 @@ MODEL_CONFIG = {
         "default_model": "gpt-4o-mini",
         "default_footer": "gpt-4o-mini | default",
         "api_model": "gpt-4o-mini",
-        "system_prompt": "Use markdown formatting.",
         "supports_images": True,
         "api": "openai"
     },
@@ -39,7 +37,6 @@ MODEL_CONFIG = {
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek",
         "api_model": "deepseek/deepseek-chat",
-        "system_prompt": "Use markdown formatting.",
         "supports_images": False,
         "api": "openrouter"
     },
@@ -50,7 +47,6 @@ MODEL_CONFIG = {
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek V3 (Fun Mode)",
         "api_model": "deepseek/deepseek-chat",
-        "system_prompt": None,
         "supports_images": False,
         "api": "openrouter"
     }
@@ -94,7 +90,7 @@ class AICommands(commands.Cog):
             cleaned_prompt = final_prompt
             model = config["api_model"]
             footer = config["default_footer"]
-            system_prompt = config["system_prompt"]
+            system_prompt = api_cog.SYSTEM_PROMPT
             api = config.get("api", "openai")
                 
             try:
@@ -140,6 +136,26 @@ class AICommands(commands.Cog):
                     return await ctx.reply(embed=error_embed)
                 else:
                     return await interaction.followup.send(embed=error_embed)
+        elif config["function"] == "perform_fun_query":
+            from generic_fun import perform_fun_query
+            try:
+                result, elapsed = await perform_fun_query(
+                    prompt=formatted_prompt,
+                    api_cog=api_cog,
+                    channel=channel,
+                    image_url=image_url,
+                    reference_message=reference_message,
+                    show_status=False
+                )
+                final_footer = config["default_footer"]
+            except Exception as e:
+                logger.exception(f"Error in {model_key} request: %s", e)
+                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
+                error_embed.set_footer(text=f"Error generating reply: {e}")
+                if ctx:
+                    return await ctx.reply(embed=error_embed)
+                else:
+                    return await interaction.followup.send(embed=error_embed)
 
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
@@ -150,7 +166,6 @@ class AICommands(commands.Cog):
             await send_embed(channel, embed, reply_to=message_to_reply)
         else:
             await interaction.followup.send(embed=embed)
-
 
     @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
     async def fun_slash(self, interaction: Interaction, prompt: str):
