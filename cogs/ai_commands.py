@@ -18,7 +18,8 @@ MODEL_CONFIG = {
         "default_footer": "o3-mini | default",
         "api_model": "o3-mini",
         "system_prompt": "Use markdown formatting.",
-        "supports_images": False
+        "supports_images": False,
+        "api": "openai"
     },
     "gpt-4o-mini": {
         "name": "GPT-4o-mini",
@@ -28,7 +29,8 @@ MODEL_CONFIG = {
         "default_footer": "gpt-4o-mini | default",
         "api_model": "gpt-4o-mini",
         "system_prompt": "Use markdown formatting.",
-        "supports_images": True
+        "supports_images": True,
+        "api": "openai"
     },
     "deepseek": {
         "name": "Deepseek",
@@ -38,7 +40,8 @@ MODEL_CONFIG = {
         "default_footer": "Deepseek",
         "api_model": "deepseek/deepseek-chat",
         "system_prompt": "Use markdown formatting.",
-        "supports_images": False
+        "supports_images": False,
+        "api": "openrouter"
     },
     "fun": {
         "name": "Fun Mode",
@@ -48,7 +51,8 @@ MODEL_CONFIG = {
         "default_footer": "Deepseek V3 (Fun Mode)",
         "api_model": "deepseek/deepseek-chat",
         "system_prompt": None,
-        "supports_images": False
+        "supports_images": False,
+        "api": "openrouter"
     }
 }
 
@@ -89,6 +93,7 @@ class AICommands(commands.Cog):
             model = config["api_model"]
             footer = config["default_footer"]
             system_prompt = config["system_prompt"]
+            api = config.get("api", "openai")
                 
             try:
                 if ctx:
@@ -104,7 +109,8 @@ class AICommands(commands.Cog):
                             model=model,
                             reply_mode=system_prompt,
                             reply_footer=footer,
-                            show_status=False
+                            show_status=False,
+                            api=api
                         )
                     finally:
                         from message_utils import delete_msg
@@ -120,7 +126,8 @@ class AICommands(commands.Cog):
                         model=model,
                         reply_mode=system_prompt,
                         reply_footer=footer,
-                        show_status=False
+                        show_status=False,
+                        api=api
                     )
                 final_footer = footer
             except Exception as e:

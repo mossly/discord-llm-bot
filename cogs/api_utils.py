@@ -32,8 +32,15 @@ class APIUtils(commands.Cog):
         image_url: str = None,
         custom_system_prompt: str = None,
         use_fun: bool = False,
+        api: str = "openai"
     ) -> str:
-        api_client = self.OPENROUTERCLIENT if use_fun else self.OAICLIENT
+        if api == "openrouter":
+            api_client = self.OPENROUTERCLIENT
+            logger.info(f"Using OpenRouter API for model: {model}")
+        else:
+            api_client = self.OAICLIENT
+            logger.info(f"Using OpenAI API for model: {model}")
+            
         system_used = custom_system_prompt if custom_system_prompt is not None else self.SYSTEM_PROMPT
         message_content = message_content.replace(self.BOT_TAG, "")
 

@@ -76,7 +76,6 @@ async def prepare_chat_parameters(prompt: str, attachments: list = None, ctx=Non
         
     return final_prompt, image_url, model, reply_mode, reply_footer, reference_message
 
-
 async def perform_chat_query(
     prompt: str,
     api_cog,
@@ -88,6 +87,7 @@ async def perform_chat_query(
     reply_mode: str = DEFAULT_REPLY_MODE,
     reply_footer: str = DEFAULT_REPLY_FOOTER,
     show_status: bool = True,
+    api: str = "openai",
 ) -> (str, float, str):
     start_time = time.time()
     original_prompt = prompt
@@ -119,6 +119,7 @@ async def perform_chat_query(
                     reference_message=reference_message,
                     image_url=image_url,
                     custom_system_prompt=None,
+                    api=api,
                 )
                 break
         elapsed = round(time.time() - start_time, 2)
