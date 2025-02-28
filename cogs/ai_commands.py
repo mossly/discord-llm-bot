@@ -61,7 +61,6 @@ class AICommands(commands.Cog):
         self.bot = bot
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
-        """Unified handler for all AI requests regardless of command type"""
         config = MODEL_CONFIG[model_key]
         user = ctx.author if ctx else (interaction.user if interaction else (reply_msg.author if reply_msg else None))
         username = user.name if user else "Unknown User"
@@ -180,7 +179,6 @@ class AICommands(commands.Cog):
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments)
 
 class AIContextMenus(commands.Cog):
-    """Separate cog for context menu commands"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         
@@ -202,7 +200,6 @@ class AIContextMenus(commands.Cog):
             super().__init__(title=title)
         
         def _check_for_images(self, message):
-            """Check if the message contains image attachments"""
             if message.attachments:
                 return any(att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) 
                            for att in message.attachments)
@@ -281,7 +278,6 @@ class ModelSelectionView(discord.ui.View):
         self.add_item(submit_button)
     
     async def on_model_select(self, interaction: discord.Interaction):
-        """Store the selected model value without triggering generation"""
         self.selected_model = self.model_select.values[0]
         
         if self.has_image and self.selected_model != "gpt-4o-mini":
@@ -334,7 +330,6 @@ class ModelSelectionView(discord.ui.View):
 
 @app_commands.context_menu(name="AI Reply")
 async def ai_context_menu(interaction: Interaction, message: discord.Message):
-    """Unified context menu for AI replies with model selection"""
     if message.author == interaction.client.user:
         content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
     else:

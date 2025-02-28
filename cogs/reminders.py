@@ -18,7 +18,6 @@ class Reminders(commands.Cog):
         self.task = asyncio.create_task(self.reminder_loop())
 
     async def reminder_loop(self):
-        """Background loop that checks for due reminders every second."""
         while True:
             now = time.time()
             to_remove = []

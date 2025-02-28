@@ -9,12 +9,6 @@ class ReferenceCog(commands.Cog):
         self.bot = bot
 
     async def get_reference_message(self, ctx: commands.Context) -> str:
-        """
-        Helper to fetch the referenced message’s content.
-        • If the referenced message is from the bot and has an embed,
-          returns the embed’s description.
-        • Otherwise, returns the plain text of that message.
-        """
         if ctx.message.reference:
             try:
                 if ctx.message.reference.cached_message:
@@ -35,10 +29,7 @@ class ReferenceCog(commands.Cog):
 
     @commands.command(name="ref")
     async def ref(self, ctx: commands.Context):
-        """
-        Show the referenced message (if any). This can be used to verify
-        that a reply to a prior message is being interpreted correctly.
-        """
+
         reference_text = await self.get_reference_message(ctx)
         if reference_text:
             await ctx.send(f"Referenced message: {reference_text}")
