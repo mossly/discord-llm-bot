@@ -56,7 +56,17 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
+    async def _process_ai_request(
+        self,
+        prompt,
+        model_key,
+        ctx=None,
+        interaction=None,
+        attachments=None,
+        reference_message=None,
+        image_url=None,
+        reply_msg: Optional[discord.Message] = None
+    ):
         config = MODEL_CONFIG[model_key]
         user = ctx.author if ctx else (interaction.user if interaction else (reply_msg.author if reply_msg else None))
         username = user.name if user else "Unknown User"
@@ -64,78 +74,62 @@ class AICommands(commands.Cog):
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
-        
+
         if config["function"] == "perform_chat_query":
-            from generic_chat import prepare_chat_parameters, perform_chat_query
-            
-            if attachments:
-                from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
-            elif image_url:
-                final_prompt = formatted_prompt
-                img_url = image_url
+            from generic_chat import perform_chat_query, process_attachments
+
+            if image_url and not config.get("supports_images", False):
+                try:
+                    status_msg = await update_status(None, "...generating image summary...", channel=channel)
+                    summary_prompt = "Provide a concise description of the attached image."
+                    image_summary, image_elapsed, _ = await perform_chat_query(
+                        prompt=summary_prompt,
+                        api_cog=api_cog,
+                        channel=channel,
+                        duck_cog=duck_cog,
+                        image_url=image_url,
+                        reference_message=reference_message,
+                        model=MODEL_CONFIG["gpt-4o-mini"]["api_model"],
+                        reply_footer="gpt-4o-mini | summary",
+                        show_status=False,
+                        api=config.get("api", "openai")
+                    )
+                    await delete_msg(status_msg)
+                    final_prompt = f"{formatted_prompt}\n\nImage Description: {image_summary}"
+                    image_url = None
+                except Exception as e:
+                    logger.exception("Error summarizing image: %s", e)
+                    error_embed = discord.Embed(
+                        title="ERROR",
+                        description="Error summarizing the image.",
+                        color=0xDC143C
+                    )
+                    if ctx:
+                        return await ctx.reply(embed=error_embed)
+                    else:
+                        return await interaction.followup.send(embed=error_embed)
             else:
-                final_prompt = formatted_prompt
-                img_url = None
-            
-            if img_url:
-                if not config.get("supports_images", False):
-                    try:
-                        status_msg = await update_status(None, "...analyzing image...", channel=channel)
-                        
-                        image_analysis_prompt = "Describe this image in detail, focusing on key visual elements that would be relevant to understanding its content."
-                        
-                        image_analysis_result = await api_cog.send_request(
-                            model="gpt-4o-mini",
-                            message_content=image_analysis_prompt,
-                            image_url=img_url,
-                            api="openai"
-                        )
-                        
-                        from message_utils import delete_msg
-                        await delete_msg(status_msg)
-                        
-                        final_prompt += f"\n\n[Image Description: {image_analysis_result}]"
-                        
-                        img_url = None
-                        
-                        footer = config["default_footer"].replace(" | default", "") + " | with image description"
-                        
-                    except Exception as e:
-                        logger.exception(f"Error analyzing image: %s", e)
-                        if 'status_msg' in locals():
-                            from message_utils import delete_msg
-                            await delete_msg(status_msg)
-                        
-                        error_embed = discord.Embed(
-                            title="Warning",
-                            description=f"Could not analyze image for {config['name']}. Proceeding with text-only response.",
-                            color=0xFFA500
-                        )
-                        if ctx:
-                            await ctx.reply(embed=error_embed)
-                        else:
-                            await interaction.followup.send(embed=error_embed)
-                        
-                        footer = config["default_footer"]
+                if not image_url:
+                    final_prompt, image_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
                 else:
-                    footer = config["default_footer"]
-            else:
-                footer = config["default_footer"]
-            
+                    final_prompt = formatted_prompt
+
+            cleaned_prompt = final_prompt
             model = config["api_model"]
+            footer = config["default_footer"]
+            system_prompt = api_cog.SYSTEM_PROMPT
             api = config.get("api", "openai")
-                    
+
             try:
                 if ctx:
                     status_msg = await update_status(None, "...generating reply...", channel=channel)
                     try:
                         result, elapsed, _ = await perform_chat_query(
-                            prompt=final_prompt,
+                            prompt=cleaned_prompt,
                             api_cog=api_cog,
                             channel=channel,
                             duck_cog=duck_cog,
-                            image_url=img_url,
+                            image_url=image_url,
                             reference_message=reference_message,
                             model=model,
                             reply_footer=footer,
@@ -147,11 +141,11 @@ class AICommands(commands.Cog):
                         await delete_msg(status_msg)
                 else:
                     result, elapsed, _ = await perform_chat_query(
-                        prompt=final_prompt,
+                        prompt=cleaned_prompt,
                         api_cog=api_cog,
                         channel=channel,
                         duck_cog=duck_cog,
-                        image_url=img_url,
+                        image_url=image_url,
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
@@ -167,30 +161,10 @@ class AICommands(commands.Cog):
                     return await ctx.reply(embed=error_embed)
                 else:
                     return await interaction.followup.send(embed=error_embed)
-        elif config["function"] == "perform_fun_query":
-            from generic_fun import perform_fun_query
-            try:
-                result, elapsed = await perform_fun_query(
-                    prompt=formatted_prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    image_url=image_url,
-                    reference_message=reference_message,
-                    show_status=False
-                )
-                final_footer = config["default_footer"]
-            except Exception as e:
-                logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                error_embed.set_footer(text=f"Error generating reply: {e}")
-                if ctx:
-                    return await ctx.reply(embed=error_embed)
-                else:
-                    return await interaction.followup.send(embed=error_embed)
 
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
-        
+
         if ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel
             message_to_reply = ctx.message if ctx else reply_msg
