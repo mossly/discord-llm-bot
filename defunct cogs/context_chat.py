@@ -24,14 +24,11 @@ class ChatReplyModal(discord.ui.Modal, title="Chat Reply"):
         self.start_time = time.time()
 
     async def on_submit(self, interaction: Interaction):
-        # Defer the response so Discord shows that we're processing the request.
         await interaction.response.defer()
         additional_text = self.additional_input.value or ""
-        # Use our generic suffix extractor. (If no suffix is found, defaults will be returned.)
         cleaned_prompt, model, reply_mode, reply_footer = extract_suffixes(additional_text)
         duck_cog = interaction.client.get_cog("DuckDuckGo")
         try:
-            # Call the generic chat function with the additional prompt and the referenced message.
             result, elapsed, final_footer = await perform_chat_query(
                 prompt=cleaned_prompt,
                 api_cog=self.api_cog,
@@ -55,12 +52,6 @@ class ChatReplyModal(discord.ui.Modal, title="Chat Reply"):
 
 @app_commands.context_menu(name="Chat Reply")
 async def context_chat_trigger(interaction: Interaction, message: discord.Message):
-    """
-    When a user right‑clicks a message and selects “Chat Reply,”
-    this command extracts text from the target message (if the message is from the bot, use its embed description)
-    and then presents a modal so the user can optionally add extra input before generating a reply.
-    """
-    # Extract context text from the target message.
     if message.author == interaction.client.user:
         if message.embeds and message.embeds[0].description:
             content = message.embeds[0].description.strip()
@@ -86,5 +77,4 @@ class ContextChat(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ContextChat(bot))
-    # Register the context menu command with the bot’s application command tree.
     bot.tree.add_command(context_chat_trigger)

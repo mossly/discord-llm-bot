@@ -5,7 +5,7 @@ from discord import app_commands, Interaction, Embed
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from generic_fun import perform_fun_query  # import the shared function
+from generic_fun import perform_fun_query
 from status_utils import update_status
 from message_utils import delete_msg
 from embed_utils import send_embed

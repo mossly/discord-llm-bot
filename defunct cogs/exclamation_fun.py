@@ -3,7 +3,7 @@ import logging
 import discord
 from discord.ext import commands
 
-from generic_fun import perform_fun_query  # import our shared function
+from generic_fun import perform_fun_query
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,6 @@ class FunCommands(commands.Cog):
         Usage: !fun <your message>
         """
         start_time = time.time()
-        # Retrieve the API utility cog
         api_cog = self.bot.get_cog("APIUtils")
         if not api_cog:
             return await ctx.reply("API utility cog not loaded!")
@@ -32,7 +31,6 @@ class FunCommands(commands.Cog):
         
         embed = discord.Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=f"Deepseek V3 (Fun Mode) | generated in {elapsed} seconds")
-        # Instead of sending a new message, we reply to the command invocation.
         await ctx.reply(embed=embed)
 
 async def setup(bot: commands.Bot):

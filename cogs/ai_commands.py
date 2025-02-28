@@ -9,7 +9,6 @@ from status_utils import update_status
 
 logger = logging.getLogger(__name__)
 
-# Enhanced model configuration with more details
 MODEL_CONFIG = {
     "gpt-o3-mini": {
         "name": "GPT-o3-mini",
@@ -67,7 +66,6 @@ class AICommands(commands.Cog):
         if config["function"] == "perform_chat_query":
             from generic_chat import prepare_chat_parameters, perform_chat_query
             
-            # Check for direct image_url parameter (from context menu)
             if image_url and not config.get("supports_images", False):
                 error_embed = discord.Embed(
                     title="ERROR",
@@ -80,7 +78,6 @@ class AICommands(commands.Cog):
                     await interaction.followup.send(embed=error_embed)
                 return
             
-            # Process attachments or use provided image_url
             if not image_url:
                 from generic_chat import process_attachments
                 final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
@@ -94,8 +91,6 @@ class AICommands(commands.Cog):
             system_prompt = config["system_prompt"]
                 
             try:
-                # For text commands (using ctx), use status updates
-                # For slash commands (using interaction), the "thinking" state is already set
                 if ctx:
                     status_msg = await update_status(None, "...generating reply...", channel=channel)
                     try:
@@ -109,12 +104,12 @@ class AICommands(commands.Cog):
                             model=model,
                             reply_mode=system_prompt,
                             reply_footer=footer,
-                            show_status=False  # Don't show status again in the function
+                            show_status=False
                         )
                     finally:
                         from message_utils import delete_msg
                         await delete_msg(status_msg)
-                else:  # Slash command
+                else:
                     result, elapsed, _ = await perform_chat_query(
                         prompt=cleaned_prompt,
                         api_cog=api_cog,
@@ -125,7 +120,7 @@ class AICommands(commands.Cog):
                         model=model,
                         reply_mode=system_prompt,
                         reply_footer=footer,
-                        show_status=False  # Don't show status, Discord's "thinking" state is used
+                        show_status=False
                     )
                 final_footer = footer
             except Exception as e:
@@ -137,11 +132,9 @@ class AICommands(commands.Cog):
                 else:
                     return await interaction.followup.send(embed=error_embed)
 
-        # Create and send the response embed
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
         
-        # Use the "reply message" (if provided) as the message to reply to.
         if ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel
             message_to_reply = ctx.message if ctx else reply_msg
@@ -150,7 +143,6 @@ class AICommands(commands.Cog):
             await interaction.followup.send(embed=embed)
 
 
-    # ===== SLASH COMMANDS =====
     @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
     async def fun_slash(self, interaction: Interaction, prompt: str):
         await interaction.response.defer(thinking=True)
@@ -178,7 +170,6 @@ class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         
-    # Base modal class with model selection
     class ModelSelectModal(discord.ui.Modal):
         additional_input = discord.ui.TextInput(
             label="Additional Input (Optional)",
@@ -204,10 +195,8 @@ class AIContextMenus(commands.Cog):
             return False
             
         async def on_submit(self, interaction: discord.Interaction):
-            # Get the additional text input
             additional_text = self.additional_input.value or ""
             
-            # Create and show model selection view
             view = ModelSelectionView(
                 has_image=self.has_image,
                 reference_message=self.reference_message,
@@ -231,25 +220,22 @@ class ModelSelectionView(discord.ui.View):
         self.additional_text = additional_text
         self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
         
-        # Add the model dropdown
         options = []
         
-        # Always include GPT-4o-mini as an option
         options.append(discord.SelectOption(
             label="GPT-4o-mini", 
             value="gpt-4o-mini",
             description="OpenAI model with image support",
-            default=self.has_image  # Make it the default if images are present
+            default=self.has_image
         ))
         
-        # Only add other models if no images are present
         if not self.has_image:
             options.extend([
                 discord.SelectOption(
                     label="GPT-o3-mini", 
                     value="gpt-o3-mini", 
                     description="OpenAI standard model",
-                    default=True  # Make this the default if no images
+                    default=True
                 ),
                 discord.SelectOption(
                     label="Deepseek", 
@@ -268,13 +254,10 @@ class ModelSelectionView(discord.ui.View):
             options=options
         )
         
-        # Set up callback for selection changes - just stores the value, doesn't trigger generation
         self.model_select.callback = self.on_model_select
         
-        # Add the select to the view
         self.add_item(self.model_select)
         
-        # Add the submit button to the view
         submit_button = discord.ui.Button(
             label="Submit",
             style=discord.ButtonStyle.primary,
@@ -287,24 +270,20 @@ class ModelSelectionView(discord.ui.View):
         """Store the selected model value without triggering generation"""
         self.selected_model = self.model_select.values[0]
         
-        # If user selected a non-4o model for an image, show warning
         if self.has_image and self.selected_model != "gpt-4o-mini":
             await interaction.response.send_message(
                 "Warning: Only GPT-4o-mini can process images. Using other models will ignore the image.",
                 ephemeral=True
             )
         else:
-            # Just acknowledge the selection without further action
             await interaction.response.defer()
     
     async def submit_button_callback(self, interaction: discord.Interaction):
         """Process the submission with the selected model"""
-        # Acknowledge the interaction without showing a visible response
         await interaction.response.defer(ephemeral=True)
         
         model_key = self.selected_model
         
-        # Get image URL if present
         image_url = None
         if self.has_image:
             for att in self.original_message.attachments:
@@ -313,7 +292,6 @@ class ModelSelectionView(discord.ui.View):
                     logger.info(f"Found image attachment: {image_url}")
                     break
         
-        # Get the AI commands cog and process the request
         ai_commands = interaction.client.get_cog("AICommands")
         if not ai_commands:
             await interaction.followup.send("AI commands not available", ephemeral=True)
@@ -322,7 +300,6 @@ class ModelSelectionView(discord.ui.View):
         try:
             logger.info(f"Submitting AI request with model: {model_key}, has_image: {self.has_image}, image_url: {image_url}")
             
-            # Create a custom "thinking" message that replies to the original message
             thinking_embed = discord.Embed(
                 title="", 
                 description="...generating reply...", 
@@ -331,7 +308,6 @@ class ModelSelectionView(discord.ui.View):
             thinking_msg = await self.original_message.reply(embed=thinking_embed)
             
             try:
-                # Process the AI request
                 await ai_commands._process_ai_request(
                     prompt=self.additional_text,
                     model_key=model_key,
@@ -341,13 +317,11 @@ class ModelSelectionView(discord.ui.View):
                     reply_msg=self.original_message
                 )
             finally:
-                # Delete the thinking message regardless of success/failure
                 try:
                     await thinking_msg.delete()
                 except discord.HTTPException:
                     pass
             
-            # Send a confirmation message and remove the model selection view
             try:
                 await interaction.followup.send("Response generated successfully!", ephemeral=True)
                 await interaction.delete_original_response()
@@ -367,14 +341,12 @@ async def ai_context_menu(interaction: Interaction, message: discord.Message):
     else:
         content = message.content
     
-    # Get image URLs from original message if it has images
     has_images = False
     for att in message.attachments:
         if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
             has_images = True
             break
     
-    # Format reference message
     reference_message = f"Message from {message.author.name}: {content}"
     if has_images:
         reference_message += " [This message contains an image attachment]"
@@ -387,5 +359,4 @@ async def setup(bot: commands.Bot):
     await bot.add_cog(AICommands(bot))
     await bot.add_cog(AIContextMenus(bot))
     
-    # Register the unified context menu command
     bot.tree.add_command(ai_context_menu)

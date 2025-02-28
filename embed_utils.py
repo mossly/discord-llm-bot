@@ -5,10 +5,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_embed_total_length(embed: discord.Embed) -> int:
-    """
-    Compute the total number of characters used in an embed.
-    (Counts title + description + footer text + all fields.)
-    """
     logger.debug("Calculating total length of embed.")
     total = 0
     if embed.title:
@@ -28,14 +24,9 @@ def get_embed_total_length(embed: discord.Embed) -> int:
     return total
 
 def split_embed(embed: discord.Embed) -> List[discord.Embed]:
-    """
-    Splits the embed's description into chunks so that each embed is under Discord's 4096 character limit.
-    Only the description is split. The title is only included in the first part, and the footer only in the last.
-    """
     logger.debug("Splitting embed into chunks if needed.")
     header_len = len(embed.title) if embed.title else 0
     footer_len = len(embed.footer.text) if (embed.footer and embed.footer.text) else 0
-    # Allow for some safe margin: here we use 4096 as a safe chunk size provided header/footer lengths.
     safe_chunk_size = min(4000, 4096 - max(header_len, footer_len))
     logger.debug("Header length: %d, Footer length: %d, Safe chunk size: %d", header_len, footer_len, safe_chunk_size)
     
@@ -44,7 +35,6 @@ def split_embed(embed: discord.Embed) -> List[discord.Embed]:
         logger.debug("No description found; returning the original embed.")
         return [embed]
     
-    # Split the description into safe chunks.
     chunks = [text[i:i+safe_chunk_size] for i in range(0, len(text), safe_chunk_size)]
     logger.debug("Description split into %d chunk(s).", len(chunks))
     new_embeds = []
@@ -61,13 +51,6 @@ def split_embed(embed: discord.Embed) -> List[discord.Embed]:
     return new_embeds
 
 async def send_embed(destination, embed: discord.Embed, *, reply_to: Optional[discord.Message] = None) -> None:
-    """
-    Sends an embed to the destination. If a reply_to is provided (a discord.Message),
-    then replies to that message. Handles splitting embeds if they exceed Discord's 4096 character limit.
-    
-    destination: Either a channel (with a .send method) or a context in which to call send.
-    reply_to: Optional discord.Message. If provided, the first embed is sent as a reply to this message.
-    """
     total_length = get_embed_total_length(embed)
     logger.debug("Embed total length: %d", total_length)
     if total_length > 4096:

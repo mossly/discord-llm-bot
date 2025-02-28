@@ -22,7 +22,7 @@ class FunSlash(commands.Cog):
         if attachment:
             filename = attachment.filename.lower()
             if filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
-                image_url = attachment.url  # or process based on your needs
+                image_url = attachment.url
 
         api_cog = self.bot.get_cog("APIUtils")
         if not api_cog:

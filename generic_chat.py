@@ -23,11 +23,6 @@ DEFAULT_REPLY_FOOTER = "o3-mini | default"
 
 
 async def process_attachments(prompt: str, attachments: list, is_slash: bool = False) -> (str, str):
-    """
-    Process attachments to update the prompt and extract an image URL if one is attached.
-    For text file attachments, the file's content replaces the existing prompt.
-    For image files, the URL is set (the first found is used).
-    """
     image_url = None
     final_prompt = prompt
     if attachments:
@@ -48,17 +43,11 @@ async def process_attachments(prompt: str, attachments: list, is_slash: bool = F
                 except Exception as e:
                     logger.exception("Error processing text attachment: %s", e)
             elif filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and not image_url:
-                # For image attachments, we just store the attachment URL
-                # The API will fetch the image using proxy=None to allow for Discord CDN URLs
-                image_url = att.proxy_url or att.url  # Use proxy_url if available as it's better for Discord CDN
+                image_url = att.proxy_url or att.url
     return final_prompt, image_url
 
 
 async def get_reference_message(ctx) -> str:
-    """
-    For text commands, if the invocation is a reply, fetches the reference message.
-    Returns the content or embed description from the referenced message.
-    """
     reference_message = ""
     if hasattr(ctx, "message") and ctx.message.reference:
         try:
@@ -98,14 +87,8 @@ async def perform_chat_query(
     model: str = DEFAULT_MODEL,
     reply_mode: str = DEFAULT_REPLY_MODE,
     reply_footer: str = DEFAULT_REPLY_FOOTER,
-    show_status: bool = True,  # New parameter
+    show_status: bool = True,
 ) -> (str, float, str):
-    """
-    Core logic for a chat request:
-      • Optionally appends a DuckDuckGo search summary (if duck_cog is available),
-      • Uses a tenacity retry block to call the API,
-      • Returns the API reply, elapsed time, and reply_footer.
-    """
     start_time = time.time()
     original_prompt = prompt
     if duck_cog is not None:
@@ -117,7 +100,6 @@ async def perform_chat_query(
         if ddg_summary:
             prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
 
-    # Only show status if requested (for text commands)
     status_msg = None
     if show_status:
         status_msg = await update_status(None, "...generating reply...", channel=channel)
@@ -141,13 +123,11 @@ async def perform_chat_query(
                 break
         elapsed = round(time.time() - start_time, 2)
         
-        # Clean up status message if it was created
         if status_msg:
             await delete_msg(status_msg)
             
         return result, elapsed, reply_footer
     except Exception as e:
-        # Clean up status message if it was created
         if status_msg:
             await delete_msg(status_msg)
         logger.exception("Error in perform_chat_query: %s", e)

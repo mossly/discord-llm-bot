@@ -7,7 +7,6 @@ from message_utils import delete_msg
 from embed_utils import send_embed
 from status_utils import update_status
 
-# Create a logger for this module.
 logger = logging.getLogger(__name__)
 
 class ImageGen(commands.Cog):
@@ -24,7 +23,6 @@ class ImageGen(commands.Cog):
             quality=img_quality,
             n=1,
         )
-        # Grab the image URLs from the response (assumes response.data is an iterable with .url)
         image_urls = [data.url for data in response.data]
         logger.info("Generated image URL(s): %s", image_urls)
         return image_urls
@@ -32,12 +30,10 @@ class ImageGen(commands.Cog):
     @commands.command(name="gen")
     async def gen(self, ctx, *, prompt):
         start_time = time.time()
-        # Default settings
         quality = "standard"
         size = "1024x1024"
         footer_text_parts = ["DALL·E 3"]
 
-        # Parse flags from the prompt text.
         args = prompt.split()
         prompt_without_flags = []
         for arg in args:
@@ -56,7 +52,6 @@ class ImageGen(commands.Cog):
         logger.info("Processing image generation command. User: %s, Channel: %s, Final Prompt: '%s', Quality: '%s', Size: '%s'",
                     ctx.author.name, ctx.channel.name, prompt_final, quality, size)
         
-        # Update status in the channel.
         status_msg = await update_status(None, "...generating image...", channel=ctx.channel)
         try:
             result_urls = await self.generate_image(prompt_final, quality, size)
@@ -71,7 +66,6 @@ class ImageGen(commands.Cog):
         footer_text = " | ".join(footer_text_parts)
         await delete_msg(status_msg)
         
-        # Send an embed for each image URL received.
         for url in result_urls:
             embed = discord.Embed(title="", description=prompt_final, color=0x32a956)
             embed.set_image(url=url)
@@ -81,6 +75,5 @@ class ImageGen(commands.Cog):
         
         logger.info("Image generation command completed in %s seconds", generation_time)
 
-# Cog setup
 async def setup(bot):
     await bot.add_cog(ImageGen(bot))

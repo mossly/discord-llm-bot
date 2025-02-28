@@ -22,14 +22,9 @@ async def on_ready():
     logging.info(f"{bot.user.name} has connected to Discord!")
     for guild in bot.guilds:
         logging.info(f"Bot is in server: {guild.name} (id: {guild.id})")
-    # Force a sync of the slash commands with Discord
     await bot.tree.sync()
 
 async def load_cogs():
-    """
-    Dynamically load all Python modules (cogs) in the 'cogs' directory.
-    Each cog is responsible for its own commands and functionality.
-    """
     for filename in os.listdir("./cogs"):
         if filename.endswith(".py"):
             await bot.load_extension(f"cogs.{filename[:-3]}")

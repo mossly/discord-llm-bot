@@ -2,7 +2,7 @@ import logging
 import discord
 from discord.ext import commands
 from generic_chat import prepare_chat_parameters, perform_chat_query
-from embed_utils import send_embed  # Add this import
+from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,6 @@ class ChatCommands(commands.Cog):
         Usage: !chat <your message>
         Optionally attaches text files for prompt content or images.
         """
-        # Process attachments and (if applicable) reference messages.
         final_prompt, image_url, model, reply_mode, reply_footer, reference_message = await prepare_chat_parameters(prompt, ctx.message.attachments, ctx, is_slash=False)
         duck_cog = self.bot.get_cog("DuckDuckGo")
         try:
@@ -39,5 +38,4 @@ class ChatCommands(commands.Cog):
         
         embed = discord.Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
-        # Use send_embed instead of direct ctx.reply
         await send_embed(ctx.channel, embed, reply_to=ctx.message)

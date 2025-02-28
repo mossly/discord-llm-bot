@@ -17,7 +17,6 @@ class ChatSlash(commands.Cog):
     async def chat(self, interaction: Interaction, prompt: str, attachment: Attachment = None) -> None:
         await interaction.response.defer()
         attachments = [attachment] if attachment else []
-        # For slash commands we pass is_slash=True and no reference message is used.
         final_prompt, image_url, model, reply_mode, reply_footer, _ = await prepare_chat_parameters(prompt, attachments, ctx=interaction, is_slash=True)
         duck_cog = self.bot.get_cog("DuckDuckGo")
         try:
