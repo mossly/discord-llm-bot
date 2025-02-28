@@ -10,7 +10,6 @@ from message_utils import delete_msg
 
 logger = logging.getLogger(__name__)
 
-# Shared prompt definitions and suffix settings.
 O3MINI_PROMPT = "Use markdown formatting."
 VERBOSE_PROMPT = "You are detailed & articulate. Include evidence and reasoning in your answers."
 CREATIVE_PROMPT = (
@@ -18,10 +17,6 @@ CREATIVE_PROMPT = (
     "Don't use overly poetic language. Be proactive and inventive and drive the conversation forward. "
     "Never use the passive voice where you can use the active voice. Do not end your message with a summary."
 )
-SUFFIXES = {
-    "-v": ("gpt-4o", VERBOSE_PROMPT, "gpt-4o | Verbose"),
-    "-c": ("gpt-4o", CREATIVE_PROMPT, "gpt-4o | Creative")
-}
 DEFAULT_MODEL = "o3-mini"
 DEFAULT_REPLY_MODE = O3MINI_PROMPT
 DEFAULT_REPLY_FOOTER = "o3-mini | default"
@@ -59,23 +54,6 @@ async def process_attachments(prompt: str, attachments: list, is_slash: bool = F
     return final_prompt, image_url
 
 
-
-def extract_suffixes(prompt: str) -> (str, str, str, str):
-    """
-    If the prompt ends with a known suffix (e.g. "-v" or "-c"), remove it and return the cleaned prompt
-    along with the associated model, reply mode, and footer.
-    """
-    model = DEFAULT_MODEL
-    reply_mode = DEFAULT_REPLY_MODE
-    reply_footer = DEFAULT_REPLY_FOOTER
-    cleaned_prompt = prompt.strip()
-    if len(cleaned_prompt) > 2 and cleaned_prompt[-2:] in SUFFIXES:
-        suffix = cleaned_prompt[-2:]
-        model, reply_mode, reply_footer = SUFFIXES[suffix]
-        cleaned_prompt = cleaned_prompt[:-2].strip()
-    return cleaned_prompt, model, reply_mode, reply_footer
-
-
 async def get_reference_message(ctx) -> str:
     """
     For text commands, if the invocation is a reply, fetches the reference message.
@@ -99,18 +77,14 @@ async def get_reference_message(ctx) -> str:
 
 
 async def prepare_chat_parameters(prompt: str, attachments: list = None, ctx=None, is_slash: bool = False) -> (str, str, str, str, str, str):
-    """
-    Given a prompt and optional attachments, processes them and extracts:
-      • final_prompt (possibly replaced by a text file’s content)
-      • image_url if present
-      • model, reply_mode, reply_footer via suffix extraction
-      • reference_message (if ctx is provided and is not a slash command)
-    """
     final_prompt, image_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
-    final_prompt, model, reply_mode, reply_footer = extract_suffixes(final_prompt)
+
+    model, reply_mode, reply_footer = DEFAULT_MODEL, DEFAULT_REPLY_MODE, DEFAULT_REPLY_FOOTER
+    
     reference_message = ""
     if not is_slash and ctx is not None:
         reference_message = await get_reference_message(ctx)
+        
     return final_prompt, image_url, model, reply_mode, reply_footer, reference_message
 
 

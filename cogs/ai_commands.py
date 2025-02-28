@@ -65,7 +65,7 @@ class AICommands(commands.Cog):
         duck_cog = self.bot.get_cog("DuckDuckGo")
         
         if config["function"] == "perform_chat_query":
-            from generic_chat import prepare_chat_parameters, perform_chat_query, extract_suffixes
+            from generic_chat import prepare_chat_parameters, perform_chat_query
             
             # Check for direct image_url parameter (from context menu)
             if image_url and not config.get("supports_images", False):
@@ -80,29 +80,18 @@ class AICommands(commands.Cog):
                     await interaction.followup.send(embed=error_embed)
                 return
             
-            # Process attachments only if no direct image_url was provided
+            # Process attachments or use provided image_url
             if not image_url:
-                # Process attachments and extract image URL if present
-                is_slash = interaction is not None
                 from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
+                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
             else:
-                # If image_url was directly provided, use it
                 final_prompt = prompt
                 img_url = image_url
-                    
-            # Check for suffixes that might override model settings
-            cleaned_prompt, model_override, reply_mode, reply_footer = extract_suffixes(final_prompt)
-            
-            # Decide which model to use (suffix overrides config)
-            if model_override != "o3-mini":  # A suffix was detected
-                model = model_override
-                footer = reply_footer
-                system_prompt = reply_mode
-            else:
-                model = config["api_model"]
-                footer = config["default_footer"]
-                system_prompt = config["system_prompt"]
+
+            cleaned_prompt = final_prompt
+            model = config["api_model"]
+            footer = config["default_footer"]
+            system_prompt = config["system_prompt"]
                 
             try:
                 # For text commands (using ctx), use status updates
