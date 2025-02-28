@@ -5,9 +5,8 @@ import logging
 from discord.ext import commands
 from discord import app_commands
 from typing import Literal
-
-from message_utils import delete_msg
-from embed_utils import send_embed
+import aiohttp
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class ImageGen(commands.Cog):
 
     @app_commands.command(name="gen", description="Generate an image using DALL·E 3")
     @app_commands.describe(prompt="The prompt for the image",
-                           hd="Check for HD quality",
+                           hd="Return image in HD quality",
                            orientation="Choose the image orientation")
     async def gen(self,
                   interaction: discord.Interaction,
@@ -41,6 +40,7 @@ class ImageGen(commands.Cog):
         await interaction.response.defer()
         start_time = time.time()
 
+        # Set quality and size based on options.
         quality = "hd" if hd else "standard"
         if orientation == "Landscape":
             size = "1792x1024"
@@ -66,11 +66,28 @@ class ImageGen(commands.Cog):
         footer_text_parts.append(f"generated in {generation_time} seconds")
         footer_text = " | ".join(footer_text_parts)
 
-        for url in result_urls:
+        # For each URL, download the image data and send it as an attachment.
+        for idx, url in enumerate(result_urls):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            logger.error("Failed to fetch image from URL: %s", url)
+                            await interaction.followup.send("Failed to retrieve image!")
+                            continue
+                        image_data = await resp.read()
+            except Exception as e:
+                logger.exception("Error downloading image from URL: %s", url)
+                await interaction.followup.send(f"Error downloading image: {e}")
+                continue
+
+            # Create a file attachment from the image data.
+            file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
             embed = discord.Embed(title="", description=prompt, color=0x32a956)
-            embed.set_image(url=url)
+            # Note the attachment:// prefix tells Discord to look for the attachment.
+            embed.set_image(url=f"attachment://generated_image_{idx}.png")
             embed.set_footer(text=footer_text)
-            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(file=file, embed=embed)
             logger.info("Sent generated image embed for URL: %s", url)
 
         logger.info("Image generation command completed in %s seconds", generation_time)
