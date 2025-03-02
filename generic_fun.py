@@ -9,22 +9,6 @@ from message_utils import delete_msg
 
 logger = logging.getLogger(__name__)
 
-async def get_guild_emoji_list(guild: discord.Guild) -> str:
-    if not guild or not guild.emojis:
-        logger.info("No guild or no emojis found in guild")
-        return ""
-    
-    emoji_list = []
-    for emoji in guild.emojis:
-        if emoji.animated:
-            emoji_list.append(f"<a:{emoji.name}:{emoji.id}>")
-        else:
-            emoji_list.append(f"<:{emoji.name}:{emoji.id}>")
-    
-    emoji_string = ",".join(emoji_list)
-    logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
-    return emoji_string
-
 async def perform_fun_query(
     prompt: str,
     api_cog,
@@ -38,9 +22,7 @@ async def perform_fun_query(
     status_msg = None
     if show_status:
         status_msg = await update_status(None, "...generating fun reply...", channel=channel)
-    
-    emoji_list = await get_guild_emoji_list(channel.guild) if channel.guild else ""
-    
+        
     try:
         model = "deepseek/deepseek-chat"
         
@@ -57,7 +39,9 @@ async def perform_fun_query(
                     reference_message=reference_message,
                     image_url=image_url,
                     use_fun=True,
-                    api="openrouter"
+                    api="openrouter",
+                    use_emojis=True,
+                    emoji_channel=channel
                 )
                 break
         elapsed = round(time.time() - start_time, 2)

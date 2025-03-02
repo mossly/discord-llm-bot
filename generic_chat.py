@@ -118,6 +118,8 @@ async def perform_chat_query(
                     reference_message=reference_message,
                     image_url=image_url,
                     api=api,
+                    use_emojis=False,
+                    emoji_channel=channel
                 )
                 break
         elapsed = round(time.time() - start_time, 2)

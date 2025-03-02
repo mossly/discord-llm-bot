@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import openai
+import discord
 from discord.ext import commands
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 import base64
@@ -23,6 +24,20 @@ class APIUtils(commands.Cog):
         self.BOT_TAG = os.getenv("BOT_TAG", "")
         self.FUN_SYSTEM_PROMPT = os.getenv("FUN_PROMPT", "Write an amusing and sarcastic!")
 
+    async def get_guild_emoji_list(self, guild: discord.Guild) -> str:
+        if not guild or not guild.emojis:
+            logger.info("No guild or no emojis found in guild")
+            return ""
+        emoji_list = []
+        for emoji in guild.emojis:
+            if emoji.animated:
+                emoji_list.append(f"<a:{emoji.name}:{emoji.id}>")
+            else:
+                emoji_list.append(f"<:{emoji.name}:{emoji.id}>")
+        emoji_string = ",".join(emoji_list)
+        logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
+        return emoji_string
+    
     async def send_request(
         self,
         model: str,
@@ -30,7 +45,9 @@ class APIUtils(commands.Cog):
         reference_message: str = None,
         image_url: str = None,
         use_fun: bool = False,
-        api: str = "openai"
+        api: str = "openai",
+        use_emojis: bool = False,
+        emoji_channel: discord.TextChannel = None
     ) -> str:
         if api == "openrouter":
             api_client = self.OPENROUTERCLIENT
@@ -47,6 +64,12 @@ class APIUtils(commands.Cog):
         message_content = message_content.replace(self.BOT_TAG, "")
 
         messages_input = [{"role": "system", "content": f"{system_used}"}]
+        
+        if use_emojis and emoji_channel:
+            emoji_list = await self.get_guild_emoji_list(emoji_channel.guild)
+            if emoji_list:
+                messages_input.append({"role": "system", "content": f"List of available custom emojis: {emoji_list}"})
+        
         if reference_message:
             messages_input.append({"role": "user", "content": reference_message})
         
