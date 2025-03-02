@@ -165,7 +165,7 @@ class AICommands(commands.Cog):
             message_to_reply = ctx.message if ctx else reply_msg
             await send_embed(channel, embed, reply_to=message_to_reply)
         else:
-            await interaction.followup.send(embed=embed)
+            await send_embed(interaction.channel, embed, interaction=interaction)
 
     @app_commands.command(name="chat", description="Select a model and provide a prompt")
     @app_commands.describe(
