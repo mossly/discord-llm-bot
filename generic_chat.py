@@ -5,7 +5,6 @@ import discord
 import aiohttp
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from status_utils import update_status
 from message_utils import delete_msg
 
 logger = logging.getLogger(__name__)
@@ -77,7 +76,6 @@ async def perform_chat_query(
     reference_message: str = None,
     model: str = DEFAULT_MODEL,
     reply_footer: str = DEFAULT_REPLY_FOOTER,
-    show_status: bool = True,
     api: str = "openai",
     use_fun: bool = False,
     web_search: bool = False
@@ -103,10 +101,6 @@ async def perform_chat_query(
         summary_text = ddg_summary[0] if isinstance(ddg_summary, tuple) else ddg_summary
         prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
 
-    status_msg = None
-    if show_status:
-        status_msg = await update_status(None, "...generating reply...", channel=channel)
-        
     try:
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
@@ -127,10 +121,7 @@ async def perform_chat_query(
                 )
                 break
         elapsed = round(time.time() - start_time, 2)
-        
-        if status_msg:
-            await delete_msg(status_msg)
-            
+
         footer_first_line = [reply_footer]
         
         if use_fun:
@@ -161,7 +152,5 @@ async def perform_chat_query(
         return result, elapsed, f"{first_line}\n{second_line}"
             
     except Exception as e:
-        if status_msg:
-            await delete_msg(status_msg)
         logger.exception("Error in perform_chat_query: %s", e)
         raise

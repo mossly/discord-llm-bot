@@ -5,7 +5,6 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
-from status_utils import update_status
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +111,6 @@ class AICommands(commands.Cog):
             
         try:
             if ctx:
-                status_msg = await update_status(None, "...generating reply...", channel=channel)
                 try:
                     result, elapsed, footer_with_stats = await perform_chat_query(
                         prompt=cleaned_prompt,
@@ -123,14 +121,10 @@ class AICommands(commands.Cog):
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
-                        show_status=False,
                         api=api,
                         use_fun=fun,
                         web_search=web_search
                     )
-                finally:
-                    from message_utils import delete_msg
-                    await delete_msg(status_msg)
             else:
                 result, elapsed, footer_with_stats = await perform_chat_query(
                     prompt=cleaned_prompt,
@@ -141,7 +135,6 @@ class AICommands(commands.Cog):
                     reference_message=reference_message,
                     model=model,
                     reply_footer=footer,
-                    show_status=False,
                     api=api,
                     use_fun=fun,
                     web_search=web_search

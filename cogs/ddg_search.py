@@ -6,7 +6,6 @@ from duckduckgo_search import DDGS
 import discord
 from discord.ext import commands
 import time
-from status_utils import update_status
 
 logger = logging.getLogger(__name__)
 
