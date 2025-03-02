@@ -85,6 +85,7 @@ async def perform_chat_query(
     start_time = time.time()
     original_prompt = prompt
     
+    ddg_summary = None
     if duck_cog and web_search:
         try:
             search_query = await duck_cog.extract_search_query(original_prompt)
@@ -96,9 +97,9 @@ async def perform_chat_query(
                         prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary
         except Exception as e:
             logger.exception("Error during DuckDuckGo search: %s", e)
-            ddg_summary = None
-        if ddg_summary:
-            prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
+    
+    if ddg_summary:
+        prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
 
     status_msg = None
     if show_status:

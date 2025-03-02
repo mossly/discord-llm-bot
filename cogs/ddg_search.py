@@ -22,7 +22,7 @@ class DuckDuckGo(commands.Cog):
             return ""
         
         try:
-            extracted_query = await api_utils.send_request(
+            extracted_result = await api_utils.send_request(
                 model="gpt-4o-mini",
                 message_content=(
                     "Generate a concise search query that would fetch relevant information to answer or "
@@ -32,6 +32,7 @@ class DuckDuckGo(commands.Cog):
                 )
             )
             
+            extracted_query = extracted_result[0] if isinstance(extracted_result, tuple) else extracted_result
             extracted_query = extracted_query.strip()
             logger.info("Extracted search query: %s", extracted_query)
             return extracted_query
