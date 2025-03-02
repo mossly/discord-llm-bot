@@ -168,7 +168,7 @@ class AICommands(commands.Cog):
     async def fun_slash(self, interaction: Interaction, prompt: str):
         await interaction.response.defer(thinking=True)
         username = interaction.user.name
-        formatted_prompt = f"Message from {username}: {prompt}"
+        formatted_prompt = f"{username}: {prompt}"
         await self._process_ai_request(formatted_prompt, "fun", interaction=interaction, attachments=None)
 
     @app_commands.command(name="chat", description="Select a model and provide a prompt")
@@ -187,7 +187,7 @@ class AICommands(commands.Cog):
         await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
         username = interaction.user.name
-        formatted_prompt = f"Message from {username}: {prompt}"
+        formatted_prompt = f"{username}: {prompt}"
         
         has_image = False
         if attachment:
@@ -232,12 +232,14 @@ class AIContextMenus(commands.Cog):
             
         async def on_submit(self, interaction: discord.Interaction):
             additional_text = self.additional_input.value or ""
-            
+            username = interaction.user.name
+            formatted_prompt = f"{username}: {additional_text}"
+
             view = ModelSelectionView(
                 has_image=self.has_image,
                 reference_message=self.reference_message,
                 original_message=self.original_message,
-                additional_text=additional_text
+                additional_text=formatted_prompt
             )
             
             await interaction.response.send_message(
@@ -366,7 +368,7 @@ async def ai_context_menu(interaction: Interaction, message: discord.Message):
             has_images = True
             break
     
-    reference_message = f"Message from {message.author.name}: {content}"
+    reference_message = f"{message.author.name}: {content}"
     if has_images:
         reference_message += " [This message contains an image attachment]"
     
