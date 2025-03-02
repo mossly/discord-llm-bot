@@ -137,7 +137,7 @@ class AICommands(commands.Cog):
             from generic_fun import perform_fun_query
             try:
                 result, elapsed = await perform_fun_query(
-                    prompt=formatted_prompt,
+                    prompt=prompt,
                     api_cog=api_cog,
                     channel=channel,
                     image_url=image_url,
