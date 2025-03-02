@@ -287,23 +287,28 @@ class ModelSelectionView(discord.ui.View):
                 ),
                 discord.SelectOption(
                     label="Anthropic Claude 3.7 Sonnet", 
-                    value="anthropic/claude-3.7-sonnet", 
+                    value="claude-3.7-sonnet", 
                     description="Anthropic chat model"
                 ),
                 discord.SelectOption(
                     label="Anthropic Claude 3.7 Sonnet (Thinking)", 
-                    value="anthropic/claude-3.7-sonnet:thinking", 
+                    value="claude-3.7-sonnet:thinking", 
                     description="Anthropic reasoning model"
                 ),
                 discord.SelectOption(
                     label="Google Gemini 2.0 Flash Lite", 
-                    value="google/gemini-2.0-flash-lite-001", 
+                    value="gemini-2.0-flash-lite-001", 
                     description="Google chat model"
                 ),
                 discord.SelectOption(
                     label="X-AI Grok 2", 
-                    value="x-ai/grok-2-1212", 
+                    value="grok-2", 
                     description="X-AI chat model"
+                ),
+                discord.SelectOption(
+                    label="Mistral", 
+                    value="mistral-large", 
+                    description="Mistral AI chat model"
                 )
             ])
         
