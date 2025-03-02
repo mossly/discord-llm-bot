@@ -23,7 +23,7 @@ MODEL_CONFIG = {
         "name": "GPT-o3-mini",
         "color": 0x32a956,
         "default_model": "o3-mini",
-        "default_footer": "o3-mini",
+        "default_footer": "o3-mini | CoT",
         "api_model": "o3-mini",
         "supports_images": False,
         "api": "openai"
@@ -32,7 +32,7 @@ MODEL_CONFIG = {
         "name": "Deepseek",
         "color": 0x32a956, 
         "default_model": "deepseek/deepseek-chat",
-        "default_footer": "Deepseek",
+        "default_footer": "Deepseek-v3",
         "api_model": "deepseek/deepseek-chat",
         "supports_images": False,
         "api": "openrouter"
@@ -41,16 +41,16 @@ MODEL_CONFIG = {
         "name": "Anthropic Claude 3.7 Sonnet",
         "color": 0x32a956,
         "default_model": "anthropic/claude-3.7-sonnet:beta",
-        "default_footer": "Anthropic Claude 3.7 Sonnet",
+        "default_footer": "Claude 3.7 Sonnet",
         "api_model": "anthropic/claude-3.7-sonnet:beta",
         "supports_images": False,
         "api": "openrouter"
     },
     "claude-3.7-sonnet:thinking": {
-        "name": "Anthropic Claude 3.7 Sonnet (Thinking)",
+        "name": "Anthropic Claude 3.7 Sonnet | CoT",
         "color": 0x32a956,
         "default_model": "anthropic/claude-3.7-sonnet:thinking",
-        "default_footer": "Anthropic Claude 3.7 Sonnet (Thinking)",
+        "default_footer": "Claude 3.7 Sonnet (Thinking)",
         "api_model": "anthropic/claude-3.7-sonnet:thinking",
         "supports_images": False,
         "api": "openrouter"
@@ -59,7 +59,7 @@ MODEL_CONFIG = {
         "name": "Google Gemini 2.0 Flash Lite",
         "color": 0x32a956,
         "default_model": "google/gemini-2.0-flash-lite-001",
-        "default_footer": "Google Gemini 2.0 Flash Lite",
+        "default_footer": "Gemini 2.0 Flash Lite",
         "api_model": "google/gemini-2.0-flash-lite-001",
         "supports_images": False,
         "api": "openrouter"
@@ -68,7 +68,7 @@ MODEL_CONFIG = {
         "name": "X-AI Grok 2",
         "color": 0x32a956,
         "default_model": "x-ai/grok-2-1212",
-        "default_footer": "X-AI Grok 2",
+        "default_footer": "Grok 2",
         "api_model": "x-ai/grok-2-1212",
         "supports_images": False,
         "api": "openrouter"
