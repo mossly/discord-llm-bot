@@ -13,25 +13,22 @@ MODEL_CONFIG = {
     "gpt-4o-mini": {
         "name": "GPT-4o-mini",
         "color": 0x32a956,
-        "default_model": "gpt-4o-mini",
         "default_footer": "gpt-4o-mini",
-        "api_model": "gpt-4o-mini",
+        "api_model": "openai/gpt-4o-mini",
         "supports_images": True,
-        "api": "openai"
+        "api": "openrouter"
     },
     "gpt-o3-mini": {
         "name": "GPT-o3-mini",
         "color": 0x32a956,
-        "default_model": "o3-mini",
         "default_footer": "o3-mini | CoT",
-        "api_model": "o3-mini",
+        "api_model": "openai/o3-mini",
         "supports_images": False,
-        "api": "openai"
+        "api": "openrouter"
     },
     "deepseek-v3": {
         "name": "Deepseek",
         "color": 0x32a956, 
-        "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek-v3",
         "api_model": "deepseek/deepseek-chat",
         "supports_images": False,
@@ -40,7 +37,6 @@ MODEL_CONFIG = {
     "claude-3.7-sonnet": {
         "name": "Anthropic Claude 3.7 Sonnet",
         "color": 0x32a956,
-        "default_model": "anthropic/claude-3.7-sonnet:beta",
         "default_footer": "Claude 3.7 Sonnet",
         "api_model": "anthropic/claude-3.7-sonnet:beta",
         "supports_images": False,
@@ -49,7 +45,6 @@ MODEL_CONFIG = {
     "claude-3.7-sonnet:thinking": {
         "name": "Anthropic Claude 3.7 Sonnet | CoT",
         "color": 0x32a956,
-        "default_model": "anthropic/claude-3.7-sonnet:thinking",
         "default_footer": "Claude 3.7 Sonnet (Thinking)",
         "api_model": "anthropic/claude-3.7-sonnet:thinking",
         "supports_images": False,
@@ -58,7 +53,6 @@ MODEL_CONFIG = {
     "gemini-2.0-flash-lite": {
         "name": "Google Gemini 2.0 Flash Lite",
         "color": 0x32a956,
-        "default_model": "google/gemini-2.0-flash-lite-001",
         "default_footer": "Gemini 2.0 Flash Lite",
         "api_model": "google/gemini-2.0-flash-lite-001",
         "supports_images": False,
@@ -67,7 +61,6 @@ MODEL_CONFIG = {
     "grok-2": {
         "name": "X-AI Grok 2",
         "color": 0x32a956,
-        "default_model": "x-ai/grok-2-1212",
         "default_footer": "Grok 2",
         "api_model": "x-ai/grok-2-1212",
         "supports_images": False,
@@ -117,14 +110,15 @@ class AICommands(commands.Cog):
                         prompt=cleaned_prompt,
                         api_cog=api_cog,
                         channel=channel,
-                        duck_cog=duck_cog if web_search else None,
+                        duck_cog=duck_cog,
                         image_url=img_url,
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
                         show_status=False,
                         api=api,
-                        use_fun=fun
+                        use_fun=fun,
+                        web_search=web_search
                     )
                 finally:
                     from message_utils import delete_msg
@@ -134,23 +128,19 @@ class AICommands(commands.Cog):
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
                     channel=channel,
-                    duck_cog=duck_cog if web_search else None,
+                    duck_cog=duck_cog,
                     image_url=img_url,
                     reference_message=reference_message,
                     model=model,
                     reply_footer=footer,
                     show_status=False,
                     api=api,
-                    use_fun=fun
+                    use_fun=fun,
+                    web_search=web_search
                 )
             
             final_footer = footer_with_stats
-            if fun:
-                if " | Fun Mode" not in final_footer:
-                    final_footer += " | Fun Mode"
-            if web_search:
-                if " | Web Search" not in final_footer:
-                    final_footer += " | Web Search"
+                
         except Exception as e:
             logger.exception(f"Error in {model_key} request: %s", e)
             error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
@@ -161,7 +151,7 @@ class AICommands(commands.Cog):
                 return await interaction.followup.send(embed=error_embed)
             
         embed = discord.Embed(title="", description=result, color=config["color"])
-        embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
+        embed.set_footer(text=final_footer)
         
         if ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel

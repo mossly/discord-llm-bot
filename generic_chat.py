@@ -79,12 +79,13 @@ async def perform_chat_query(
     reply_footer: str = DEFAULT_REPLY_FOOTER,
     show_status: bool = True,
     api: str = "openai",
-    use_fun: bool = False
+    use_fun: bool = False,
+    web_search: bool = False
 ) -> (str, float, str):
     start_time = time.time()
     original_prompt = prompt
     
-    if duck_cog:
+    if duck_cog and web_search:
         try:
             search_query = await duck_cog.extract_search_query(original_prompt)
             if search_query:
@@ -127,13 +128,14 @@ async def perform_chat_query(
         if status_msg:
             await delete_msg(status_msg)
             
-        footer_parts = [reply_footer]
-        token_stats = []
+        footer_first_line = [reply_footer]
         
         if use_fun:
-            footer_parts.append("Fun Mode")
+            footer_first_line.append("Fun Mode")
+        if web_search:
+            footer_first_line.append("Web Search")
             
-        footer_parts.append(f"{elapsed} seconds")
+        footer_second_line = []
         
         if stats:
             tokens_prompt = stats.get('tokens_prompt', 0)
@@ -142,18 +144,18 @@ async def perform_chat_query(
             
             prompt_tokens_str = f"{tokens_prompt / 1000:.1f}k" if tokens_prompt >= 1000 else str(tokens_prompt)
             
-            token_stats.append(f"{prompt_tokens_str} input tokens")
-            token_stats.append(f"{tokens_completion} output tokens")
+            footer_second_line.append(f"{prompt_tokens_str} input tokens")
+            footer_second_line.append(f"{tokens_completion} output tokens")
             
             if total_cost:
-                token_stats.append(f"Cost ${total_cost:.2f}")
+                footer_second_line.append(f"${total_cost:.2f}")
         
-        first_line = " | ".join(footer_parts)
+        footer_second_line.append(f"{elapsed} seconds")
         
-        if token_stats:
-            return result, elapsed, f"{first_line}\n{' | '.join(token_stats)}"
-        else:
-            return result, elapsed, first_line
+        first_line = " | ".join(footer_first_line)
+        second_line = " | ".join(footer_second_line)
+        
+        return result, elapsed, f"{first_line}\n{second_line}"
             
     except Exception as e:
         if status_msg:
