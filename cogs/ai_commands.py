@@ -60,7 +60,6 @@ class AICommands(commands.Cog):
         config = MODEL_CONFIG[model_key]
         user = ctx.author if ctx else (interaction.user if interaction else (reply_msg.author if reply_msg else None))
         username = user.name if user else "Unknown User"
-        formatted_prompt = f"Message from {username}: {prompt}"
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
