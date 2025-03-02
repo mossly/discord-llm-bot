@@ -21,14 +21,9 @@ async def process_attachments(prompt: str, attachments: list, is_slash: bool = F
             filename = att.filename.lower()
             if filename.endswith(".txt"):
                 try:
-                    username_prefix = ""
-                    if prompt.startswith("Message from "):
-                        parts = prompt.split(":", 1)
-                        if len(parts) > 1:
-                            username_prefix = parts[0] + ": "
                     if is_slash:
                         file_bytes = await att.read()
-                        final_prompt = username_prefix + file_bytes.decode("utf-8")
+                        final_prompt =  file_bytes.decode("utf-8")
                     else:
                         async with aiohttp.ClientSession() as session:
                             async with session.get(att.url) as response:
@@ -84,12 +79,10 @@ async def perform_chat_query(
     reply_footer: str = DEFAULT_REPLY_FOOTER,
     show_status: bool = True,
     api: str = "openai",
+    use_fun: bool = False
 ) -> (str, float, str):
     start_time = time.time()
     original_prompt = prompt
-    
-    if not prompt.startswith("Message from"):
-        logger.warning("Prompt missing username prefix, this should be handled by the caller")
     
     if duck_cog is not None:
         try:
@@ -118,8 +111,9 @@ async def perform_chat_query(
                     reference_message=reference_message,
                     image_url=image_url,
                     api=api,
-                    use_emojis=False,
-                    emoji_channel=channel
+                    use_emojis=True if use_fun else False,
+                    emoji_channel=channel,
+                    use_fun=use_fun
                 )
                 break
         elapsed = round(time.time() - start_time, 2)

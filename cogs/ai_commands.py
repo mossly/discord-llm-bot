@@ -10,19 +10,8 @@ from status_utils import update_status
 logger = logging.getLogger(__name__)
 
 MODEL_CONFIG = {
-    "gpt-o3-mini": {
-        "name": "GPT-o3-mini",
-        "function": "perform_chat_query",
-        "color": 0x32a956,
-        "default_model": "o3-mini",
-        "default_footer": "o3-mini | default",
-        "api_model": "o3-mini",
-        "supports_images": False,
-        "api": "openai"
-    },
     "gpt-4o-mini": {
         "name": "GPT-4o-mini",
-        "function": "perform_chat_query",
         "color": 0x32a956,
         "default_model": "gpt-4o-mini",
         "default_footer": "gpt-4o-mini | default",
@@ -30,9 +19,17 @@ MODEL_CONFIG = {
         "supports_images": True,
         "api": "openai"
     },
-    "deepseek": {
+    "gpt-o3-mini": {
+        "name": "GPT-o3-mini",
+        "color": 0x32a956,
+        "default_model": "o3-mini",
+        "default_footer": "o3-mini | default",
+        "api_model": "o3-mini",
+        "supports_images": False,
+        "api": "openai"
+    },
+    "deepseek-v3": {
         "name": "Deepseek",
-        "function": "perform_chat_query",
         "color": 0x32a956, 
         "default_model": "deepseek/deepseek-chat",
         "default_footer": "Deepseek",
@@ -40,13 +37,48 @@ MODEL_CONFIG = {
         "supports_images": False,
         "api": "openrouter"
     },
-    "fun": {
-        "name": "Fun Mode",
-        "function": "perform_fun_query",
+    "claude-3.5-sonnet": {
+        "name": "Anthropic Claude 3.5 Sonnet",
         "color": 0x32a956,
-        "default_model": "deepseek/deepseek-chat",
-        "default_footer": "Deepseek V3 (Fun Mode)",
-        "api_model": "deepseek/deepseek-chat",
+        "default_model": "anthropic/claude-3.5-sonnet",
+        "default_footer": "Anthropic Claude 3.5 Sonnet",
+        "api_model": "anthropic/claude-3.5-sonnet",
+        "supports_images": False,
+        "api": "openrouter"
+    },
+    "claude-3.7-sonnet": {
+        "name": "Anthropic Claude 3.7 Sonnet",
+        "color": 0x32a956,
+        "default_model": "anthropic/claude-3.7-sonnet",
+        "default_footer": "Anthropic Claude 3.7 Sonnet",
+        "api_model": "anthropic/claude-3.7-sonnet",
+        "supports_images": False,
+        "api": "openrouter"
+    },
+    "claude-3.7-sonnet:thinking": {
+        "name": "Anthropic Claude 3.7 Sonnet (Thinking)",
+        "color": 0x32a956,
+        "default_model": "anthropic/claude-3.7-sonnet:thinking",
+        "default_footer": "Anthropic Claude 3.7 Sonnet (Thinking)",
+        "api_model": "anthropic/claude-3.7-sonnet:thinking",
+        "supports_images": False,
+        "api": "openrouter"
+    },
+    "gemini-2.0-flash-lite": {
+        "name": "Google Gemini 2.0 Flash Lite",
+        "color": 0x32a956,
+        "default_model": "google/gemini-2.0-flash-lite-001",
+        "default_footer": "Google Gemini 2.0 Flash Lite",
+        "api_model": "google/gemini-2.0-flash-lite-001",
+        "supports_images": False,
+        "api": "openrouter"
+    },
+    "grok-2": {
+        "name": "X-AI Grok 2",
+        "color": 0x32a956,
+        "default_model": "x-ai/grok-2-1212",
+        "default_footer": "X-AI Grok 2",
+        "api_model": "x-ai/grok-2-1212",
         "supports_images": False,
         "api": "openrouter"
     }
@@ -56,62 +88,40 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False):
         config = MODEL_CONFIG[model_key]
-        user = ctx.author if ctx else (interaction.user if interaction else (reply_msg.author if reply_msg else None))
-        username = user.name if user else "Unknown User"
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
         
-        if config["function"] == "perform_chat_query":
-            from generic_chat import prepare_chat_parameters, perform_chat_query
-            
-            if image_url and not config.get("supports_images", False):
-                error_embed = discord.Embed(
-                    title="ERROR",
-                    description="Image attachments only supported with GPT-4o-mini",
-                    color=0xDC143C
-                )
-                if ctx:
-                    await ctx.reply(embed=error_embed)
-                else:
-                    await interaction.followup.send(embed=error_embed)
-                return
-            
-            if not image_url:
-                from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
+        if image_url and not config.get("supports_images", False):
+            error_embed = discord.Embed(
+                title="ERROR",
+                description="Image attachments only supported with GPT-4o-mini",
+                color=0xDC143C
+            )
+            if ctx:
+                await ctx.reply(embed=error_embed)
             else:
-                final_prompt = prompt
-                img_url = image_url
+                await interaction.followup.send(embed=error_embed)
+            return
 
-            cleaned_prompt = final_prompt
-            model = config["api_model"]
-            footer = config["default_footer"]
-            system_prompt = api_cog.SYSTEM_PROMPT
-            api = config.get("api", "openai")
-                
-            try:
-                if ctx:
-                    status_msg = await update_status(None, "...generating reply...", channel=channel)
-                    try:
-                        result, elapsed, _ = await perform_chat_query(
-                            prompt=cleaned_prompt,
-                            api_cog=api_cog,
-                            channel=channel,
-                            duck_cog=duck_cog,
-                            image_url=img_url,
-                            reference_message=reference_message,
-                            model=model,
-                            reply_footer=footer,
-                            show_status=False,
-                            api=api
-                        )
-                    finally:
-                        from message_utils import delete_msg
-                        await delete_msg(status_msg)
-                else:
+        if not image_url:
+            from generic_chat import process_attachments, perform_chat_query
+            final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
+        else:
+            final_prompt = prompt
+            img_url = image_url
+
+        cleaned_prompt = final_prompt
+        model = config["api_model"]
+        footer = config["default_footer"]
+        api = config.get("api", "openai")
+            
+        try:
+            if ctx:
+                status_msg = await update_status(None, "...generating reply...", channel=channel)
+                try:
                     result, elapsed, _ = await perform_chat_query(
                         prompt=cleaned_prompt,
                         api_cog=api_cog,
@@ -122,37 +132,35 @@ class AICommands(commands.Cog):
                         model=model,
                         reply_footer=footer,
                         show_status=False,
-                        api=api
+                        api=api,
+                        use_fun=fun    # pass our fun mode flag here
                     )
-                final_footer = footer
-            except Exception as e:
-                logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                error_embed.set_footer(text=f"Error generating reply: {e}")
-                if ctx:
-                    return await ctx.reply(embed=error_embed)
-                else:
-                    return await interaction.followup.send(embed=error_embed)
-        elif config["function"] == "perform_fun_query":
-            from generic_fun import perform_fun_query
-            try:
-                result, elapsed = await perform_fun_query(
-                    prompt=prompt,
+                finally:
+                    from message_utils import delete_msg
+                    await delete_msg(status_msg)
+            else:
+                result, elapsed, _ = await perform_chat_query(
+                    prompt=cleaned_prompt,
                     api_cog=api_cog,
                     channel=channel,
-                    image_url=image_url,
+                    duck_cog=duck_cog,
+                    image_url=img_url,
                     reference_message=reference_message,
-                    show_status=False
+                    model=model,
+                    reply_footer=footer,
+                    show_status=False,
+                    api=api,
+                    use_fun=fun
                 )
-                final_footer = config["default_footer"]
-            except Exception as e:
-                logger.exception(f"Error in {model_key} request: %s", e)
-                error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-                error_embed.set_footer(text=f"Error generating reply: {e}")
-                if ctx:
-                    return await ctx.reply(embed=error_embed)
-                else:
-                    return await interaction.followup.send(embed=error_embed)
+            final_footer = footer
+        except Exception as e:
+            logger.exception(f"Error in {model_key} request: %s", e)
+            error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
+            error_embed.set_footer(text=f"Error generating reply: {e}")
+            if ctx:
+                return await ctx.reply(embed=error_embed)
+            else:
+                return await interaction.followup.send(embed=error_embed)
 
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
@@ -164,24 +172,21 @@ class AICommands(commands.Cog):
         else:
             await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="fun", description="Fun mode chat - provide a prompt and optionally attach content")
-    async def fun_slash(self, interaction: Interaction, prompt: str):
-        await interaction.response.defer(thinking=True)
-        username = interaction.user.name
-        formatted_prompt = f"{username}: {prompt}"
-        await self._process_ai_request(formatted_prompt, "fun", interaction=interaction, attachments=None)
-
     @app_commands.command(name="chat", description="Select a model and provide a prompt")
     @app_commands.describe(
         model="Model to use for the response",
+        fun="Toggle fun mode",
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)"
     )
     async def chat_slash(
         self, 
         interaction: Interaction, 
-        model: Literal["gpt-o3-mini", "gpt-4o-mini", "deepseek", "fun"],
+        model: Literal["gpt-4o-mini", "gpt-o3-mini", "deepseek-v3", "claude-3.5-sonnet",
+                        "claude-3.7-sonnet", "claude-3.7-sonnet:thinking",
+                        "gemini-2.0-flash-lite", "grok-2"],
         prompt: str, 
+        fun: bool = False,
         attachment: Optional[Attachment] = None
     ):
         await interaction.response.defer(thinking=True)
@@ -201,7 +206,7 @@ class AICommands(commands.Cog):
             )
             model = "gpt-4o-mini"
         
-        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments)
+        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -257,6 +262,7 @@ class ModelSelectionView(discord.ui.View):
         self.original_message = original_message
         self.additional_text = additional_text
         self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
+        self.fun = False
         
         options = []
         
@@ -272,18 +278,33 @@ class ModelSelectionView(discord.ui.View):
                 discord.SelectOption(
                     label="GPT-o3-mini", 
                     value="gpt-o3-mini", 
-                    description="OpenAI standard model",
-                    default=True
+                    description="OpenAI reasoning model",
+                    default=not self.has_image
                 ),
                 discord.SelectOption(
-                    label="Deepseek", 
-                    value="deepseek", 
-                    description="Deepseek standard model"
+                    label="Deepseek-v3", 
+                    value="deepseek-v3", 
+                    description="Deepseek chat model"
                 ),
                 discord.SelectOption(
-                    label="Fun Mode", 
-                    value="fun", 
-                    description="Deepseek with fun personality"
+                    label="Anthropic Claude 3.7 Sonnet", 
+                    value="anthropic/claude-3.7-sonnet", 
+                    description="Anthropic chat model"
+                ),
+                discord.SelectOption(
+                    label="Anthropic Claude 3.7 Sonnet (Thinking)", 
+                    value="anthropic/claude-3.7-sonnet:thinking", 
+                    description="Anthropic reasoning model"
+                ),
+                discord.SelectOption(
+                    label="Google Gemini 2.0 Flash Lite", 
+                    value="google/gemini-2.0-flash-lite-001", 
+                    description="Google chat model"
+                ),
+                discord.SelectOption(
+                    label="X-AI Grok 2", 
+                    value="x-ai/grok-2-1212", 
+                    description="X-AI chat model"
                 )
             ])
         
@@ -291,10 +312,10 @@ class ModelSelectionView(discord.ui.View):
             placeholder="Choose AI model",
             options=options
         )
-        
         self.model_select.callback = self.on_model_select
-        
         self.add_item(self.model_select)
+        
+        self.add_item(discord.ui.Button(label="Fun Mode: OFF", style=discord.ButtonStyle.secondary, custom_id="toggle_fun", callback=self.toggle_fun))
         
         submit_button = discord.ui.Button(
             label="Submit",
@@ -314,6 +335,12 @@ class ModelSelectionView(discord.ui.View):
             )
         else:
             await interaction.response.defer()
+    
+    async def toggle_fun(self, interaction: discord.Interaction):
+        self.fun = not self.fun
+        button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_fun"][0]
+        button.label = f"Fun Mode: {'ON' if self.fun else 'OFF'}"
+        await interaction.response.edit_message(view=self)
     
     async def submit_button_callback(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True, ephemeral=False)
@@ -342,7 +369,8 @@ class ModelSelectionView(discord.ui.View):
                 interaction=interaction,
                 reference_message=self.reference_message,
                 image_url=image_url,
-                reply_msg=self.original_message
+                reply_msg=self.original_message,
+                fun=self.fun
             )
             
             try:
