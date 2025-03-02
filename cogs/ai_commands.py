@@ -14,7 +14,7 @@ MODEL_CONFIG = {
         "name": "GPT-4o-mini",
         "color": 0x32a956,
         "default_model": "gpt-4o-mini",
-        "default_footer": "gpt-4o-mini | default",
+        "default_footer": "gpt-4o-mini",
         "api_model": "gpt-4o-mini",
         "supports_images": True,
         "api": "openai"
@@ -23,7 +23,7 @@ MODEL_CONFIG = {
         "name": "GPT-o3-mini",
         "color": 0x32a956,
         "default_model": "o3-mini",
-        "default_footer": "o3-mini | default",
+        "default_footer": "o3-mini",
         "api_model": "o3-mini",
         "supports_images": False,
         "api": "openai"
