@@ -314,9 +314,21 @@ class ModelSelectionView(discord.ui.View):
         self.model_select.callback = self.on_model_select
         self.add_item(self.model_select)
         
-        self.add_item(discord.ui.Button(label="Fun Mode: OFF", style=discord.ButtonStyle.secondary, custom_id="toggle_fun", callback=self.toggle_fun))
-        self.add_item(discord.ui.Button(label="Web Search: OFF", style=discord.ButtonStyle.secondary, custom_id="toggle_web_search", callback=self.toggle_web_search))
-
+        fun_button = discord.ui.Button(
+            label="Fun Mode: OFF", 
+            style=discord.ButtonStyle.secondary, 
+            custom_id="toggle_fun"
+        )
+        fun_button.callback = self.toggle_fun
+        self.add_item(fun_button)
+        
+        web_search_button = discord.ui.Button(
+            label="Web Search: OFF", 
+            style=discord.ButtonStyle.secondary, 
+            custom_id="toggle_web_search"
+        )
+        web_search_button.callback = self.toggle_web_search
+        self.add_item(web_search_button)
         
         submit_button = discord.ui.Button(
             label="Submit",
