@@ -111,21 +111,20 @@ class AICommands(commands.Cog):
             
         try:
             if ctx:
-                try:
-                    result, elapsed, footer_with_stats = await perform_chat_query(
-                        prompt=cleaned_prompt,
-                        api_cog=api_cog,
-                        channel=channel,
-                        duck_cog=duck_cog,
-                        image_url=img_url,
-                        reference_message=reference_message,
-                        model=model,
-                        reply_footer=footer,
-                        api=api,
-                        use_fun=fun,
-                        web_search=web_search
-                    )
-            else:
+                result, elapsed, footer_with_stats = await perform_chat_query(
+                    prompt=cleaned_prompt,
+                    api_cog=api_cog,
+                    channel=channel,
+                    duck_cog=duck_cog,
+                    image_url=img_url,
+                    reference_message=reference_message,
+                    model=model,
+                    reply_footer=footer,
+                    api=api,
+                    use_fun=fun,
+                    web_search=web_search
+                )
+            else:   
                 result, elapsed, footer_with_stats = await perform_chat_query(
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
