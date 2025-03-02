@@ -37,21 +37,12 @@ MODEL_CONFIG = {
         "supports_images": False,
         "api": "openrouter"
     },
-    "claude-3.5-sonnet": {
-        "name": "Anthropic Claude 3.5 Sonnet",
-        "color": 0x32a956,
-        "default_model": "anthropic/claude-3.5-sonnet",
-        "default_footer": "Anthropic Claude 3.5 Sonnet",
-        "api_model": "anthropic/claude-3.5-sonnet",
-        "supports_images": False,
-        "api": "openrouter"
-    },
     "claude-3.7-sonnet": {
         "name": "Anthropic Claude 3.7 Sonnet",
         "color": 0x32a956,
-        "default_model": "anthropic/claude-3.7-sonnet",
+        "default_model": "anthropic/claude-3.7-sonnet:beta",
         "default_footer": "Anthropic Claude 3.7 Sonnet",
-        "api_model": "anthropic/claude-3.7-sonnet",
+        "api_model": "anthropic/claude-3.7-sonnet:beta",
         "supports_images": False,
         "api": "openrouter"
     },
@@ -153,6 +144,8 @@ class AICommands(commands.Cog):
                     use_fun=fun
                 )
             final_footer = footer
+            if fun:
+                final_footer += " | Fun Mode"
         except Exception as e:
             logger.exception(f"Error in {model_key} request: %s", e)
             error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
@@ -161,7 +154,7 @@ class AICommands(commands.Cog):
                 return await ctx.reply(embed=error_embed)
             else:
                 return await interaction.followup.send(embed=error_embed)
-
+            
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=f"{final_footer} | generated in {elapsed} seconds")
         
