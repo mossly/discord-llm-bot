@@ -92,14 +92,16 @@ async def perform_chat_query(
             if search_query:
                 ddg_summary = await duck_cog.perform_ddg_search(search_query)
                 if ddg_summary:
-                    summary = await duck_cog.summarize_search_results(ddg_summary)
+                    summary_result = await duck_cog.summarize_search_results(ddg_summary)
+                    summary = summary_result[0] if isinstance(summary_result, tuple) else summary_result
                     if summary:
                         prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary
         except Exception as e:
             logger.exception("Error during DuckDuckGo search: %s", e)
     
     if ddg_summary:
-        prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + ddg_summary
+        summary_text = ddg_summary[0] if isinstance(ddg_summary, tuple) else ddg_summary
+        prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
 
     status_msg = None
     if show_status:

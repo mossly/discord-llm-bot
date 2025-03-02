@@ -76,7 +76,7 @@ class DuckDuckGo(commands.Cog):
             return search_results
         
         try:
-            summary = await api_utils.send_request(
+            summary_result = await api_utils.send_request(
                 model="gpt-4o-mini",
                 message_content=(
                     "Please summarize the following DuckDuckGo search results. "
@@ -84,6 +84,8 @@ class DuckDuckGo(commands.Cog):
                     f"{search_results}"
                 )
             )
+            
+            summary = summary_result[0] if isinstance(summary_result, tuple) else summary_result
             logger.info("Summary generated: %s", summary)
             return summary
         except Exception as e:
