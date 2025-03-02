@@ -175,7 +175,7 @@ class AICommands(commands.Cog):
     async def chat_slash(
         self, 
         interaction: Interaction, 
-        model: Literal["gpt-4o-mini", "gpt-o3-mini", "deepseek-v3", "claude-3.5-sonnet",
+        model: Literal["gpt-4o-mini", "gpt-o3-mini", "deepseek-v3",
                         "claude-3.7-sonnet", "claude-3.7-sonnet:thinking",
                         "gemini-2.0-flash-lite", "grok-2"],
         prompt: str, 
