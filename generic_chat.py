@@ -127,18 +127,34 @@ async def perform_chat_query(
         if status_msg:
             await delete_msg(status_msg)
             
+        footer_parts = [reply_footer]
+        token_stats = []
+        
+        if use_fun:
+            footer_parts.append("Fun Mode")
+            
+        footer_parts.append(f"{elapsed} seconds")
+        
         if stats:
             tokens_prompt = stats.get('tokens_prompt', 0)
             tokens_completion = stats.get('tokens_completion', 0)
             total_cost = stats.get('total_cost', 0)
             
-            cost_info = f"\nInput: {tokens_prompt} tokens | Output: {tokens_completion} tokens"
+            prompt_tokens_str = f"{tokens_prompt / 1000:.1f}k" if tokens_prompt >= 1000 else str(tokens_prompt)
+            
+            token_stats.append(f"{prompt_tokens_str} input tokens")
+            token_stats.append(f"{tokens_completion} output tokens")
+            
             if total_cost:
-                cost_info += f", | ${total_cost:.6f}"
+                token_stats.append(f"Cost ${total_cost:.2f}")
+        
+        first_line = " | ".join(footer_parts)
+        
+        if token_stats:
+            return result, elapsed, f"{first_line}\n{' | '.join(token_stats)}"
+        else:
+            return result, elapsed, first_line
             
-            reply_footer += cost_info
-            
-        return result, elapsed, reply_footer
     except Exception as e:
         if status_msg:
             await delete_msg(status_msg)

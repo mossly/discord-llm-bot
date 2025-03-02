@@ -22,7 +22,6 @@ class ImageGen(commands.Cog):
         logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s'",
                     img_prompt, img_quality, img_size)
         loop = asyncio.get_running_loop()
-        # Offload the blocking call to the default executor
         response = await loop.run_in_executor(
             None,
             lambda: openai.images.generate(
@@ -78,7 +77,6 @@ class ImageGen(commands.Cog):
         footer_text_parts.append(f"generated in {generation_time} seconds")
         footer_text = " | ".join(footer_text_parts)
 
-        # Download each image and send it as an attachment to ensure it displays in the embed.
         for idx, url in enumerate(result_urls):
             try:
                 async with aiohttp.ClientSession() as session:
@@ -95,7 +93,6 @@ class ImageGen(commands.Cog):
 
             file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
             embed = discord.Embed(title="", description=prompt, color=0x32a956)
-            # Use the 'attachment://' URL to reference the file attached below.
             embed.set_image(url=f"attachment://generated_image_{idx}.png")
             embed.set_footer(text=footer_text)
             await interaction.followup.send(file=file, embed=embed)
