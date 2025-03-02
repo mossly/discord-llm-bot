@@ -25,19 +25,14 @@ class DuckDuckGo(commands.Cog):
             extracted_query = await api_utils.send_request(
                 model="gpt-4o-mini",
                 message_content=(
-                    "Determine if a web search would help resolve the users last message. This will apply in all cases if the user asks a question that would benefit from information retrieval. "
-                    "Try not to make any assumptions, particularly about dates, and definitely search for any information the user requests that is after your knowledge cutoff. "
-                    "If a search would not be helpful, return NO_SEARCH. "
-                    "If a search would be helpful, return only a concise search query string, informed by the following text, that captures its key intent. "
-                    "Always return a search query if the user explicitly requests a web search.\n\n"
+                    "Generate a concise search query that would fetch relevant information to answer or "
+                    "address the following user message. Focus on extracting key terms, topics, names, or questions. "
+                    "Return only the search query text, nothing else.\n\n"
                     f"User message: {user_message}"
                 )
             )
             
             extracted_query = extracted_query.strip()
-            if extracted_query.upper() == "NO_SEARCH":
-                logger.info("Extracted query indicates NO_SEARCH; skipping search.")
-                return ""
             logger.info("Extracted search query: %s", extracted_query)
             return extracted_query
             

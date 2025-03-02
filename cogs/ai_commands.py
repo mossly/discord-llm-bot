@@ -79,7 +79,7 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False):
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
@@ -117,14 +117,14 @@ class AICommands(commands.Cog):
                         prompt=cleaned_prompt,
                         api_cog=api_cog,
                         channel=channel,
-                        duck_cog=duck_cog,
+                        duck_cog=duck_cog if web_search else None,
                         image_url=img_url,
                         reference_message=reference_message,
                         model=model,
                         reply_footer=footer,
                         show_status=False,
                         api=api,
-                        use_fun=fun    # pass our fun mode flag here
+                        use_fun=fun
                     )
                 finally:
                     from message_utils import delete_msg
@@ -134,7 +134,7 @@ class AICommands(commands.Cog):
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
                     channel=channel,
-                    duck_cog=duck_cog,
+                    duck_cog=duck_cog if web_search else None,
                     image_url=img_url,
                     reference_message=reference_message,
                     model=model,
@@ -146,6 +146,8 @@ class AICommands(commands.Cog):
             final_footer = footer
             if fun:
                 final_footer += " | Fun Mode"
+            if web_search:
+                final_footer += " | Web Search"
         except Exception as e:
             logger.exception(f"Error in {model_key} request: %s", e)
             error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
@@ -169,6 +171,7 @@ class AICommands(commands.Cog):
     @app_commands.describe(
         model="Model to use for the response",
         fun="Toggle fun mode",
+        web_search="Toggle web search",
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)"
     )
@@ -177,9 +180,10 @@ class AICommands(commands.Cog):
         interaction: Interaction, 
         model: Literal["gpt-4o-mini", "gpt-o3-mini", "deepseek-v3",
                         "claude-3.7-sonnet", "claude-3.7-sonnet:thinking",
-                        "gemini-2.0-flash-lite", "grok-2"],
+                        "gemini-2.0-flash-lite", "grok-2", "mistral-large"],
         prompt: str, 
         fun: bool = False,
+        web_search: bool = False,
         attachment: Optional[Attachment] = None
     ):
         await interaction.response.defer(thinking=True)
@@ -199,7 +203,7 @@ class AICommands(commands.Cog):
             )
             model = "gpt-4o-mini"
         
-        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun)
+        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -256,6 +260,7 @@ class ModelSelectionView(discord.ui.View):
         self.additional_text = additional_text
         self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
         self.fun = False
+        self.web_search = False
         
         options = []
         
@@ -309,6 +314,8 @@ class ModelSelectionView(discord.ui.View):
         self.add_item(self.model_select)
         
         self.add_item(discord.ui.Button(label="Fun Mode: OFF", style=discord.ButtonStyle.secondary, custom_id="toggle_fun", callback=self.toggle_fun))
+        self.add_item(discord.ui.Button(label="Web Search: OFF", style=discord.ButtonStyle.secondary, custom_id="toggle_web_search", callback=self.toggle_web_search))
+
         
         submit_button = discord.ui.Button(
             label="Submit",
@@ -333,6 +340,12 @@ class ModelSelectionView(discord.ui.View):
         self.fun = not self.fun
         button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_fun"][0]
         button.label = f"Fun Mode: {'ON' if self.fun else 'OFF'}"
+        await interaction.response.edit_message(view=self)
+    
+    async def toggle_web_search(self, interaction: discord.Interaction):
+        self.web_search = not self.web_search
+        button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_web_search"][0]
+        button.label = f"Web Search: {'ON' if self.web_search else 'OFF'}"
         await interaction.response.edit_message(view=self)
     
     async def submit_button_callback(self, interaction: discord.Interaction):
@@ -363,7 +376,8 @@ class ModelSelectionView(discord.ui.View):
                 reference_message=self.reference_message,
                 image_url=image_url,
                 reply_msg=self.original_message,
-                fun=self.fun
+                fun=self.fun,
+                web_search=self.web_search
             )
             
             try:
