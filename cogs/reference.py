@@ -27,11 +27,5 @@ class ReferenceCog(commands.Cog):
                 return ""
         return ""
 
-    async def cog_load(self):
-        logger.info("ReferenceCog loaded.")
-
-    async def cog_unload(self):
-        logger.info("ReferenceCog unloaded.")
-
 async def setup(bot: commands.Bot):
     await bot.add_cog(ReferenceCog(bot))

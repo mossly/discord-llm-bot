@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 class DuckDuckGo(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        logger.info("DuckDuckGo cog loaded.")
 
     async def extract_search_query(self, user_message: str) -> str:
         logger.info("Extracting search query for message: %s", user_message)
