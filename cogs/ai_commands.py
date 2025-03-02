@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_CONFIG = {
     "gpt-4o-mini": {
-        "name": "GPT-4o-mini",
+        "name": "GPT-4o-mini by OpenAI",
         "color": 0x32a956,
         "default_footer": "gpt-4o-mini",
         "api_model": "openai/gpt-4o-mini",
@@ -19,7 +19,7 @@ MODEL_CONFIG = {
         "api": "openrouter"
     },
     "gpt-o3-mini": {
-        "name": "GPT-o3-mini",
+        "name": "GPT-o3-mini by OpenAI",
         "color": 0x32a956,
         "default_footer": "o3-mini | CoT",
         "api_model": "openai/o3-mini",
@@ -27,7 +27,7 @@ MODEL_CONFIG = {
         "api": "openrouter"
     },
     "deepseek-v3": {
-        "name": "Deepseek",
+        "name": "DeepSeek v3 by DeepSeek",
         "color": 0x32a956, 
         "default_footer": "Deepseek-v3",
         "api_model": "deepseek/deepseek-chat",
@@ -35,7 +35,7 @@ MODEL_CONFIG = {
         "api": "openrouter"
     },
     "claude-3.7-sonnet": {
-        "name": "Anthropic Claude 3.7 Sonnet",
+        "name": "Claude 3.7 Sonnet by Anthropic",
         "color": 0x32a956,
         "default_footer": "Claude 3.7 Sonnet",
         "api_model": "anthropic/claude-3.7-sonnet:beta",
@@ -43,7 +43,7 @@ MODEL_CONFIG = {
         "api": "openrouter"
     },
     "claude-3.7-sonnet:thinking": {
-        "name": "Anthropic Claude 3.7 Sonnet | CoT",
+        "name": "Claude 3.7 Sonnet (Thinking) by Anthropic",
         "color": 0x32a956,
         "default_footer": "Claude 3.7 Sonnet (Thinking)",
         "api_model": "anthropic/claude-3.7-sonnet:thinking",
@@ -51,7 +51,7 @@ MODEL_CONFIG = {
         "api": "openrouter"
     },
     "gemini-2.0-flash-lite": {
-        "name": "Google Gemini 2.0 Flash Lite",
+        "name": "Gemini 2.0 Flash Lite by Google",
         "color": 0x32a956,
         "default_footer": "Gemini 2.0 Flash Lite",
         "api_model": "google/gemini-2.0-flash-lite-001",
@@ -59,10 +59,18 @@ MODEL_CONFIG = {
         "api": "openrouter"
     },
     "grok-2": {
-        "name": "X-AI Grok 2",
+        "name": "Grok 2 by X-AI",
         "color": 0x32a956,
         "default_footer": "Grok 2",
         "api_model": "x-ai/grok-2-1212",
+        "supports_images": False,
+        "api": "openrouter"
+    },
+    "mistral-large": {
+        "name": "Mistral Large by Mistral AI",
+        "color": 0x32a956,
+        "default_footer": "Mistral Large",
+        "api_model": "mistralai/mistral-large-2411",
         "supports_images": False,
         "api": "openrouter"
     }

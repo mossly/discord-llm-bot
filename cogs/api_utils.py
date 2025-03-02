@@ -38,23 +38,46 @@ class APIUtils(commands.Cog):
         logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
         return emoji_string
     
-    async def fetch_generation_stats(self, generation_id: str) -> dict:
-        logger.info(f"Fetching generation stats for ID: {generation_id}")
+async def fetch_generation_stats(self, generation_id: str) -> dict:
+    logger.info(f"Fetching generation stats for ID: {generation_id}")
+    max_retries = 3
+    retry_delay = 0.5
+    
+    for attempt in range(max_retries):
         try:
             async with aiohttp.ClientSession() as session:
                 headers = {"Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}"}
                 url = f"https://openrouter.ai/api/v1/generation?id={generation_id}"
+                
                 async with session.get(url, headers=headers) as response:
-                    if response.status != 200:
+                    if response.status == 200:
+                        stats = await response.json()
+                        logger.info(f"Successfully retrieved generation stats: {stats}")
+                        return stats.get("data", {})
+                    elif response.status == 404:
+                        error_text = await response.text()
+                        logger.warning(f"Generation stats not found on attempt {attempt+1}/{max_retries}: {error_text}")
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            logger.warning(f"Failed to fetch generation stats after {max_retries} attempts")
+                            return {}
+                    else:
                         error_text = await response.text()
                         logger.error(f"Failed to fetch generation stats: HTTP {response.status}, {error_text}")
                         return {}
-                    stats = await response.json()
-                    logger.info(f"Successfully retrieved generation stats: {stats}")
-                    return stats.get("data", {})
         except Exception as e:
-            logger.exception(f"Error fetching generation stats: {e}")
+            logger.exception(f"Error fetching generation stats on attempt {attempt+1}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+                continue
             return {}
+    
+    return {}
     
     async def send_request(
         self,
