@@ -81,9 +81,9 @@ class AICommands(commands.Cog):
             
             if not image_url:
                 from generic_chat import process_attachments
-                final_prompt, img_url = await process_attachments(formatted_prompt, attachments or [], is_slash=(interaction is not None))
+                final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
             else:
-                final_prompt = formatted_prompt
+                final_prompt = prompt
                 img_url = image_url
 
             cleaned_prompt = final_prompt
