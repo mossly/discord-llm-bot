@@ -111,7 +111,7 @@ async def perform_chat_query(
             reraise=True,
         ):
             with attempt:
-                result = await api_cog.send_request(
+                result, stats = await api_cog.send_request(
                     model=model,
                     message_content=prompt,
                     reference_message=reference_message,
@@ -126,6 +126,17 @@ async def perform_chat_query(
         
         if status_msg:
             await delete_msg(status_msg)
+            
+        if stats:
+            tokens_prompt = stats.get('tokens_prompt', 0)
+            tokens_completion = stats.get('tokens_completion', 0)
+            total_cost = stats.get('total_cost', 0)
+            
+            cost_info = f"\nInput: {tokens_prompt} tokens | Output: {tokens_completion} tokens"
+            if total_cost:
+                cost_info += f", | ${total_cost:.6f}"
+            
+            reply_footer += cost_info
             
         return result, elapsed, reply_footer
     except Exception as e:

@@ -113,7 +113,7 @@ class AICommands(commands.Cog):
             if ctx:
                 status_msg = await update_status(None, "...generating reply...", channel=channel)
                 try:
-                    result, elapsed, _ = await perform_chat_query(
+                    result, elapsed, footer_with_stats = await perform_chat_query(
                         prompt=cleaned_prompt,
                         api_cog=api_cog,
                         channel=channel,
@@ -130,7 +130,7 @@ class AICommands(commands.Cog):
                     from message_utils import delete_msg
                     await delete_msg(status_msg)
             else:
-                result, elapsed, _ = await perform_chat_query(
+                result, elapsed, footer_with_stats = await perform_chat_query(
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
                     channel=channel,
@@ -143,11 +143,14 @@ class AICommands(commands.Cog):
                     api=api,
                     use_fun=fun
                 )
-            final_footer = footer
+            
+            final_footer = footer_with_stats
             if fun:
-                final_footer += " | Fun Mode"
+                if " | Fun Mode" not in final_footer:
+                    final_footer += " | Fun Mode"
             if web_search:
-                final_footer += " | Web Search"
+                if " | Web Search" not in final_footer:
+                    final_footer += " | Web Search"
         except Exception as e:
             logger.exception(f"Error in {model_key} request: %s", e)
             error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)

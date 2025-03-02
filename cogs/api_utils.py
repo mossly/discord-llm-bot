@@ -38,6 +38,24 @@ class APIUtils(commands.Cog):
         logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
         return emoji_string
     
+    async def fetch_generation_stats(self, generation_id: str) -> dict:
+        logger.info(f"Fetching generation stats for ID: {generation_id}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {"Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}"}
+                url = f"https://openrouter.ai/api/v1/generation?id={generation_id}"
+                async with session.get(url, headers=headers) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Failed to fetch generation stats: HTTP {response.status}, {error_text}")
+                        return {}
+                    stats = await response.json()
+                    logger.info(f"Successfully retrieved generation stats: {stats}")
+                    return stats.get("data", {})
+        except Exception as e:
+            logger.exception(f"Error fetching generation stats: {e}")
+            return {}
+    
     async def send_request(
         self,
         model: str,
@@ -48,7 +66,7 @@ class APIUtils(commands.Cog):
         api: str = "openai",
         use_emojis: bool = False,
         emoji_channel: discord.TextChannel = None
-    ) -> str:
+    ) -> tuple:
         if api == "openrouter":
             api_client = self.OPENROUTERCLIENT
             logger.info(f"Using OpenRouter API for model: {model}")
@@ -108,6 +126,7 @@ class APIUtils(commands.Cog):
                 messages_input.append({"role": "user", "content": message_content})
         
         logger.info("Sending API request with payload: %s", messages_input)
+        generation_stats = {}
         
         try:
             response = await asyncio.to_thread(
@@ -116,27 +135,33 @@ class APIUtils(commands.Cog):
                 messages=messages_input,
             )
             
-            # Validate response before accessing properties
             if not response:
                 logger.error("API returned None response")
-                return "I'm sorry, I received an empty response from the API. Please try again."
+                return "I'm sorry, I received an empty response from the API. Please try again.", {}
                 
             if not hasattr(response, 'choices') or not response.choices:
                 logger.error("API response missing choices: %s", response)
-                return "I'm sorry, the API response was missing expected content. Please try again."
+                return "I'm sorry, the API response was missing expected content. Please try again.", {}
                 
             if not hasattr(response.choices[0], 'message') or not response.choices[0].message:
                 logger.error("API response missing message in first choice: %s", response.choices[0])
-                return "I'm sorry, the API response structure was unexpected. Please try again."
+                return "I'm sorry, the API response structure was unexpected. Please try again.", {}
                 
             if not hasattr(response.choices[0].message, 'content'):
                 logger.error("API response missing content in message: %s", response.choices[0].message)
-                return "I'm sorry, the response content was missing. Please try again."
+                return "I'm sorry, the response content was missing. Please try again.", {}
+            
+            content = response.choices[0].message.content
+            
+            if api == "openrouter" and hasattr(response, 'id'):
+                generation_id = response.id
+                logger.info(f"OpenRouter generation ID: {generation_id}")
+                generation_stats = await self.fetch_generation_stats(generation_id)
                 
-            return response.choices[0].message.content
+            return content, generation_stats
         except Exception as e:
             logger.exception("Error in API request: %s", e)
-            return f"I'm sorry, there was an error communicating with the AI service: {str(e)}"
+            return f"I'm sorry, there was an error communicating with the AI service: {str(e)}", {}
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(APIUtils(bot))
