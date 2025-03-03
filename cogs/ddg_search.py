@@ -91,18 +91,5 @@ class DuckDuckGo(commands.Cog):
             logger.exception("Error summarizing search results: %s", e)
             return search_results
 
-    async def search_and_summarize(self, full_message: str) -> str:
-        logger.info("Running combined search and summarization for message: %s", full_message)
-        search_query = await self.extract_search_query(full_message)
-        if not search_query:
-            logger.info("No search query was extracted; skipping search.")
-            return ""
-        raw_results = await self.perform_ddg_search(search_query)
-        if not raw_results:
-            logger.info("No search results found for query: %s", search_query)
-            return ""
-        summary = await self.summarize_search_results(raw_results)
-        return summary
-
 async def setup(bot):
     await bot.add_cog(DuckDuckGo(bot))

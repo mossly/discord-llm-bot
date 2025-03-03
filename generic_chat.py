@@ -7,9 +7,6 @@ from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt,
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "o3-mini"
-DEFAULT_REPLY_FOOTER = "o3-mini | default"
-
 async def process_attachments(prompt: str, attachments: list, is_slash: bool = False) -> (str, str):
     image_url = None
     final_prompt = prompt
@@ -34,25 +31,6 @@ async def process_attachments(prompt: str, attachments: list, is_slash: bool = F
                 image_url = att.proxy_url or att.url
     return final_prompt, image_url
 
-
-async def get_reference_message(ctx) -> str:
-    reference_message = ""
-    if hasattr(ctx, "message") and ctx.message.reference:
-        try:
-            if ctx.message.reference.cached_message:
-                ref_msg = ctx.message.reference.cached_message
-            else:
-                ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-            
-            if ref_msg.author.id == ctx.bot.user.id:
-                if ref_msg.embeds and ref_msg.embeds[0].description:
-                    reference_message = ref_msg.embeds[0].description.strip()
-            else:
-                reference_message = f"Message from {ref_msg.author.name}: {ref_msg.content}"
-        except Exception as e:
-            logger.exception("Failed to fetch reference message: %s", e)
-    return reference_message
-
 async def perform_chat_query(
     prompt: str,
     api_cog,
@@ -60,8 +38,8 @@ async def perform_chat_query(
     duck_cog=None,
     image_url: str = None,
     reference_message: str = None,
-    model: str = DEFAULT_MODEL,
-    reply_footer: str = DEFAULT_REPLY_FOOTER,
+    model: str = None,
+    reply_footer: str = None,
     api: str = "openai",
     use_fun: bool = False,
     web_search: bool = False
