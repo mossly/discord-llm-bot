@@ -114,10 +114,9 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             logger.info(f"Reminder set - User: {interaction.user.id}, Current time: {datetime.now()}, Reminder time: {local_readable_time} in {self.user_timezone}, Text: '{self.reminder_text.value}'")
             
             embed = self.cog._create_embed(
-                "Reminder Set",
-                f"✅ Your reminder has been set for **{local_readable_time}** {self.user_timezone} ({time_until} from now).\n\n"
-                f"**Reminder:** {self.reminder_text.value}\n\n"
-                f"I'll send you a DM when it's time!",
+                "Reminder Set ✅",
+                f"Your reminder has been set for **{local_dt.strftime('%A, %B %d at %I:%M %p')}** ({time_until}).\n\n"
+                f"**Reminder:** {self.reminder_text.value}",
                 color=discord.Color.green()
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -139,7 +138,79 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-class TimezoneModal(ui.Modal, title="Set Your Timezone"):
+class TimezoneSelect(ui.Select):
+    def __init__(self, cog):
+        self.cog = cog
+        
+        # Define common timezones with descriptions including the current time
+        self.timezone_options = [
+            ("Pacific/Auckland", "New Zealand (Auckland)"),
+            ("Australia/Sydney", "Australia (Sydney)"),
+            ("Asia/Tokyo", "Japan (Tokyo)"),
+            ("Asia/Shanghai", "China (Shanghai)"),
+            ("Asia/Kolkata", "India (Kolkata)"),
+            ("Europe/London", "Europe (London)"),
+            ("Europe/Paris", "Europe (Paris)"),
+            ("America/New_York", "US/Canada (Eastern)"),
+            ("America/Chicago", "US/Canada (Central)"),
+            ("America/Los_Angeles", "US/Canada (Pacific)"),
+            ("Pacific/Honolulu", "Hawaii"),
+            ("UTC", "UTC (Coordinated Universal Time)")
+        ]
+        
+        # Create options with current time in description
+        options = []
+        for tz_name, label in self.timezone_options:
+            tz = pytz.timezone(tz_name)
+            current_time = datetime.now(tz).strftime("%H:%M")
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    description=f"{tz_name} (Current time: {current_time})",
+                    value=tz_name
+                )
+            )
+        
+        super().__init__(
+            placeholder="Choose your timezone...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        timezone_str = self.values[0]
+        
+        # Save the user's timezone preference
+        self.cog.user_timezones[interaction.user.id] = timezone_str
+        self.cog._save_user_timezones()
+        
+        # Format the current time in the user's timezone
+        local_time = datetime.now(pytz.timezone(timezone_str)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        embed = self.cog._create_embed(
+            "Timezone Set",
+            f"✅ Your timezone has been set to **{timezone_str}**.\n"
+            f"Current time in your timezone: **{local_time}**",
+            color=discord.Color.green()
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+
+class TimezoneView(ui.View):
+    def __init__(self, cog, *, timeout=180):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.add_item(TimezoneSelect(cog))
+        
+    @ui.button(label="Custom Timezone", style=discord.ButtonStyle.secondary, row=1)
+    async def custom_timezone(self, interaction: discord.Interaction, button: ui.Button):
+        # For users who need a timezone not in the dropdown
+        modal = CustomTimezoneModal(self.cog)
+        await interaction.response.send_modal(modal)
+
+
+class CustomTimezoneModal(ui.Modal, title="Set Custom Timezone"):
     timezone_input = ui.TextInput(
         label="Timezone",
         placeholder="e.g., Pacific/Auckland, America/New_York",
@@ -376,8 +447,7 @@ class Reminders(commands.Cog):
         embed = discord.Embed(
             title=title,
             description=description,
-            color=color,
-            timestamp=datetime.now()
+            color=color
         )
         return embed
 
@@ -461,22 +531,75 @@ class Reminders(commands.Cog):
         now = datetime.now()
         delta = target_dt - now
         
-        days, seconds = delta.days, delta.seconds
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        seconds = seconds % 60
-        
-        parts = []
-        if days > 0:
-            parts.append(f"{days} day{'s' if days != 1 else ''}")
-        if hours > 0:
-            parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-        if minutes > 0:
-            parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
-        if seconds > 0 and not parts:  # Only include seconds if less than a minute
-            parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
+        # Handle future times
+        if delta.total_seconds() > 0:
+            years, remainder = divmod(delta.days, 365)
+            months, days = divmod(remainder, 30)
+            hours = delta.seconds // 3600
+            minutes = (delta.seconds % 3600) // 60
+            seconds = delta.seconds % 60
             
-        return ", ".join(parts)
+            parts = []
+            if years > 0:
+                parts.append(f"{years} year{'s' if years != 1 else ''}")
+            if months > 0:
+                parts.append(f"{months} month{'s' if months != 1 else ''}")
+            if days > 0:
+                parts.append(f"{days} day{'s' if days != 1 else ''}")
+            if hours > 0:
+                parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+            if minutes > 0:
+                parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+            if seconds > 0 and not parts:  # Only include seconds if less than a minute
+                parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
+                
+            # Smart formatting
+            if not parts:
+                return "in a moment"
+            elif len(parts) == 1:
+                return f"in {parts[0]}"
+            else:
+                # Return a maximum of 2 units for readability
+                return f"in {' and '.join(parts[:2])}"
+        
+        return "now"
+        
+    def _format_time_since(self, past_dt):
+        """Format the time since a past datetime in a human-readable format"""
+        now = datetime.now()
+        delta = now - past_dt
+        
+        # For very recent times (within a minute)
+        if delta.total_seconds() < 60:
+            return "just now"
+            
+        # For times within today
+        if past_dt.date() == now.date():
+            return "earlier today"
+            
+        # For yesterday
+        if (now.date() - past_dt.date()).days == 1:
+            return "yesterday"
+            
+        # For within the last week
+        if delta.days < 7:
+            return f"last {past_dt.strftime('%A')}"  # Day name
+            
+        # For within the current month
+        if now.month == past_dt.month and now.year == past_dt.year:
+            return f"{delta.days} days ago"
+            
+        # For longer periods
+        years = now.year - past_dt.year
+        months = now.month - past_dt.month
+        if months < 0:
+            years -= 1
+            months += 12
+            
+        if years > 0:
+            return f"{years} year{'s' if years != 1 else ''} ago" if months == 0 else f"{years} year{'s' if years != 1 else ''} and {months} month{'s' if months != 1 else ''} ago"
+        else:
+            return f"{months} month{'s' if months != 1 else ''} ago"
 
     async def cog_load(self):
         self.task = asyncio.create_task(self.reminder_loop())
@@ -514,10 +637,14 @@ class Reminders(commands.Cog):
                         user_timezone = pytz.timezone(user_tz)
                         local_time = trigger_time_utc.astimezone(user_timezone).strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Create embed for the reminder
+                        # Create embed for the reminder with info about when it was set
+                        reminder_set_time = datetime.fromtimestamp(trigger_time) - timedelta(seconds=10)  # Approximate time when reminder was set
+                        time_since = self._format_time_since(reminder_set_time)
+                        readable_set_date = reminder_set_time.strftime("%Y-%m-%d at %I:%M %p")
+                        
                         embed = self._create_embed(
-                            "Reminder",
-                            f"⏰ **{message}**\n\nThis reminder was scheduled for {local_time} ({user_tz})",
+                            "Reminder ⏰",
+                            f"**{message}**\n\nSet {time_since} on {readable_set_date}",
                             color=discord.Color.gold()
                         )
                         await user.send(embed=embed)
@@ -609,9 +736,9 @@ class Reminders(commands.Cog):
             # Convert UTC timestamp to user's timezone
             utc_dt = datetime.utcfromtimestamp(ts).replace(tzinfo=pytz.UTC)
             local_dt = utc_dt.astimezone(local_tz)
-            readable_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+            readable_time = local_dt.strftime("%A, %B %d at %I:%M %p")
             time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
-            lines.append(f"⏰ **{readable_time}** {user_timezone} ({time_until} from now)\n> {msg}")
+            lines.append(f"⏰ **{readable_time}** ({time_until})\n> {msg}")
         
         # Create embed for better formatting
         embed = self._create_embed(
@@ -770,12 +897,12 @@ class Reminders(commands.Cog):
         # Convert UTC time to user's timezone
         utc_dt = datetime.utcfromtimestamp(ts).replace(tzinfo=pytz.UTC)
         local_dt = utc_dt.astimezone(local_tz)
-        readable_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        readable_time = local_dt.strftime("%A, %B %d at %I:%M %p")
         time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
         
         embed = self._create_embed(
-            "Your Next Reminder",
-            f"⏰ **{readable_time}** {user_timezone}\n({time_until} from now)\n\n> {msg}",
+            "Your Next Reminder ⏰",
+            f"**{readable_time}** ({time_until})\n\n> {msg}",
             color=discord.Color.green()
         )
         
@@ -785,16 +912,21 @@ class Reminders(commands.Cog):
     
     @timezone.command(name="set", description="Set your timezone")
     async def set_timezone(self, interaction: discord.Interaction):
-        """Set your timezone preferences"""
+        """Set your timezone preferences using a dropdown menu"""
         logger.info(f"User {interaction.user.id} is setting their timezone")
         
         current_tz = self.get_user_timezone(interaction.user.id)
         
-        # Send the timezone modal
-        modal = TimezoneModal(self)
-        modal.timezone_input.default = current_tz
+        # Display current timezone and the dropdown menu
+        embed = self._create_embed(
+            "Set Your Timezone",
+            f"Your timezone is currently set to: **{current_tz}**\n\n"
+            f"Please select your timezone from the dropdown menu below, or use the 'Custom Timezone' button if yours is not listed.",
+            color=discord.Color.blue()
+        )
         
-        await interaction.response.send_modal(modal)
+        view = TimezoneView(self)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
     @timezone.command(name="show", description="Show your current timezone setting")
     async def show_timezone(self, interaction: discord.Interaction):
@@ -824,47 +956,6 @@ class Reminders(commands.Cog):
                 color=discord.Color.red()
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @timezone.command(name="list", description="List some common timezone options")
-    async def list_timezones(self, interaction: discord.Interaction):
-        """List some common timezone options"""
-        common_timezones = {
-            "New Zealand (Auckland)": "Pacific/Auckland",
-            "Australia (Sydney)": "Australia/Sydney",
-            "Japan (Tokyo)": "Asia/Tokyo",
-            "China (Shanghai)": "Asia/Shanghai",
-            "India (Kolkata)": "Asia/Kolkata",
-            "Europe (London)": "Europe/London",
-            "Europe (Paris)": "Europe/Paris",
-            "US/Canada (Eastern)": "America/New_York",
-            "US/Canada (Central)": "America/Chicago",
-            "US/Canada (Pacific)": "America/Los_Angeles"
-        }
-        
-        embed = self._create_embed(
-            "Common Timezones",
-            "Here are some common timezone options you can use with `/reminder timezone set`:",
-            color=discord.Color.blue()
-        )
-        
-        for name, tz_name in common_timezones.items():
-            try:
-                tz = pytz.timezone(tz_name)
-                current_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-                embed.add_field(
-                    name=name,
-                    value=f"`{tz_name}`\nCurrent time: {current_time}",
-                    inline=True
-                )
-            except Exception:
-                embed.add_field(
-                    name=name,
-                    value=f"`{tz_name}`",
-                    inline=True
-                )
-        
-        embed.set_footer(text="For a full list of valid timezones, visit: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def cog_unload(self):
         logger.info("Reminder Cog unloading, saving reminders...")
