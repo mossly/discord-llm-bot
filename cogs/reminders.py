@@ -2,6 +2,8 @@ import asyncio
 import time
 import logging
 from datetime import datetime
+import discord
+from discord import app_commands
 from discord.ext import commands
 
 logger = logging.getLogger(__name__)
@@ -32,46 +34,48 @@ class Reminders(commands.Cog):
                 self.reminders.pop(trigger_time, None)
             await asyncio.sleep(1)
 
-    @commands.command(name="addreminder")
-    async def add_reminder(self, ctx: commands.Context, time_str: str, *, reminder_text: str):
+    reminder = app_commands.Group(name="reminder", description="Manage your reminders")
+
+    @reminder.command(name="add", description="Add a reminder at a specific time")
+    async def add_reminder(self, interaction: discord.Interaction, time_str: str, reminder_text: str):
         try:
             dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
             trigger_time = dt.timestamp()
         except ValueError:
-            return await ctx.send("Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)")
+            return await interaction.response.send_message("Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)", ephemeral=True)
 
-        self.reminders[trigger_time] = (ctx.author.id, reminder_text)
-        await ctx.send(f"Reminder '{reminder_text}' set for {time_str} UTC.")
+        self.reminders[trigger_time] = (interaction.user.id, reminder_text)
+        await interaction.response.send_message(f"Reminder '{reminder_text}' set for {time_str} UTC.")
 
-    @commands.command(name="listreminders")
-    async def list_reminders(self, ctx: commands.Context):
-        user_id = ctx.author.id
+    @reminder.command(name="list", description="List all your upcoming reminders")
+    async def list_reminders(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
         user_reminders = [
             (ts, msg) for ts, (uid, msg) in self.reminders.items() if uid == user_id
         ]
         if not user_reminders:
-            return await ctx.send("You have no upcoming reminders.")
+            return await interaction.response.send_message("You have no upcoming reminders.", ephemeral=True)
 
         lines = []
         for ts, msg in sorted(user_reminders, key=lambda x: x[0]):
             readable_time = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
             lines.append(f"{readable_time} UTC - {msg}")
-        await ctx.send("\n".join(lines))
+        await interaction.response.send_message("\n".join(lines))
 
-    @commands.command(name="cancelreminder")
-    async def cancel_reminder(self, ctx: commands.Context, time_str: str):
+    @reminder.command(name="cancel", description="Cancel a reminder at a specific time")
+    async def cancel_reminder(self, interaction: discord.Interaction, time_str: str):
         try:
             dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
             trigger_time = dt.timestamp()
         except ValueError:
-            return await ctx.send("Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)")
+            return await interaction.response.send_message("Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)", ephemeral=True)
 
         entry = self.reminders.get(trigger_time)
-        if entry and entry[0] == ctx.author.id:
+        if entry and entry[0] == interaction.user.id:
             self.reminders.pop(trigger_time)
-            return await ctx.send("Reminder cancelled.")
+            return await interaction.response.send_message("Reminder cancelled.")
         else:
-            return await ctx.send("No matching reminder found for you at that time.")
+            return await interaction.response.send_message("No matching reminder found for you at that time.", ephemeral=True)
 
     async def cog_unload(self):
         if self.task:

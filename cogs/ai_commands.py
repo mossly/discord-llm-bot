@@ -210,10 +210,10 @@ class AIContextMenus(commands.Cog):
             placeholder="Add any extra context or instructions..."
         )
         
-        def __init__(self, reference_message, original_message):
+        def __init__(self, reference_message, original_message, channel):
             self.reference_message = reference_message
             self.original_message = original_message
-            self.has_image = self._check_for_images(original_message)
+            self.channel = channel
             
             title = "AI Reply" + (" (Image detected)" if self.has_image else "")
             super().__init__(title=title)
