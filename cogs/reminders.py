@@ -8,6 +8,8 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands
 from collections import defaultdict
+import pytz
+from typing import Dict, Optional
 
 # Set up enhanced logging
 logging.basicConfig(
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_REMINDERS_PER_USER = 25
 MIN_REMINDER_INTERVAL = 60  # Minimum 60 seconds between reminders
+DEFAULT_TIMEZONE = "Pacific/Auckland"  # New Zealand timezone (GMT+13)
 
 class ReminderModal(ui.Modal, title="Set a Reminder"):
     reminder_text = ui.TextInput(
@@ -44,9 +47,10 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
         required=True
     )
     
-    def __init__(self, cog):
+    def __init__(self, cog, user_timezone):
         super().__init__()
         self.cog = cog
+        self.user_timezone = user_timezone
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -54,13 +58,18 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             date_str = self.reminder_date.value
             time_str = self.reminder_time.value
             datetime_str = f"{date_str} {time_str}:00"
-            dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
-            trigger_time = dt.timestamp()
+            
+            # Parse datetime in user's timezone
+            local_tz = pytz.timezone(self.user_timezone)
+            local_dt = local_tz.localize(datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S"))
+            # Convert to UTC for storage
+            utc_dt = local_dt.astimezone(pytz.UTC)
+            trigger_time = utc_dt.timestamp()
             
             # Check if the reminder is for the past
             now = time.time()
             if trigger_time <= now:
-                logger.warning(f"User {interaction.user.id} attempted to set a reminder for the past: {datetime_str} (Now: {datetime.now()})")
+                logger.warning(f"User {interaction.user.id} attempted to set a reminder for the past: {datetime_str} in {self.user_timezone} (Now: {datetime.now()})")
                 embed = self.cog._create_embed(
                     "Invalid Time", 
                     "You can't set reminders for the past! Please choose a future time.",
@@ -69,7 +78,7 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
                 return await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # Check rate limiting for this user
-            user_reminders = [r for t, (uid, r) in self.cog.reminders.items() if uid == interaction.user.id]
+            user_reminders = [r for t, (uid, r, _) in self.cog.reminders.items() if uid == interaction.user.id]
             if len(user_reminders) >= MAX_REMINDERS_PER_USER:
                 logger.warning(f"User {interaction.user.id} hit max reminders limit ({MAX_REMINDERS_PER_USER})")
                 embed = self.cog._create_embed(
@@ -90,17 +99,23 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
                 return await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # All checks passed, add the reminder
-            self.cog.reminders[trigger_time] = (interaction.user.id, self.reminder_text.value)
+            self.cog.reminders[trigger_time] = (interaction.user.id, self.reminder_text.value, self.user_timezone)
             self.cog._save_reminders()
             
-            readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-            time_until = self.cog._format_time_until(dt)
+            # Display times in the user's timezone
+            local_readable_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
             
-            logger.info(f"Reminder set - User: {interaction.user.id}, Current time: {datetime.now()}, Reminder time: {readable_time}, Text: '{self.reminder_text.value}'")
+            # Get current time in user's timezone
+            current_local_time = datetime.now(local_tz)
+            
+            # Calculate time until reminder
+            time_until = self.cog._format_time_until(utc_dt.replace(tzinfo=None))
+            
+            logger.info(f"Reminder set - User: {interaction.user.id}, Current time: {datetime.now()}, Reminder time: {local_readable_time} in {self.user_timezone}, Text: '{self.reminder_text.value}'")
             
             embed = self.cog._create_embed(
                 "Reminder Set",
-                f"✅ Your reminder has been set for **{readable_time}** UTC ({time_until} from now).\n\n"
+                f"✅ Your reminder has been set for **{local_readable_time}** {self.user_timezone} ({time_until} from now).\n\n"
                 f"**Reminder:** {self.reminder_text.value}\n\n"
                 f"I'll send you a DM when it's time!",
                 color=discord.Color.green()
@@ -124,23 +139,77 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+class TimezoneModal(ui.Modal, title="Set Your Timezone"):
+    timezone_input = ui.TextInput(
+        label="Timezone",
+        placeholder="e.g., Pacific/Auckland, America/New_York",
+        required=True
+    )
+    
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            timezone_str = self.timezone_input.value
+            
+            # Validate timezone
+            try:
+                _ = pytz.timezone(timezone_str)
+            except pytz.exceptions.UnknownTimeZoneError:
+                embed = self.cog._create_embed(
+                    "Invalid Timezone",
+                    f"The timezone '{timezone_str}' is not valid. Please use a valid timezone name like 'Pacific/Auckland' or 'America/New_York'.\n\n"
+                    f"You can find a list of valid timezones here:\nhttps://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
+                    color=discord.Color.red()
+                )
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            # Save the user's timezone preference
+            self.cog.user_timezones[interaction.user.id] = timezone_str
+            self.cog._save_user_timezones()
+            
+            # Format the current time in the user's timezone
+            local_time = datetime.now(pytz.timezone(timezone_str)).strftime("%Y-%m-%d %H:%M:%S")
+            
+            embed = self.cog._create_embed(
+                "Timezone Set",
+                f"✅ Your timezone has been set to **{timezone_str}**.\n"
+                f"Current time in your timezone: **{local_time}**",
+                color=discord.Color.green()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error setting timezone: {e}", exc_info=True)
+            embed = self.cog._create_embed(
+                "Error",
+                "An error occurred while setting your timezone.",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class SelectTimeView(ui.View):
-    def __init__(self, cog, reminder_text, *, timeout=180):
+    def __init__(self, cog, reminder_text, user_timezone, *, timeout=180):
         super().__init__(timeout=timeout)
         self.cog = cog
         self.reminder_text = reminder_text
+        self.user_timezone = user_timezone
         
     @ui.button(label="Select Date & Time", style=discord.ButtonStyle.primary)
     async def select_time(self, interaction: discord.Interaction, button: ui.Button):
-        modal = ReminderModal(self.cog)
+        modal = ReminderModal(self.cog, self.user_timezone)
         modal.reminder_text.default = self.reminder_text
         
-        # Pre-populate with tomorrow's date
-        tomorrow = datetime.now() + timedelta(days=1)
+        # Get the user's local timezone
+        user_tz = pytz.timezone(self.user_timezone)
+        
+        # Pre-populate with tomorrow's date in user's timezone
+        tomorrow = datetime.now(user_tz) + timedelta(days=1)
         modal.reminder_date.default = tomorrow.strftime("%Y-%m-%d")
         
-        # Pre-populate with current time
-        modal.reminder_time.default = datetime.now().strftime("%H:%M")
+        # Pre-populate with current time in user's timezone
+        modal.reminder_time.default = datetime.now(user_tz).strftime("%H:%M")
         
         await interaction.response.send_modal(modal)
 
@@ -159,9 +228,13 @@ class CancelReminderView(ui.View):
         # Clear existing buttons
         self.clear_items()
         
+        # Get user's preferred timezone
+        user_timezone = self.cog.user_timezones.get(self.user_id, DEFAULT_TIMEZONE)
+        local_tz = pytz.timezone(user_timezone)
+        
         # Get user's reminders
         user_reminders = sorted(
-            [(ts, msg) for ts, (uid, msg) in self.cog.reminders.items() if uid == self.user_id],
+            [(ts, msg, tz) for ts, (uid, msg, tz) in self.cog.reminders.items() if uid == self.user_id],
             key=lambda x: x[0]
         )
         
@@ -175,9 +248,12 @@ class CancelReminderView(ui.View):
         
         # Add reminder cancel buttons for this page
         for i in range(start_idx, end_idx):
-            ts, msg = user_reminders[i]
-            dt = datetime.utcfromtimestamp(ts)
-            time_str = dt.strftime("%Y-%m-%d %H:%M")
+            ts, msg, _ = user_reminders[i]
+            
+            # Convert UTC timestamp to user's timezone
+            utc_dt = datetime.utcfromtimestamp(ts).replace(tzinfo=pytz.UTC)
+            local_dt = utc_dt.astimezone(local_tz)
+            time_str = local_dt.strftime("%Y-%m-%d %H:%M")
             
             # Truncate message if too long
             display_msg = msg if len(msg) <= 30 else msg[:27] + "..."
@@ -276,7 +352,7 @@ class CancelReminderView(ui.View):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
             
-        user_reminders = [r for t, (uid, r) in self.cog.reminders.items() if uid == self.user_id]
+        user_reminders = [r for t, (uid, r, _) in self.cog.reminders.items() if uid == self.user_id]
         total_pages = (len(user_reminders) - 1) // self.reminders_per_page + 1
         
         self.page = min(total_pages - 1, self.page + 1)
@@ -286,10 +362,13 @@ class CancelReminderView(ui.View):
 class Reminders(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.reminders = {}
+        self.reminders = {}  # {timestamp: (user_id, message, timezone)}
+        self.user_timezones = {}  # {user_id: timezone_string}
         self.task = None
         self.reminders_file = "reminders.json"
+        self.timezones_file = "user_timezones.json"
         self.dm_failed_users = set()  # Track users with failed DMs
+        self._load_user_timezones()
         self._load_reminders()
 
     def _create_embed(self, title, description, color=discord.Color.blue()):
@@ -302,6 +381,36 @@ class Reminders(commands.Cog):
         )
         return embed
 
+    def _load_user_timezones(self):
+        """Load user timezones from disk"""
+        if os.path.exists(self.timezones_file):
+            try:
+                with open(self.timezones_file, 'r') as f:
+                    # User IDs need to be converted from strings to integers
+                    data = json.load(f)
+                    self.user_timezones = {
+                        int(uid): tz for uid, tz in data.items()
+                    }
+                logger.info(f"Loaded {len(self.user_timezones)} user timezone preferences")
+            except Exception as e:
+                logger.error(f"Failed to load user timezones: {e}", exc_info=True)
+                self.user_timezones = {}
+        else:
+            self.user_timezones = {}
+
+    def _save_user_timezones(self):
+        """Save user timezones to disk"""
+        try:
+            # Convert the dictionary to a format that can be JSON serialized
+            data = {
+                str(uid): tz for uid, tz in self.user_timezones.items()
+            }
+            with open(self.timezones_file, 'w') as f:
+                json.dump(data, f)
+            logger.info(f"Saved {len(self.user_timezones)} user timezone preferences")
+        except Exception as e:
+            logger.error(f"Failed to save user timezones: {e}", exc_info=True)
+
     def _load_reminders(self):
         """Load reminders from disk"""
         if os.path.exists(self.reminders_file):
@@ -310,8 +419,8 @@ class Reminders(commands.Cog):
                     # JSON can't store numbers as keys, so we convert back from strings
                     data = json.load(f)
                     self.reminders = {
-                        float(ts): (int(uid), msg) 
-                        for ts, (uid, msg) in data.items()
+                        float(ts): (int(uid), msg, tz) 
+                        for ts, (uid, msg, tz) in data.items()
                     }
                 logger.info(f"Loaded {len(self.reminders)} reminders from disk")
                 
@@ -338,8 +447,8 @@ class Reminders(commands.Cog):
             # Convert the dictionary to a format that can be JSON serialized
             # JSON keys must be strings, so convert the timestamps
             data = {
-                str(ts): [uid, msg] 
-                for ts, (uid, msg) in self.reminders.items()
+                str(ts): [uid, msg, tz] 
+                for ts, (uid, msg, tz) in self.reminders.items()
             }
             with open(self.reminders_file, 'w') as f:
                 json.dump(data, f)
@@ -383,14 +492,14 @@ class Reminders(commands.Cog):
                 
                 # Find reminders that need to be triggered
                 to_trigger = []
-                for trigger_time, (user_id, message) in self.reminders.items():
+                for trigger_time, (user_id, message, user_tz) in self.reminders.items():
                     if trigger_time <= current_time:
-                        to_trigger.append((trigger_time, user_id, message))
+                        to_trigger.append((trigger_time, user_id, message, user_tz))
                 
                 # Process triggered reminders
-                for trigger_time, user_id, message in to_trigger:
+                for trigger_time, user_id, message, user_tz in to_trigger:
                     trigger_readable = datetime.utcfromtimestamp(trigger_time).strftime("%Y-%m-%d %H:%M:%S")
-                    logger.info(f"Triggering reminder - User: {user_id}, Current time: {now_readable}, Reminder time: {trigger_readable}, Text: '{message}'")
+                    logger.info(f"Triggering reminder - User: {user_id}, Current time: {now_readable}, Reminder time: {trigger_readable} UTC, Text: '{message}'")
                     
                     try:
                         # Skip sending DM if user previously had DM failures
@@ -400,10 +509,15 @@ class Reminders(commands.Cog):
                             
                         user = await self.bot.fetch_user(user_id)
                         
+                        # Format reminder time in user's timezone
+                        trigger_time_utc = datetime.utcfromtimestamp(trigger_time).replace(tzinfo=pytz.UTC)
+                        user_timezone = pytz.timezone(user_tz)
+                        local_time = trigger_time_utc.astimezone(user_timezone).strftime("%Y-%m-%d %H:%M:%S")
+                        
                         # Create embed for the reminder
                         embed = self._create_embed(
                             "Reminder",
-                            f"⏰ **{message}**",
+                            f"⏰ **{message}**\n\nThis reminder was scheduled for {local_time} ({user_tz})",
                             color=discord.Color.gold()
                         )
                         await user.send(embed=embed)
@@ -430,6 +544,10 @@ class Reminders(commands.Cog):
                 logger.error(f"Error in reminder loop: {e}", exc_info=True)
                 await asyncio.sleep(5)  # Sleep a bit longer on error
 
+    def get_user_timezone(self, user_id: int) -> str:
+        """Get the timezone for a user, or return the default timezone"""
+        return self.user_timezones.get(user_id, DEFAULT_TIMEZONE)
+
     reminder = app_commands.Group(name="reminder", description="Manage your reminders")
 
     @reminder.command(name="add", description="Add a reminder using an interactive date/time picker")
@@ -439,7 +557,7 @@ class Reminders(commands.Cog):
         logger.info(f"User {interaction.user.id} ({interaction.user.name}) is adding a reminder")
         
         # Check if user has too many reminders
-        user_reminders = [r for t, (uid, r) in self.reminders.items() if uid == interaction.user.id]
+        user_reminders = [r for t, (uid, r, _) in self.reminders.items() if uid == interaction.user.id]
         if len(user_reminders) >= MAX_REMINDERS_PER_USER:
             logger.warning(f"User {interaction.user.id} hit max reminders limit ({MAX_REMINDERS_PER_USER})")
             embed = self._create_embed(
@@ -448,12 +566,17 @@ class Reminders(commands.Cog):
                 color=discord.Color.red()
             )
             return await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        # Get user's timezone
+        user_timezone = self.get_user_timezone(interaction.user.id)
             
         embed = self._create_embed(
             "Set a Reminder",
-            "Please select a date and time for your reminder by clicking the button below."
+            f"Please select a date and time for your reminder by clicking the button below.\n\n"
+            f"Your current timezone is set to: **{user_timezone}**\n"
+            f"You can change this with `/reminder timezone set`"
         )
-        view = SelectTimeView(self, reminder_text)
+        view = SelectTimeView(self, reminder_text, user_timezone)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @reminder.command(name="list", description="List all your upcoming reminders")
@@ -461,8 +584,11 @@ class Reminders(commands.Cog):
         logger.info(f"User {interaction.user.id} listing reminders")
         
         user_id = interaction.user.id
+        user_timezone = self.get_user_timezone(user_id)
+        local_tz = pytz.timezone(user_timezone)
+        
         user_reminders = [
-            (ts, msg) for ts, (uid, msg) in self.reminders.items() if uid == user_id
+            (ts, msg, tz) for ts, (uid, msg, tz) in self.reminders.items() if uid == user_id
         ]
         
         if not user_reminders:
@@ -479,16 +605,18 @@ class Reminders(commands.Cog):
         
         # Format the output
         lines = []
-        for ts, msg in user_reminders:
-            dt = datetime.utcfromtimestamp(ts)
-            readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-            time_until = self._format_time_until(dt)
-            lines.append(f"⏰ **{readable_time}** UTC ({time_until} from now)\n> {msg}")
+        for ts, msg, _ in user_reminders:
+            # Convert UTC timestamp to user's timezone
+            utc_dt = datetime.utcfromtimestamp(ts).replace(tzinfo=pytz.UTC)
+            local_dt = utc_dt.astimezone(local_tz)
+            readable_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+            time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
+            lines.append(f"⏰ **{readable_time}** {user_timezone} ({time_until} from now)\n> {msg}")
         
         # Create embed for better formatting
         embed = self._create_embed(
             "Your Reminders",
-            f"You have {len(user_reminders)} upcoming reminder{'s' if len(user_reminders) != 1 else ''}",
+            f"You have {len(user_reminders)} upcoming reminder{'s' if len(user_reminders) != 1 else ''} (Timezone: {user_timezone})",
             color=discord.Color.blue()
         )
         
@@ -516,7 +644,7 @@ class Reminders(commands.Cog):
         
         user_id = interaction.user.id
         user_reminders = [
-            (ts, msg) for ts, (uid, msg) in self.reminders.items() if uid == user_id
+            (ts, msg) for ts, (uid, msg, _) in self.reminders.items() if uid == user_id
         ]
         
         if not user_reminders:
@@ -528,9 +656,11 @@ class Reminders(commands.Cog):
             )
             return await interaction.response.send_message(embed=embed, ephemeral=True)
         
+        user_timezone = self.get_user_timezone(user_id)
+        
         embed = self._create_embed(
             "Cancel a Reminder",
-            "Select a reminder from below to cancel it:",
+            f"Select a reminder from below to cancel it (Timezone: {user_timezone}):",
             color=discord.Color.gold()
         )
         view = CancelReminderView(self, user_id)
@@ -543,7 +673,7 @@ class Reminders(commands.Cog):
         
         user_id = interaction.user.id
         user_reminders = [
-            ts for ts, (uid, _) in self.reminders.items() if uid == user_id
+            ts for ts, (uid, _, _) in self.reminders.items() if uid == user_id
         ]
         
         if not user_reminders:
@@ -617,8 +747,11 @@ class Reminders(commands.Cog):
         logger.info(f"User {interaction.user.id} checking next reminder")
         
         user_id = interaction.user.id
+        user_timezone = self.get_user_timezone(user_id)
+        local_tz = pytz.timezone(user_timezone)
+        
         user_reminders = [
-            (ts, msg) for ts, (uid, msg) in self.reminders.items() if uid == user_id
+            (ts, msg, tz) for ts, (uid, msg, tz) in self.reminders.items() if uid == user_id
         ]
         
         if not user_reminders:
@@ -632,18 +765,105 @@ class Reminders(commands.Cog):
         
         # Get the earliest reminder
         next_reminder = min(user_reminders, key=lambda x: x[0])
-        ts, msg = next_reminder
+        ts, msg, _ = next_reminder
         
-        dt = datetime.utcfromtimestamp(ts)
-        readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-        time_until = self._format_time_until(dt)
+        # Convert UTC time to user's timezone
+        utc_dt = datetime.utcfromtimestamp(ts).replace(tzinfo=pytz.UTC)
+        local_dt = utc_dt.astimezone(local_tz)
+        readable_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
         
         embed = self._create_embed(
             "Your Next Reminder",
-            f"⏰ **{readable_time}** UTC\n({time_until} from now)\n\n> {msg}",
+            f"⏰ **{readable_time}** {user_timezone}\n({time_until} from now)\n\n> {msg}",
             color=discord.Color.green()
         )
         
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    timezone = app_commands.Group(name="timezone", description="Manage your timezone settings", parent=reminder)
+    
+    @timezone.command(name="set", description="Set your timezone")
+    async def set_timezone(self, interaction: discord.Interaction):
+        """Set your timezone preferences"""
+        logger.info(f"User {interaction.user.id} is setting their timezone")
+        
+        current_tz = self.get_user_timezone(interaction.user.id)
+        
+        # Send the timezone modal
+        modal = TimezoneModal(self)
+        modal.timezone_input.default = current_tz
+        
+        await interaction.response.send_modal(modal)
+    
+    @timezone.command(name="show", description="Show your current timezone setting")
+    async def show_timezone(self, interaction: discord.Interaction):
+        """Show the user's current timezone setting"""
+        logger.info(f"User {interaction.user.id} checking their timezone")
+        
+        user_timezone = self.get_user_timezone(interaction.user.id)
+        
+        try:
+            # Format the current time in the user's timezone
+            local_tz = pytz.timezone(user_timezone)
+            local_time = datetime.now(local_tz).strftime("%Y-%m-%d %H:%M:%S")
+            
+            embed = self._create_embed(
+                "Your Timezone",
+                f"Your timezone is currently set to: **{user_timezone}**\n\n"
+                f"Current time in your timezone: **{local_time}**\n\n"
+                f"You can change this with `/reminder timezone set`",
+                color=discord.Color.blue()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error showing timezone: {e}", exc_info=True)
+            embed = self._create_embed(
+                "Error",
+                f"An error occurred while processing your timezone. Your current setting is: {user_timezone}",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @timezone.command(name="list", description="List some common timezone options")
+    async def list_timezones(self, interaction: discord.Interaction):
+        """List some common timezone options"""
+        common_timezones = {
+            "New Zealand (Auckland)": "Pacific/Auckland",
+            "Australia (Sydney)": "Australia/Sydney",
+            "Japan (Tokyo)": "Asia/Tokyo",
+            "China (Shanghai)": "Asia/Shanghai",
+            "India (Kolkata)": "Asia/Kolkata",
+            "Europe (London)": "Europe/London",
+            "Europe (Paris)": "Europe/Paris",
+            "US/Canada (Eastern)": "America/New_York",
+            "US/Canada (Central)": "America/Chicago",
+            "US/Canada (Pacific)": "America/Los_Angeles"
+        }
+        
+        embed = self._create_embed(
+            "Common Timezones",
+            "Here are some common timezone options you can use with `/reminder timezone set`:",
+            color=discord.Color.blue()
+        )
+        
+        for name, tz_name in common_timezones.items():
+            try:
+                tz = pytz.timezone(tz_name)
+                current_time = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+                embed.add_field(
+                    name=name,
+                    value=f"`{tz_name}`\nCurrent time: {current_time}",
+                    inline=True
+                )
+            except Exception:
+                embed.add_field(
+                    name=name,
+                    value=f"`{tz_name}`",
+                    inline=True
+                )
+        
+        embed.set_footer(text="For a full list of valid timezones, visit: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def cog_unload(self):
@@ -651,6 +871,7 @@ class Reminders(commands.Cog):
         if self.task:
             self.task.cancel()
         self._save_reminders()
+        self._save_user_timezones()
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Reminders(bot))
