@@ -5,3 +5,4 @@ aiohttp
 duckduckgo_search
 tenacity
 pillow
+pytz
