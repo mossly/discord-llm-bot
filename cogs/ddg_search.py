@@ -104,23 +104,5 @@ class DuckDuckGo(commands.Cog):
         summary = await self.summarize_search_results(raw_results)
         return summary
 
-    @commands.command(name="ddg")
-    async def ddg(self, ctx, *, message: str):
-        start = time.monotonic()
-        logger.info("DDG command triggered by %s with message: %s", ctx.author, message)
-        
-        summary = await self.search_and_summarize(message)
-        if not summary:
-            await ctx.send("No valuable search results found.")
-            logger.info("No summarized results to show for message: %s", message)
-            return
-
-        elapsed = time.monotonic() - start
-
-        response_embed = discord.Embed(title="", description=summary, color=0x32a956)
-        response_embed.set_footer(text=f"DuckDuckGo Search (summarized) | generated in {elapsed:.2f} seconds")
-        await send_embed(ctx.channel, response_embed, reply_to=ctx.message)
-        logger.info("Sent summarized DDG search results.")
-
 async def setup(bot):
     await bot.add_cog(DuckDuckGo(bot))
