@@ -5,8 +5,6 @@ import discord
 import aiohttp
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from message_utils import delete_msg
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "o3-mini"

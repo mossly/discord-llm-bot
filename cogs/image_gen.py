@@ -9,9 +9,6 @@ from typing import Literal
 import aiohttp
 import io
 
-from message_utils import delete_msg
-from embed_utils import send_embed
-
 logger = logging.getLogger(__name__)
 
 class ImageGen(commands.Cog):
