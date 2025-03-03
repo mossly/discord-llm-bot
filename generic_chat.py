@@ -53,18 +53,6 @@ async def get_reference_message(ctx) -> str:
             logger.exception("Failed to fetch reference message: %s", e)
     return reference_message
 
-
-async def prepare_chat_parameters(prompt: str, attachments: list = None, ctx=None, is_slash: bool = False) -> (str, str, str, str, str, str):
-    final_prompt, image_url = await process_attachments(prompt, attachments or [], is_slash=is_slash)
-
-    model, reply_footer = DEFAULT_MODEL, DEFAULT_REPLY_FOOTER
-    
-    reference_message = ""
-    if not is_slash and ctx is not None:
-        reference_message = await get_reference_message(ctx)
-        
-    return final_prompt, image_url, model, reply_footer, reference_message
-
 async def perform_chat_query(
     prompt: str,
     api_cog,
