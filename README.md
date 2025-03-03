@@ -1,4 +1,4 @@
-# Discord Bot with Advanced AI Capabilities
+# Discord bot that queries LLMs via API
 
 This Discord bot leverages LLM models through OpenRouter and OpenAI APIs to provide AI chat, image generation, and web search capabilities directly in Discord.
 
