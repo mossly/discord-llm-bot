@@ -137,9 +137,10 @@ async def perform_chat_query(
             total_cost = stats.get('total_cost', 0)
             
             prompt_tokens_str = f"{tokens_prompt / 1000:.1f}k" if tokens_prompt >= 1000 else str(tokens_prompt)
+            tokens_completion_str = f"{tokens_completion / 1000:.1f}k" if tokens_completion >= 1000 else str(tokens_completion)
             
             footer_second_line.append(f"{prompt_tokens_str} input tokens")
-            footer_second_line.append(f"{tokens_completion} output tokens")
+            footer_second_line.append(f"{tokens_completion_str} output tokens")
             
             if total_cost:
                 footer_second_line.append(f"${total_cost:.2f}")
