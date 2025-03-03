@@ -61,27 +61,33 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             now = time.time()
             if trigger_time <= now:
                 logger.warning(f"User {interaction.user.id} attempted to set a reminder for the past: {datetime_str} (Now: {datetime.now()})")
-                return await interaction.response.send_message(
+                embed = self.cog._create_embed(
+                    "Invalid Time", 
                     "You can't set reminders for the past! Please choose a future time.",
-                    ephemeral=True
+                    color=discord.Color.red()
                 )
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # Check rate limiting for this user
             user_reminders = [r for t, (uid, r) in self.cog.reminders.items() if uid == interaction.user.id]
             if len(user_reminders) >= MAX_REMINDERS_PER_USER:
                 logger.warning(f"User {interaction.user.id} hit max reminders limit ({MAX_REMINDERS_PER_USER})")
-                return await interaction.response.send_message(
+                embed = self.cog._create_embed(
+                    "Too Many Reminders", 
                     f"You already have {MAX_REMINDERS_PER_USER} reminders set. Please remove some before adding more.",
-                    ephemeral=True
+                    color=discord.Color.red()
                 )
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # Check if there's already a reminder at this exact time for this user
             if trigger_time in self.cog.reminders and self.cog.reminders[trigger_time][0] == interaction.user.id:
                 logger.warning(f"User {interaction.user.id} attempted to set duplicate reminder at {datetime_str}")
-                return await interaction.response.send_message(
+                embed = self.cog._create_embed(
+                    "Duplicate Reminder", 
                     "You already have a reminder set for this exact time. Please choose a different time.",
-                    ephemeral=True
+                    color=discord.Color.red()
                 )
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
             
             # All checks passed, add the reminder
             self.cog.reminders[trigger_time] = (interaction.user.id, self.reminder_text.value)
@@ -92,25 +98,31 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             
             logger.info(f"Reminder set - User: {interaction.user.id}, Current time: {datetime.now()}, Reminder time: {readable_time}, Text: '{self.reminder_text.value}'")
             
-            await interaction.response.send_message(
-                f"✅ Reminder set for **{readable_time}** UTC ({time_until} from now).\n"
+            embed = self.cog._create_embed(
+                "Reminder Set",
+                f"✅ Your reminder has been set for **{readable_time}** UTC ({time_until} from now).\n\n"
                 f"**Reminder:** {self.reminder_text.value}\n\n"
                 f"I'll send you a DM when it's time!",
-                ephemeral=True
+                color=discord.Color.green()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
         except ValueError as e:
             logger.error(f"Date parsing error: {e} for input date={self.reminder_date.value}, time={self.reminder_time.value}")
-            await interaction.response.send_message(
+            embed = self.cog._create_embed(
+                "Invalid Format",
                 "Invalid date or time format. Please use YYYY-MM-DD for date and HH:MM for time.",
-                ephemeral=True
+                color=discord.Color.red()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     
     async def on_error(self, interaction: discord.Interaction, error: Exception):
         logger.error(f"Error in ReminderModal: {error}", exc_info=True)
-        await interaction.response.send_message(
+        embed = self.cog._create_embed(
+            "Error",
             "An error occurred while processing your reminder.",
-            ephemeral=True
+            color=discord.Color.red()
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class SelectTimeView(ui.View):
     def __init__(self, cog, reminder_text, *, timeout=180):
@@ -209,7 +221,12 @@ class CancelReminderView(ui.View):
     def make_callback(self, timestamp):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user_id:
-                await interaction.response.send_message("This isn't your reminder menu!", ephemeral=True)
+                embed = self.cog._create_embed(
+                    "Access Denied",
+                    "This isn't your reminder menu!",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
             
             self.cog.reminders.pop(timestamp, None)
@@ -219,15 +236,30 @@ class CancelReminderView(ui.View):
             self._update_buttons()
             
             if not self.children:  # No buttons left
-                await interaction.response.edit_message(content="You have no more reminders.", view=None)
+                embed = self.cog._create_embed(
+                    "No Reminders", 
+                    "You have no more reminders.",
+                    color=discord.Color.blue()
+                )
+                await interaction.response.edit_message(embed=embed, view=None)
             else:
-                await interaction.response.edit_message(content="Reminder cancelled! Here are your remaining reminders:", view=self)
+                embed = self.cog._create_embed(
+                    "Reminder Cancelled", 
+                    "Reminder cancelled! Here are your remaining reminders:",
+                    color=discord.Color.green()
+                )
+                await interaction.response.edit_message(embed=embed, view=self)
         
         return callback
     
     async def previous_page(self, interaction: discord.Interaction):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("This isn't your reminder menu!", ephemeral=True)
+            embed = self.cog._create_embed(
+                "Access Denied",
+                "This isn't your reminder menu!",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
             
         self.page = max(0, self.page - 1)
@@ -236,7 +268,12 @@ class CancelReminderView(ui.View):
     
     async def next_page(self, interaction: discord.Interaction):
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("This isn't your reminder menu!", ephemeral=True)
+            embed = self.cog._create_embed(
+                "Access Denied",
+                "This isn't your reminder menu!",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
             
         user_reminders = [r for t, (uid, r) in self.cog.reminders.items() if uid == self.user_id]
@@ -254,6 +291,16 @@ class Reminders(commands.Cog):
         self.reminders_file = "reminders.json"
         self.dm_failed_users = set()  # Track users with failed DMs
         self._load_reminders()
+
+    def _create_embed(self, title, description, color=discord.Color.blue()):
+        """Create a standardized embed for responses"""
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.now()
+        )
+        return embed
 
     def _load_reminders(self):
         """Load reminders from disk"""
@@ -352,7 +399,14 @@ class Reminders(commands.Cog):
                             continue
                             
                         user = await self.bot.fetch_user(user_id)
-                        await user.send(f"⏰ **Reminder:** {message}")
+                        
+                        # Create embed for the reminder
+                        embed = self._create_embed(
+                            "Reminder",
+                            f"⏰ **{message}**",
+                            color=discord.Color.gold()
+                        )
+                        await user.send(embed=embed)
                         logger.info(f"Successfully sent reminder to user {user_id} ({user.name})")
                         
                     except discord.Forbidden:
@@ -388,64 +442,19 @@ class Reminders(commands.Cog):
         user_reminders = [r for t, (uid, r) in self.reminders.items() if uid == interaction.user.id]
         if len(user_reminders) >= MAX_REMINDERS_PER_USER:
             logger.warning(f"User {interaction.user.id} hit max reminders limit ({MAX_REMINDERS_PER_USER})")
-            return await interaction.response.send_message(
+            embed = self._create_embed(
+                "Too Many Reminders", 
                 f"You already have {MAX_REMINDERS_PER_USER} reminders set. Please remove some before adding more.",
-                ephemeral=True
+                color=discord.Color.red()
             )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
             
-        view = SelectTimeView(self, reminder_text)
-        await interaction.response.send_message(
-            "Please select a date and time for your reminder:",
-            view=view,
-            ephemeral=True
+        embed = self._create_embed(
+            "Set a Reminder",
+            "Please select a date and time for your reminder by clicking the button below."
         )
-
-    @reminder.command(name="add_manual", description="Add a reminder with manual time input")
-    async def add_reminder_manual(self, interaction: discord.Interaction, time_str: str, reminder_text: str):
-        """Add a reminder with manual time input (YYYY-MM-DD HH:MM:SS)"""
-        logger.info(f"User {interaction.user.id} is adding a manual reminder for time {time_str}")
-        
-        try:
-            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-            trigger_time = dt.timestamp()
-            
-            # Check if reminder is for the past
-            now = time.time()
-            if trigger_time <= now:
-                logger.warning(f"User {interaction.user.id} attempted to set a reminder for the past: {time_str}")
-                return await interaction.response.send_message(
-                    "You can't set reminders for the past! Please choose a future time.",
-                    ephemeral=True
-                )
-            
-            # Check rate limiting
-            user_reminders = [r for t, (uid, r) in self.reminders.items() if uid == interaction.user.id]
-            if len(user_reminders) >= MAX_REMINDERS_PER_USER:
-                logger.warning(f"User {interaction.user.id} hit max reminders limit ({MAX_REMINDERS_PER_USER})")
-                return await interaction.response.send_message(
-                    f"You already have {MAX_REMINDERS_PER_USER} reminders set. Please remove some before adding more.",
-                    ephemeral=True
-                )
-            
-            self.reminders[trigger_time] = (interaction.user.id, reminder_text)
-            self._save_reminders()
-            
-            time_until = self._format_time_until(dt)
-            logger.info(f"Reminder set - User: {interaction.user.id}, Current time: {datetime.now()}, Reminder time: {time_str}, Text: '{reminder_text}'")
-            
-            await interaction.response.send_message(
-                f"✅ Reminder set for **{time_str}** UTC ({time_until} from now).\n"
-                f"**Reminder:** {reminder_text}\n\n"
-                f"I'll send you a DM when it's time!",
-                ephemeral=True
-            )
-            
-        except ValueError:
-            logger.error(f"Invalid time format: {time_str} from user {interaction.user.id}")
-            return await interaction.response.send_message(
-                "Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)",
-                ephemeral=True
-            )
+        view = SelectTimeView(self, reminder_text)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @reminder.command(name="list", description="List all your upcoming reminders")
     async def list_reminders(self, interaction: discord.Interaction):
@@ -458,7 +467,12 @@ class Reminders(commands.Cog):
         
         if not user_reminders:
             logger.info(f"No reminders found for user {interaction.user.id}")
-            return await interaction.response.send_message("You have no upcoming reminders.", ephemeral=True)
+            embed = self._create_embed(
+                "No Reminders",
+                "You have no upcoming reminders.",
+                color=discord.Color.blue()
+            )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
 
         # Sort reminders by time
         user_reminders.sort(key=lambda x: x[0])
@@ -472,11 +486,10 @@ class Reminders(commands.Cog):
             lines.append(f"⏰ **{readable_time}** UTC ({time_until} from now)\n> {msg}")
         
         # Create embed for better formatting
-        embed = discord.Embed(
-            title="Your Reminders",
-            description=f"You have {len(user_reminders)} upcoming reminder{'s' if len(user_reminders) != 1 else ''}",
-            color=discord.Color.blue(),
-            timestamp=datetime.now()
+        embed = self._create_embed(
+            "Your Reminders",
+            f"You have {len(user_reminders)} upcoming reminder{'s' if len(user_reminders) != 1 else ''}",
+            color=discord.Color.blue()
         )
         
         # Split into fields if there are many reminders
@@ -496,51 +509,6 @@ class Reminders(commands.Cog):
         # Make this response ephemeral so only the user can see it
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @reminder.command(name="list_all", description="List all your upcoming reminders in detail")
-    async def list_all_reminders(self, interaction: discord.Interaction):
-        logger.info(f"User {interaction.user.id} listing all reminders in detail")
-        
-        user_id = interaction.user.id
-        user_reminders = [
-            (ts, msg) for ts, (uid, msg) in self.reminders.items() if uid == user_id
-        ]
-        
-        if not user_reminders:
-            logger.info(f"No reminders found for user {interaction.user.id}")
-            return await interaction.response.send_message("You have no upcoming reminders.", ephemeral=True)
-
-        # Sort reminders by time
-        user_reminders.sort(key=lambda x: x[0])
-        
-        # Format the output
-        lines = []
-        for ts, msg in user_reminders:
-            dt = datetime.utcfromtimestamp(ts)
-            readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-            time_until = self._format_time_until(dt)
-            lines.append(f"⏰ **{readable_time}** UTC ({time_until} from now)\n> {msg}")
-        
-        # Split into chunks to avoid Discord's message limit
-        chunks = []
-        current_chunk = ["**All Your Reminders:**"]
-        
-        for line in lines:
-            if len("\n\n".join(current_chunk + [line])) > 1900:  # Discord limit is 2000, leave some margin
-                chunks.append("\n\n".join(current_chunk))
-                current_chunk = [line]
-            else:
-                current_chunk.append(line)
-        
-        if current_chunk:
-            chunks.append("\n\n".join(current_chunk))
-        
-        # Send the first message
-        await interaction.response.send_message(chunks[0], ephemeral=True)
-        
-        # Send follow-up messages if needed
-        for chunk in chunks[1:]:
-            await interaction.followup.send(chunk, ephemeral=True)
-
     @reminder.command(name="cancel", description="Cancel a reminder using an interactive menu")
     async def cancel_reminder_menu(self, interaction: discord.Interaction):
         """Cancel a reminder using an interactive button menu"""
@@ -553,45 +521,22 @@ class Reminders(commands.Cog):
         
         if not user_reminders:
             logger.info(f"No reminders found for user {interaction.user.id} to cancel")
-            return await interaction.response.send_message("You have no reminders to cancel.", ephemeral=True)
+            embed = self._create_embed(
+                "No Reminders",
+                "You have no reminders to cancel.",
+                color=discord.Color.blue()
+            )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
         
-        view = CancelReminderView(self, user_id)
-        await interaction.response.send_message(
-            "Select a reminder to cancel:",
-            view=view,
-            ephemeral=True
+        embed = self._create_embed(
+            "Cancel a Reminder",
+            "Select a reminder from below to cancel it:",
+            color=discord.Color.gold()
         )
+        view = CancelReminderView(self, user_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @reminder.command(name="cancel_manual", description="Cancel a reminder at a specific time")
-    async def cancel_reminder_manual(self, interaction: discord.Interaction, time_str: str):
-        """Manually cancel a reminder at a specific time"""
-        logger.info(f"User {interaction.user.id} attempting to manually cancel reminder at {time_str}")
-        
-        try:
-            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-            trigger_time = dt.timestamp()
-        except ValueError:
-            logger.warning(f"Invalid time format in cancel request: {time_str}")
-            return await interaction.response.send_message(
-                "Time format incorrect. Please use: YYYY-MM-DD HH:MM:SS (UTC)",
-                ephemeral=True
-            )
-
-        entry = self.reminders.get(trigger_time)
-        if entry and entry[0] == interaction.user.id:
-            reminder_text = entry[1]
-            self.reminders.pop(trigger_time)
-            self._save_reminders()
-            logger.info(f"User {interaction.user.id} cancelled reminder at {time_str}: '{reminder_text}'")
-            return await interaction.response.send_message(f"Reminder cancelled: '{reminder_text}'")
-        else:
-            logger.info(f"No matching reminder found for user {interaction.user.id} at time {time_str}")
-            return await interaction.response.send_message(
-                "No matching reminder found for you at that time.",
-                ephemeral=True
-            )
-
-    @reminder.command(name="clear_all", description="Clear all your reminders")
+    @reminder.command(name="clear", description="Clear all your reminders")
     async def clear_all_reminders(self, interaction: discord.Interaction):
         """Clear all reminders for a user"""
         logger.info(f"User {interaction.user.id} clearing all reminders")
@@ -603,7 +548,12 @@ class Reminders(commands.Cog):
         
         if not user_reminders:
             logger.info(f"No reminders found for user {interaction.user.id} to clear")
-            return await interaction.response.send_message("You have no reminders to clear.", ephemeral=True)
+            embed = self._create_embed(
+                "No Reminders",
+                "You have no reminders to clear.",
+                color=discord.Color.blue()
+            )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
         
         # Confirmation view
         class ConfirmView(ui.View):
@@ -615,7 +565,12 @@ class Reminders(commands.Cog):
             @ui.button(label="Yes, clear all", style=discord.ButtonStyle.danger)
             async def confirm(self, confirm_interaction: discord.Interaction, button: ui.Button):
                 if confirm_interaction.user.id != interaction.user.id:
-                    await confirm_interaction.response.send_message("This isn't your confirmation dialog!", ephemeral=True)
+                    embed = self.cog._create_embed(
+                        "Access Denied",
+                        "This isn't your confirmation dialog!",
+                        color=discord.Color.red()
+                    )
+                    await confirm_interaction.response.send_message(embed=embed, ephemeral=True)
                     return
                     
                 for ts in self.user_reminders:
@@ -623,28 +578,38 @@ class Reminders(commands.Cog):
                 self.cog._save_reminders()
                 
                 logger.info(f"User {interaction.user.id} cleared {len(self.user_reminders)} reminders")
-                await confirm_interaction.response.edit_message(
-                    content=f"✅ Successfully cleared {len(self.user_reminders)} reminders.",
-                    view=None
+                embed = self.cog._create_embed(
+                    "Reminders Cleared",
+                    f"✅ Successfully cleared {len(self.user_reminders)} reminders.",
+                    color=discord.Color.green()
                 )
+                await confirm_interaction.response.edit_message(embed=embed, view=None)
                 
             @ui.button(label="No, keep my reminders", style=discord.ButtonStyle.secondary)
             async def cancel(self, cancel_interaction: discord.Interaction, button: ui.Button):
                 if cancel_interaction.user.id != interaction.user.id:
-                    await cancel_interaction.response.send_message("This isn't your confirmation dialog!", ephemeral=True)
+                    embed = self.cog._create_embed(
+                        "Access Denied",
+                        "This isn't your confirmation dialog!",
+                        color=discord.Color.red()
+                    )
+                    await cancel_interaction.response.send_message(embed=embed, ephemeral=True)
                     return
                     
-                await cancel_interaction.response.edit_message(
-                    content="Operation cancelled. Your reminders are safe.",
-                    view=None
+                embed = self.cog._create_embed(
+                    "Operation Cancelled",
+                    "Operation cancelled. Your reminders are safe.",
+                    color=discord.Color.blue()
                 )
+                await cancel_interaction.response.edit_message(embed=embed, view=None)
         
-        view = ConfirmView(self, user_reminders)
-        await interaction.response.send_message(
+        embed = self._create_embed(
+            "Confirm Clear All",
             f"⚠️ Are you sure you want to clear all {len(user_reminders)} reminders? This cannot be undone.",
-            view=view,
-            ephemeral=True
+            color=discord.Color.red()
         )
+        view = ConfirmView(self, user_reminders)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @reminder.command(name="next", description="Show your next upcoming reminder")
     async def next_reminder(self, interaction: discord.Interaction):
@@ -658,7 +623,12 @@ class Reminders(commands.Cog):
         
         if not user_reminders:
             logger.info(f"No reminders found for user {interaction.user.id}")
-            return await interaction.response.send_message("You have no upcoming reminders.", ephemeral=True)
+            embed = self._create_embed(
+                "No Reminders",
+                "You have no upcoming reminders.",
+                color=discord.Color.blue()
+            )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
         
         # Get the earliest reminder
         next_reminder = min(user_reminders, key=lambda x: x[0])
@@ -668,11 +638,10 @@ class Reminders(commands.Cog):
         readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
         time_until = self._format_time_until(dt)
         
-        embed = discord.Embed(
-            title="Your Next Reminder",
-            description=f"⏰ **{readable_time}** UTC\n({time_until} from now)\n\n> {msg}",
-            color=discord.Color.green(),
-            timestamp=datetime.now()
+        embed = self._create_embed(
+            "Your Next Reminder",
+            f"⏰ **{readable_time}** UTC\n({time_until} from now)\n\n> {msg}",
+            color=discord.Color.green()
         )
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
