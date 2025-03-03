@@ -260,29 +260,6 @@ class CustomTimezoneModal(ui.Modal, title="Set Custom Timezone"):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-class SelectTimeView(ui.View):
-    def __init__(self, cog, reminder_text, user_timezone, *, timeout=180):
-        super().__init__(timeout=timeout)
-        self.cog = cog
-        self.reminder_text = reminder_text
-        self.user_timezone = user_timezone
-        
-    @ui.button(label="Select Date & Time", style=discord.ButtonStyle.primary)
-    async def select_time(self, interaction: discord.Interaction, button: ui.Button):
-        modal = ReminderModal(self.cog, self.user_timezone)
-        modal.reminder_text.default = self.reminder_text
-        
-        # Get the user's local timezone
-        user_tz = pytz.timezone(self.user_timezone)
-        
-        # Pre-populate with tomorrow's date in user's timezone
-        tomorrow = datetime.now(user_tz) + timedelta(days=1)
-        modal.reminder_date.default = tomorrow.strftime("%Y-%m-%d")
-        
-        # Pre-populate with current time in user's timezone
-        modal.reminder_time.default = datetime.now(user_tz).strftime("%H:%M")
-        
-        await interaction.response.send_modal(modal)
 
 class CancelReminderView(ui.View):
     def __init__(self, cog, user_id, *, timeout=180):
@@ -677,11 +654,15 @@ class Reminders(commands.Cog):
 
     reminder = app_commands.Group(name="reminder", description="Manage your reminders")
 
-    @reminder.command(name="add", description="Add a reminder using an interactive date/time picker")
-    async def add_reminder(self, interaction: discord.Interaction, reminder_text: str):
-        """Add a reminder using a date/time picker UI"""
+    @reminder.command(name="add", description="Add a reminder with natural language time")
+    @app_commands.describe(
+        reminder_text="What you want to be reminded about",
+        time="When you want to be reminded (e.g., 'tomorrow at 3pm', 'in 2 hours', 'Friday 9am')"
+    )
+    async def add_reminder(self, interaction: discord.Interaction, reminder_text: str, time: str = None):
+        """Add a reminder with natural language time parsing"""
         # Log the attempt
-        logger.info(f"User {interaction.user.id} ({interaction.user.name}) is adding a reminder")
+        logger.info(f"User {interaction.user.id} ({interaction.user.name}) is adding a reminder with text: '{reminder_text}' and time: '{time}'")
         
         # Check if user has too many reminders
         user_reminders = [r for t, (uid, r, _) in self.reminders.items() if uid == interaction.user.id]
@@ -696,15 +677,194 @@ class Reminders(commands.Cog):
         
         # Get user's timezone
         user_timezone = self.get_user_timezone(interaction.user.id)
+        local_tz = pytz.timezone(user_timezone)
+        
+        # If time is provided, try to parse it directly
+        if time:
+            await self._process_natural_language_time(interaction, reminder_text, time, user_timezone)
+        else:
+            # If no time is provided, use the modal with improved defaults
+            await self._show_reminder_modal(interaction, reminder_text, user_timezone)
             
-        embed = self._create_embed(
-            "Set a Reminder",
-            f"Please select a date and time for your reminder by clicking the button below.\n\n"
-            f"Your current timezone is set to: **{user_timezone}**\n"
-            f"You can change this with `/reminder timezone set`"
-        )
-        view = SelectTimeView(self, reminder_text, user_timezone)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    async def _process_natural_language_time(self, interaction, reminder_text, time_str, user_timezone):
+        """Process natural language time input"""
+        try:
+            # Get current time in user's timezone to use as reference
+            local_tz = pytz.timezone(user_timezone)
+            now = datetime.now(local_tz)
+            
+            # Handle special keywords
+            time_str = time_str.lower().strip()
+            target_dt = None
+            
+            # Handle common time expressions
+            if time_str == "tomorrow":
+                target_dt = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+            elif time_str == "tonight":
+                target_dt = now.replace(hour=20, minute=0, second=0, microsecond=0)
+            elif time_str == "noon" or time_str == "midday":
+                if now.hour >= 12:  # If it's already past noon, use tomorrow
+                    target_dt = (now + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+                else:
+                    target_dt = now.replace(hour=12, minute=0, second=0, microsecond=0)
+            elif time_str == "midnight":
+                target_dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            elif time_str.startswith("in "):
+                # Handle "in X minutes/hours/days/weeks/months"
+                parts = time_str[3:].split()
+                if len(parts) >= 2:
+                    try:
+                        amount = int(parts[0])
+                        unit = parts[1].lower()
+                        if unit.startswith("minute"):
+                            target_dt = now + timedelta(minutes=amount)
+                        elif unit.startswith("hour"):
+                            target_dt = now + timedelta(hours=amount)
+                        elif unit.startswith("day"):
+                            target_dt = now + timedelta(days=amount)
+                        elif unit.startswith("week"):
+                            target_dt = now + timedelta(weeks=amount)
+                        elif unit.startswith("month"):
+                            # Approximate a month as 30 days
+                            target_dt = now + timedelta(days=30*amount)
+                    except ValueError:
+                        pass
+            elif "tomorrow" in time_str and ("at" in time_str or ":" in time_str):
+                # Handle "tomorrow at X:YY" or "tomorrow X:YY"
+                time_part = time_str.split("at")[-1].strip() if "at" in time_str else time_str.split("tomorrow")[-1].strip()
+                time_part = time_part.replace("am", " AM").replace("pm", " PM")
+                try:
+                    # Try different time formats
+                    time_formats = ["%I:%M %p", "%I:%M%p", "%I %p", "%H:%M"]
+                    parsed_time = None
+                    
+                    for fmt in time_formats:
+                        try:
+                            parsed_time = datetime.strptime(time_part, fmt)
+                            break
+                        except ValueError:
+                            continue
+                    
+                    if parsed_time:
+                        tomorrow = now + timedelta(days=1)
+                        target_dt = tomorrow.replace(
+                            hour=parsed_time.hour, 
+                            minute=parsed_time.minute, 
+                            second=0, 
+                            microsecond=0
+                        )
+                except ValueError:
+                    pass
+            elif any(day in time_str.lower() for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]):
+                # Handle day names (e.g., "Friday at 3pm")
+                day_mapping = {
+                    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, 
+                    "friday": 4, "saturday": 5, "sunday": 6
+                }
+                
+                target_day = None
+                for day, day_num in day_mapping.items():
+                    if day in time_str.lower():
+                        target_day = day_num
+                        break
+                
+                if target_day is not None:
+                    # Calculate days until the next occurrence of this day
+                    current_day = now.weekday()
+                    days_ahead = (target_day - current_day) % 7
+                    if days_ahead == 0:  # If it's the same day, go to next week
+                        if "next" in time_str.lower():
+                            days_ahead = 7
+                        elif now.hour >= 12:  # Past noon, probably means next week
+                            days_ahead = 7
+                    
+                    # Default time is 9 AM
+                    target_date = now + timedelta(days=days_ahead)
+                    target_time = "9:00 AM"
+                    
+                    # Try to extract a time if specified
+                    if "at" in time_str:
+                        time_part = time_str.split("at")[-1].strip()
+                        time_part = time_part.replace("am", " AM").replace("pm", " PM")
+                        
+                        # Try different time formats
+                        time_formats = ["%I:%M %p", "%I:%M%p", "%I %p", "%H:%M"]
+                        for fmt in time_formats:
+                            try:
+                                parsed_time = datetime.strptime(time_part, fmt)
+                                target_time = parsed_time.strftime("%H:%M")
+                                break
+                            except ValueError:
+                                continue
+                    
+                    # Parse the time part
+                    try:
+                        hour, minute = map(int, target_time.split(":")[:2])
+                        target_dt = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    except ValueError:
+                        pass
+            
+            # If we successfully parsed the time
+            if target_dt:
+                # Ensure the time is in the future
+                if target_dt <= now:
+                    embed = self._create_embed(
+                        "Invalid Time", 
+                        "The time you specified appears to be in the past. Please choose a future time.",
+                        color=discord.Color.red()
+                    )
+                    return await interaction.response.send_message(embed=embed, ephemeral=True)
+                
+                # Store in UTC
+                utc_dt = target_dt.astimezone(pytz.UTC)
+                trigger_time = utc_dt.timestamp()
+                
+                # Save the reminder
+                self.reminders[trigger_time] = (interaction.user.id, reminder_text, user_timezone)
+                self._save_reminders()
+                
+                # Format for display
+                readable_time = target_dt.strftime("%A, %B %d at %I:%M %p")
+                time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
+                
+                # Log and create response
+                logger.info(f"Natural language reminder set - User: {interaction.user.id}, Time: '{time_str}' parsed as {target_dt}")
+                
+                embed = self._create_embed(
+                    "Reminder Set ✅",
+                    f"Your reminder has been set for **{readable_time}** ({time_until}).\n\n"
+                    f"**Reminder:** {reminder_text}",
+                    color=discord.Color.green()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                # If we couldn't parse the time, show the modal
+                await self._show_reminder_modal(interaction, reminder_text, user_timezone)
+        except Exception as e:
+            logger.error(f"Error processing natural language time: {e}", exc_info=True)
+            # If there's an error, fall back to the date picker modal
+            await self._show_reminder_modal(interaction, reminder_text, user_timezone)
+    
+    async def _show_reminder_modal(self, interaction, reminder_text, user_timezone):
+        """Show the reminder modal with improved defaults"""
+        # Get user's timezone
+        user_timezone = self.get_user_timezone(interaction.user.id)
+        
+        # Create and send modal directly
+        modal = ReminderModal(self, user_timezone)
+        modal.reminder_text.default = reminder_text
+        
+        # Get the user's local timezone
+        user_tz = pytz.timezone(user_timezone)
+        
+        # Pre-populate with tomorrow's date in user's timezone
+        tomorrow = datetime.now(user_tz) + timedelta(days=1)
+        modal.reminder_date.default = tomorrow.strftime("%Y-%m-%d")
+        
+        # Pre-populate with current time in user's timezone
+        modal.reminder_time.default = datetime.now(user_tz).strftime("%H:%M")
+        
+        await interaction.response.send_modal(modal)
 
     @reminder.command(name="list", description="List all your upcoming reminders")
     async def list_reminders(self, interaction: discord.Interaction):
