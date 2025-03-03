@@ -215,13 +215,15 @@ class AIContextMenus(commands.Cog):
             self.original_message = original_message
             self.channel = channel
             
+            self.has_image = self._check_for_images(original_message)
+            
             title = "AI Reply" + (" (Image detected)" if self.has_image else "")
             super().__init__(title=title)
         
         def _check_for_images(self, message):
             if message.attachments:
                 return any(att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) 
-                           for att in message.attachments)
+                        for att in message.attachments)
             return False
             
         async def on_submit(self, interaction: discord.Interaction):
