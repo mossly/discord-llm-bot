@@ -543,16 +543,27 @@ class Reminders(commands.Cog):
         
     def _format_time_since(self, past_dt):
         """Format the time since a past datetime in a human-readable format"""
-        now = datetime.now()
+        # Ensure past_dt has timezone info if it's a timezone-aware datetime
+        if past_dt.tzinfo:
+            now = datetime.now(past_dt.tzinfo)  # Use same timezone as past_dt
+        else:
+            now = datetime.now()  # Use naive datetime for naive input
+            
         delta = now - past_dt
         
         # For very recent times (within a minute)
         if delta.total_seconds() < 60:
-            return "just now"
+            return "1 minute ago"
             
         # For times within today
         if past_dt.date() == now.date():
-            return "earlier today"
+            hours = int(delta.total_seconds() // 3600)
+            minutes = int((delta.total_seconds() % 3600) // 60)
+            
+            if hours > 0:
+                return f"{hours} hour{'s' if hours != 1 else ''} ago"
+            else:
+                return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
             
         # For yesterday
         if (now.date() - past_dt.date()).days == 1:
@@ -615,9 +626,11 @@ class Reminders(commands.Cog):
                         local_time = trigger_time_utc.astimezone(user_timezone).strftime("%Y-%m-%d %H:%M:%S")
                         
                         # Create embed for the reminder with info about when it was set
-                        reminder_set_time = datetime.fromtimestamp(trigger_time) - timedelta(seconds=10)  # Approximate time when reminder was set
-                        time_since = self._format_time_since(reminder_set_time)
-                        readable_set_date = reminder_set_time.strftime("%Y-%m-%d at %I:%M %p")
+                        # Use the user's timezone for displaying set time
+                        reminder_set_time_utc = datetime.utcfromtimestamp(trigger_time - 10).replace(tzinfo=pytz.UTC)  # Approximate time when reminder was set
+                        reminder_set_time_local = reminder_set_time_utc.astimezone(user_timezone)
+                        time_since = self._format_time_since(reminder_set_time_local)
+                        readable_set_date = reminder_set_time_local.strftime("%Y-%m-%d at %I:%M %p")
                         
                         embed = self._create_embed(
                             "Reminder ⏰",
