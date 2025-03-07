@@ -351,12 +351,18 @@ class ModelSelectionView(discord.ui.View):
         self.fun = not self.fun
         button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_fun"][0]
         button.label = f"Fun Mode: {'ON' if self.fun else 'OFF'}"
+        # Make sure we preserve the currently selected model
+        model_select = [item for item in self.children if isinstance(item, discord.ui.Select)][0]
+        self.selected_model = model_select.values[0] if model_select.values else self.selected_model
         await interaction.response.edit_message(view=self)
     
     async def toggle_web_search(self, interaction: discord.Interaction):
         self.web_search = not self.web_search
         button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_web_search"][0]
         button.label = f"Web Search: {'ON' if self.web_search else 'OFF'}"
+        # Make sure we preserve the currently selected model
+        model_select = [item for item in self.children if isinstance(item, discord.ui.Select)][0]
+        self.selected_model = model_select.values[0] if model_select.values else self.selected_model
         await interaction.response.edit_message(view=self)
     
     async def submit_button_callback(self, interaction: discord.Interaction):
