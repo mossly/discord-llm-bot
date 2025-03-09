@@ -153,12 +153,17 @@ class AICommands(commands.Cog):
         embed = discord.Embed(title="", description=result, color=config["color"])
         embed.set_footer(text=final_footer)
         
-        # Create attribution message with a link to the original message
         attribution_text = None
         if reply_user and reply_msg:
-            message_link = f"https://discord.com/channels/{reply_msg.guild.id}/{reply_msg.channel.id}/{reply_msg.id}"
-            attribution_text = f"### {reply_user.mention} used AI Reply > [View message]({message_link})"
+            # Check if we can create a message link (requires guild context)
+            if hasattr(reply_msg, 'guild') and reply_msg.guild:
+                message_link = f"https://discord.com/channels/{reply_msg.guild.id}/{reply_msg.channel.id}/{reply_msg.id}"
+            else:
+                # Fallback for DMs or contexts without guild information
+                message_link = f"https://discord.com/channels/@me/{reply_msg.channel.id}/{reply_msg.id}"
         
+        attribution_text = f"### {reply_user.mention} used AI Reply > {message_link}"
+
         if ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel
             message_to_reply = ctx.message if ctx else reply_msg
