@@ -769,12 +769,13 @@ class Reminders(commands.Cog):
                 except ValueError:
                     pass
             elif any(day in time_str.lower() for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]):
-                # Handle day names (e.g., "Friday at 3pm")
+                # Handle day names (e.g., "Friday at 3pm", "next Sunday")
                 day_mapping = {
                     "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, 
                     "friday": 4, "saturday": 5, "sunday": 6
                 }
                 
+                # Determine which day was mentioned
                 target_day = None
                 for day, day_num in day_mapping.items():
                     if day in time_str.lower():
@@ -785,10 +786,14 @@ class Reminders(commands.Cog):
                     # Calculate days until the next occurrence of this day
                     current_day = now.weekday()
                     days_ahead = (target_day - current_day) % 7
-                    if days_ahead == 0:  # If it's the same day, go to next week
-                        if "next" in time_str.lower():
-                            days_ahead = 7
-                        elif now.hour >= 12:  # Past noon, probably means next week
+                    
+                    # Check if "next" is explicitly mentioned
+                    is_next_mentioned = "next" in time_str.lower()
+                    
+                    # Enhanced handling for day references
+                    if days_ahead == 0:  # If today is the mentioned day
+                        if is_next_mentioned or now.hour >= 12:
+                            # If "next" is mentioned or it's afternoon, interpret as next week
                             days_ahead = 7
                     
                     # Default time is 9 AM
