@@ -79,86 +79,92 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False):
-        config = MODEL_CONFIG[model_key]
-        channel = ctx.channel if ctx else interaction.channel
-        api_cog = self.bot.get_cog("APIUtils")
-        duck_cog = self.bot.get_cog("DuckDuckGo")
+async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, reply_user=None):
+    config = MODEL_CONFIG[model_key]
+    channel = ctx.channel if ctx else interaction.channel
+    api_cog = self.bot.get_cog("APIUtils")
+    duck_cog = self.bot.get_cog("DuckDuckGo")
+    
+    if image_url and not config.get("supports_images", False):
+        error_embed = discord.Embed(
+            title="ERROR",
+            description="Image attachments only supported with GPT-4o-mini",
+            color=0xDC143C
+        )
+        if ctx:
+            await ctx.reply(embed=error_embed)
+        else:
+            await interaction.followup.send(embed=error_embed)
+        return
+
+    if not image_url:
+        from generic_chat import process_attachments, perform_chat_query
+        final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
+    else:
+        final_prompt = prompt
+        img_url = image_url
+
+    cleaned_prompt = final_prompt
+    model = config["api_model"]
+    footer = config["default_footer"]
+    api = config.get("api", "openai")
         
-        if image_url and not config.get("supports_images", False):
-            error_embed = discord.Embed(
-                title="ERROR",
-                description="Image attachments only supported with GPT-4o-mini",
-                color=0xDC143C
+    try:
+        if ctx:
+            result, elapsed, footer_with_stats = await perform_chat_query(
+                prompt=cleaned_prompt,
+                api_cog=api_cog,
+                channel=channel,
+                duck_cog=duck_cog,
+                image_url=img_url,
+                reference_message=reference_message,
+                model=model,
+                reply_footer=footer,
+                api=api,
+                use_fun=fun,
+                web_search=web_search
             )
-            if ctx:
-                await ctx.reply(embed=error_embed)
-            else:
-                await interaction.followup.send(embed=error_embed)
-            return
-
-        if not image_url:
-            from generic_chat import process_attachments, perform_chat_query
-            final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
-        else:
-            final_prompt = prompt
-            img_url = image_url
-
-        cleaned_prompt = final_prompt
-        model = config["api_model"]
-        footer = config["default_footer"]
-        api = config.get("api", "openai")
-            
-        try:
-            if ctx:
-                result, elapsed, footer_with_stats = await perform_chat_query(
-                    prompt=cleaned_prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    duck_cog=duck_cog,
-                    image_url=img_url,
-                    reference_message=reference_message,
-                    model=model,
-                    reply_footer=footer,
-                    api=api,
-                    use_fun=fun,
-                    web_search=web_search
-                )
-            else:   
-                result, elapsed, footer_with_stats = await perform_chat_query(
-                    prompt=cleaned_prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    duck_cog=duck_cog,
-                    image_url=img_url,
-                    reference_message=reference_message,
-                    model=model,
-                    reply_footer=footer,
-                    api=api,
-                    use_fun=fun,
-                    web_search=web_search
-                )
-            
-            final_footer = footer_with_stats
-                
-        except Exception as e:
-            logger.exception(f"Error in {model_key} request: %s", e)
-            error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-            error_embed.set_footer(text=f"Error generating reply: {e}")
-            if ctx:
-                return await ctx.reply(embed=error_embed)
-            else:
-                return await interaction.followup.send(embed=error_embed)
-            
-        embed = discord.Embed(title="", description=result, color=config["color"])
-        embed.set_footer(text=final_footer)
+        else:   
+            result, elapsed, footer_with_stats = await perform_chat_query(
+                prompt=cleaned_prompt,
+                api_cog=api_cog,
+                channel=channel,
+                duck_cog=duck_cog,
+                image_url=img_url,
+                reference_message=reference_message,
+                model=model,
+                reply_footer=footer,
+                api=api,
+                use_fun=fun,
+                web_search=web_search
+            )
         
-        if ctx or reply_msg:
-            channel = ctx.channel if ctx else reply_msg.channel
-            message_to_reply = ctx.message if ctx else reply_msg
-            await send_embed(channel, embed, reply_to=message_to_reply)
+        final_footer = footer_with_stats
+            
+    except Exception as e:
+        logger.exception(f"Error in {model_key} request: %s", e)
+        error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
+        error_embed.set_footer(text=f"Error generating reply: {e}")
+        if ctx:
+            return await ctx.reply(embed=error_embed)
         else:
-            await send_embed(interaction.channel, embed, interaction=interaction)
+            return await interaction.followup.send(embed=error_embed)
+        
+    embed = discord.Embed(title="", description=result, color=config["color"])
+    embed.set_footer(text=final_footer)
+    
+    # Create attribution message with a link to the original message
+    attribution_text = None
+    if reply_user and reply_msg:
+        message_link = f"https://discord.com/channels/{reply_msg.guild.id}/{reply_msg.channel.id}/{reply_msg.id}"
+        attribution_text = f"### {reply_user.mention} used AI Reply > [View message]({message_link})"
+    
+    if ctx or reply_msg:
+        channel = ctx.channel if ctx else reply_msg.channel
+        message_to_reply = ctx.message if ctx else reply_msg
+        await send_embed(channel, embed, reply_to=message_to_reply, content=attribution_text)
+    else:
+        await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
     @app_commands.command(name="chat", description="Select a model and provide a prompt")
     @app_commands.describe(
@@ -401,7 +407,8 @@ class ModelSelectionView(discord.ui.View):
                 image_url=image_url,
                 reply_msg=self.original_message,
                 fun=self.fun,
-                web_search=self.web_search
+                web_search=self.web_search,
+                reply_user=interaction.user
             )
             
             try:

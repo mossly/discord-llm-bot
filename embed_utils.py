@@ -50,7 +50,7 @@ def split_embed(embed: discord.Embed) -> List[discord.Embed]:
         new_embeds.append(new_embed)
     return new_embeds
 
-async def send_embed(destination, embed: discord.Embed, *, reply_to: Optional[discord.Message] = None, interaction: Optional[discord.Interaction] = None) -> None:
+async def send_embed(destination, embed: discord.Embed, *, reply_to: Optional[discord.Message] = None, interaction: Optional[discord.Interaction] = None, content: Optional[str] = None) -> None:
     total_length = get_embed_total_length(embed)
     logger.debug("Embed total length: %d", total_length)
     if total_length > 4096:
@@ -58,29 +58,29 @@ async def send_embed(destination, embed: discord.Embed, *, reply_to: Optional[di
         parts = split_embed(embed)
         if reply_to is not None:
             logger.debug("Sending first embed part as a reply.")
-            await reply_to.reply(embed=parts[0])
+            await reply_to.reply(content=content, embed=parts[0])
             for part in parts[1:]:
                 logger.debug("Sending subsequent embed part to channel: %s", reply_to.channel)
                 await reply_to.channel.send(embed=part)
         elif interaction is not None:
             logger.debug("Sending first embed part via interaction followup.")
-            await interaction.followup.send(embed=parts[0])
+            await interaction.followup.send(content=content, embed=parts[0])
             for part in parts[1:]:
                 await interaction.followup.send(embed=part)
         else:
             logger.debug("Sending embed parts to destination channel.")
-            await destination.send(embed=parts[0])
+            await destination.send(content=content, embed=parts[0])
             for part in parts[1:]:
                 await destination.send(embed=part)
         logger.info("Embed split into %d parts and sent successfully.", len(parts))
     else:
         logger.debug("Embed within character limit; sending as a single embed.")
         if reply_to is not None:
-            await reply_to.reply(embed=embed)
+            await reply_to.reply(content=content, embed=embed)
             logger.info("Embed sent as a reply.")
         elif interaction is not None:
-            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(content=content, embed=embed)
             logger.info("Embed sent via interaction followup.")
         else:
-            await destination.send(embed=embed)
+            await destination.send(content=content, embed=embed)
             logger.info("Embed sent to destination.")
