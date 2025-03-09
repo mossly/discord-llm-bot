@@ -256,13 +256,17 @@ class ModelSelectionView(discord.ui.View):
         self.fun = False
         self.web_search = False
         
+        self._create_dropdown()
+        self._create_buttons()
+    
+    def _create_dropdown(self):
         options = []
         
         options.append(discord.SelectOption(
             label="GPT-4o-mini", 
             value="gpt-4o-mini",
             description="OpenAI model with image support",
-            default=self.has_image
+            default=self.selected_model == "gpt-4o-mini"
         ))
         
         if not self.has_image:
@@ -271,37 +275,43 @@ class ModelSelectionView(discord.ui.View):
                     label="GPT-o3-mini", 
                     value="gpt-o3-mini", 
                     description="OpenAI reasoning model",
-                    default=not self.has_image
+                    default=self.selected_model == "gpt-o3-mini"
                 ),
                 discord.SelectOption(
-                    label="Deepseek-v3", 
+                    label="Deepseek v3", 
                     value="deepseek-v3", 
-                    description="Deepseek chat model"
+                    description="Deepseek chat model",
+                    default=self.selected_model == "deepseek-v3"
                 ),
                 discord.SelectOption(
                     label="Anthropic Claude 3.7 Sonnet", 
                     value="claude-3.7-sonnet", 
-                    description="Anthropic chat model"
+                    description="Anthropic chat model",
+                    default=self.selected_model == "claude-3.7-sonnet"
                 ),
                 discord.SelectOption(
                     label="Anthropic Claude 3.7 Sonnet (Thinking)", 
                     value="claude-3.7-sonnet:thinking", 
-                    description="Anthropic reasoning model"
+                    description="Anthropic reasoning model",
+                    default=self.selected_model == "claude-3.7-sonnet:thinking"
                 ),
                 discord.SelectOption(
                     label="Google Gemini 2.0 Flash Lite", 
-                    value="gemini-2.0-flash-lite-001", 
-                    description="Google chat model"
+                    value="gemini-2.0-flash-lite", 
+                    description="Google chat model",
+                    default=self.selected_model == "gemini-2.0-flash-lite"
                 ),
                 discord.SelectOption(
                     label="X-AI Grok 2", 
                     value="grok-2", 
-                    description="X-AI chat model"
+                    description="X-AI chat model",
+                    default=self.selected_model == "grok-2"
                 ),
                 discord.SelectOption(
                     label="Mistral", 
                     value="mistral-large", 
-                    description="Mistral AI chat model"
+                    description="Mistral AI chat model",
+                    default=self.selected_model == "mistral-large"
                 )
             ])
         
@@ -311,9 +321,10 @@ class ModelSelectionView(discord.ui.View):
         )
         self.model_select.callback = self.on_model_select
         self.add_item(self.model_select)
-        
+    
+    def _create_buttons(self):
         fun_button = discord.ui.Button(
-            label="Fun Mode: OFF", 
+            label=f"Fun Mode: {'ON' if self.fun else 'OFF'}", 
             style=discord.ButtonStyle.secondary, 
             custom_id="toggle_fun"
         )
@@ -321,7 +332,7 @@ class ModelSelectionView(discord.ui.View):
         self.add_item(fun_button)
         
         web_search_button = discord.ui.Button(
-            label="Web Search: OFF", 
+            label=f"Web Search: {'ON' if self.web_search else 'OFF'}", 
             style=discord.ButtonStyle.secondary, 
             custom_id="toggle_web_search"
         )
@@ -349,20 +360,16 @@ class ModelSelectionView(discord.ui.View):
     
     async def toggle_fun(self, interaction: discord.Interaction):
         self.fun = not self.fun
-        button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_fun"][0]
-        button.label = f"Fun Mode: {'ON' if self.fun else 'OFF'}"
-        # Make sure we preserve the currently selected model
-        model_select = [item for item in self.children if isinstance(item, discord.ui.Select)][0]
-        self.selected_model = model_select.values[0] if model_select.values else self.selected_model
+        self.clear_items()
+        self._create_dropdown()
+        self._create_buttons()
         await interaction.response.edit_message(view=self)
     
     async def toggle_web_search(self, interaction: discord.Interaction):
         self.web_search = not self.web_search
-        button = [item for item in self.children if isinstance(item, discord.ui.Button) and item.custom_id=="toggle_web_search"][0]
-        button.label = f"Web Search: {'ON' if self.web_search else 'OFF'}"
-        # Make sure we preserve the currently selected model
-        model_select = [item for item in self.children if isinstance(item, discord.ui.Select)][0]
-        self.selected_model = model_select.values[0] if model_select.values else self.selected_model
+        self.clear_items()
+        self._create_dropdown()
+        self._create_buttons()
         await interaction.response.edit_message(view=self)
     
     async def submit_button_callback(self, interaction: discord.Interaction):
