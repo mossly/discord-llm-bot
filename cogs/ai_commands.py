@@ -5,7 +5,7 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
-import lore_system
+import cogs.loresystem as loresystemF
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class AICommands(commands.Cog):
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)"
     )
-    @app_commands.autocomplete(lore=lore_system.lorebook_autocomplete)
+    @app_commands.autocomplete(lore=loresystem.lorebook_autocomplete)
     async def chat_slash(
         self, 
         interaction: Interaction, 
