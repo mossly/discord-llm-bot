@@ -5,7 +5,7 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
-import cogs.loresystem as loresystemF
+import cogs.loresystem as loresystem
 
 logger = logging.getLogger(__name__)
 
