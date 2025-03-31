@@ -5,7 +5,6 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
-import cogs.loresystem as loresystem
 
 logger = logging.getLogger(__name__)
 
@@ -174,11 +173,9 @@ class AICommands(commands.Cog):
         model="Model to use for the response",
         fun="Toggle fun mode",
         web_search="Toggle web search",
-        lore="Lorebook to include (leave blank for none)",
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)"
     )
-    @app_commands.autocomplete(lore=loresystem.lorebook_autocomplete)
     async def chat_slash(
         self, 
         interaction: Interaction, 
@@ -188,22 +185,12 @@ class AICommands(commands.Cog):
         prompt: str, 
         fun: bool = False,
         web_search: bool = False,
-        lore: str = None,
         attachment: Optional[Attachment] = None
     ):
         await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
         username = interaction.user.name
         formatted_prompt = f"{username}: {prompt}"
-        
-        # Add lore content if specified
-        lore_content = ""
-        if lore:
-            lore_system = self.bot.get_cog("LoreSystem")
-            if lore_system:
-                lore_content = await lore_system.get_lorebook_content_for_ai(lore, interaction.user.id)
-                if lore_content:
-                    formatted_prompt = f"[LORE CONTEXT]\n{lore_content}\n\n[END LORE CONTEXT]\n\n{formatted_prompt}"
         
         has_image = False
         if attachment:
@@ -218,6 +205,7 @@ class AICommands(commands.Cog):
             model = "gpt-4o-mini"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search)
+
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
