@@ -15,7 +15,6 @@ class ModelManagement(commands.Cog):
         self.admin_ids = self._load_admin_ids()
         # Load model configuration
         self.models_config_file = "models_config.json"
-        self.default_models = self._get_default_models()
         self.models_config = self._load_models_config()
     
     def _load_admin_ids(self) -> set:
@@ -53,14 +52,8 @@ class ModelManagement(commands.Cog):
         
         return admin_ids
     
-    def _get_default_models(self) -> dict:
-        """Get the default model configuration from ai_commands.py"""
-        # Import here to avoid circular imports
-        from .ai_commands import MODEL_CONFIG
-        return MODEL_CONFIG.copy()
-    
     def _load_models_config(self) -> dict:
-        """Load models configuration from file, or use defaults"""
+        """Load models configuration from file"""
         try:
             if os.path.exists(self.models_config_file):
                 with open(self.models_config_file, 'r') as f:
@@ -68,17 +61,11 @@ class ModelManagement(commands.Cog):
                     logger.info(f"Loaded models configuration from {self.models_config_file}")
                     return config
         except (json.JSONDecodeError, IOError) as e:
-            logger.warning(f"Could not load models config: {e}, using defaults")
+            logger.warning(f"Could not load models config: {e}")
         
-        # Use default configuration
-        config = {}
-        for model_key, model_config in self.default_models.items():
-            config[model_key] = {
-                **model_config,
-                "enabled": True,
-                "admin_only": False
-            }
-        return config
+        # Return empty config if no file exists
+        logger.info("No models configuration file found. Starting with empty configuration.")
+        return {}
     
     def _save_models_config(self):
         """Save models configuration to file"""
@@ -109,17 +96,17 @@ class ModelManagement(commands.Cog):
     @app_commands.describe(
         action="Action to perform",
         model="Model key to manage",
-        admin_only="Set if model should be admin-only (for enable/add actions)",
-        display_name="Display name for the model (for add action)",
-        api_model="API model identifier (for add action)",
-        api_provider="API provider: openai or openrouter (for add action)",
-        supports_images="Whether model supports images (for add action)",
-        footer_text="Footer text to display (for add action)"
+        admin_only="Set if model should be admin-only (for enable/add/edit actions)",
+        display_name="Display name for the model (for add/edit actions)",
+        api_model="API model identifier (for add/edit actions)",
+        api_provider="API provider: openai or openrouter (for add/edit actions)",
+        supports_images="Whether model supports images (for add/edit actions)",
+        footer_text="Footer text to display (for add/edit actions)"
     )
     async def manage_models(
         self, 
         interaction: discord.Interaction, 
-        action: Literal["list", "available", "add", "enable", "disable", "info", "reload"],
+        action: Literal["list", "available", "add", "edit", "remove", "enable", "disable", "info", "reload"],
         model: Optional[str] = None,
         admin_only: Optional[bool] = None,
         display_name: Optional[str] = None,
@@ -143,6 +130,16 @@ class ModelManagement(commands.Cog):
                 await interaction.response.send_message("❌ Model key is required for add action.", ephemeral=True)
                 return
             await self._add_model(interaction, model, display_name, api_model, api_provider, supports_images, footer_text, admin_only or False)
+        elif action == "edit":
+            if not model:
+                await interaction.response.send_message("❌ Model key is required for edit action.", ephemeral=True)
+                return
+            await self._edit_model(interaction, model, display_name, api_model, api_provider, supports_images, footer_text, admin_only)
+        elif action == "remove":
+            if not model:
+                await interaction.response.send_message("❌ Model key is required for remove action.", ephemeral=True)
+                return
+            await self._remove_model(interaction, model)
         elif action == "enable":
             if not model:
                 await interaction.response.send_message("❌ Model name is required for enable action.", ephemeral=True)
@@ -291,24 +288,117 @@ class ModelManagement(commands.Cog):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
+    async def _edit_model(self, interaction: discord.Interaction, model_key: str, display_name: str, api_model: str, api_provider: str, supports_images: bool, footer_text: str, admin_only: bool):
+        """Edit an existing model configuration"""
+        # Check if model exists
+        if model_key not in self.models_config:
+            await interaction.response.send_message(f"❌ Model '{model_key}' not found. Use 'add' to create it first.", ephemeral=True)
+            return
+        
+        # Get current configuration
+        current_config = self.models_config[model_key].copy()
+        changes_made = []
+        
+        # Update only provided parameters
+        if display_name is not None:
+            current_config["name"] = display_name
+            changes_made.append(f"Display name: {display_name}")
+        
+        if api_model is not None:
+            current_config["api_model"] = api_model
+            changes_made.append(f"API model: {api_model}")
+        
+        if api_provider is not None:
+            current_config["api"] = api_provider
+            changes_made.append(f"API provider: {api_provider}")
+        
+        if supports_images is not None:
+            current_config["supports_images"] = supports_images
+            changes_made.append(f"Image support: {'Yes' if supports_images else 'No'}")
+        
+        if footer_text is not None:
+            current_config["default_footer"] = footer_text
+            changes_made.append(f"Footer: {footer_text}")
+        
+        if admin_only is not None:
+            current_config["admin_only"] = admin_only
+            changes_made.append(f"Access: {'Admin-only' if admin_only else 'Public'}")
+        
+        if not changes_made:
+            await interaction.response.send_message("❌ No changes specified. Provide at least one parameter to edit.", ephemeral=True)
+            return
+        
+        # Save updated configuration
+        self.models_config[model_key] = current_config
+        self._save_models_config()
+        
+        # Also update runtime MODEL_CONFIG if it exists
+        from .ai_commands import MODEL_CONFIG
+        if model_key in MODEL_CONFIG:
+            MODEL_CONFIG[model_key].update({
+                "name": current_config.get("name"),
+                "default_footer": current_config.get("default_footer"),
+                "api_model": current_config.get("api_model"),
+                "supports_images": current_config.get("supports_images"),
+                "api": current_config.get("api")
+            })
+        
+        embed = discord.Embed(
+            title="✅ Model Updated",
+            description=f"Model **{model_key}** has been updated",
+            color=0x32a956
+        )
+        embed.add_field(
+            name="Changes Made",
+            value="\n".join(f"• {change}" for change in changes_made),
+            inline=False
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    async def _remove_model(self, interaction: discord.Interaction, model_key: str):
+        """Remove a model configuration"""
+        # Check if model exists
+        if model_key not in self.models_config:
+            await interaction.response.send_message(f"❌ Model '{model_key}' not found.", ephemeral=True)
+            return
+        
+        # Get model info for confirmation
+        model_config = self.models_config[model_key]
+        model_name = model_config.get("name", model_key)
+        
+        # Remove from configuration
+        del self.models_config[model_key]
+        self._save_models_config()
+        
+        # Also remove from runtime MODEL_CONFIG if it exists
+        from .ai_commands import MODEL_CONFIG
+        if model_key in MODEL_CONFIG:
+            del MODEL_CONFIG[model_key]
+        
+        embed = discord.Embed(
+            title="🗑️ Model Removed",
+            description=f"Model **{model_key}** ({model_name}) has been permanently removed",
+            color=0xFF6B35  # Orange color for removal
+        )
+        embed.add_field(
+            name="⚠️ Note",
+            value="This action cannot be undone. Users will no longer be able to access this model.",
+            inline=False
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
     async def _enable_model(self, interaction: discord.Interaction, model_key: str, admin_only: bool):
         """Enable a model"""
-        # Check if model exists in current config or default models
-        if model_key not in self.models_config and model_key not in self.default_models:
-            available_models = ", ".join(list(self.default_models.keys()) + [k for k in self.models_config.keys() if k not in self.default_models])
+        # Check if model exists in current config
+        if model_key not in self.models_config:
+            available_models = ", ".join(self.models_config.keys())
             await interaction.response.send_message(
                 f"❌ Unknown model: {model_key}\nAvailable models: {available_models}", 
                 ephemeral=True
             )
             return
-        
-        # Ensure model exists in config
-        if model_key not in self.models_config:
-            if model_key in self.default_models:
-                self.models_config[model_key] = self.default_models[model_key].copy()
-            else:
-                await interaction.response.send_message(f"❌ Model {model_key} configuration not found.", ephemeral=True)
-                return
         
         self.models_config[model_key]["enabled"] = True
         self.models_config[model_key]["admin_only"] = admin_only
