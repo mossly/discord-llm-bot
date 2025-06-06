@@ -72,6 +72,85 @@ class ImageGen(commands.Cog):
                     usage_info.update(vars(data.usage))
                     
         return usage_info
+    
+    def build_footer(self, model: str, quality: str, size: str, is_edit: bool = False, image_inputs: list = None, cost: float = 0, cost_source: str = "estimated", generation_time: float = 0, usage_info: dict = None) -> str:
+        """Build standardized footer for image generation"""
+        # First line: Model name with modifiers
+        footer_parts = []
+        
+        # Model name
+        if model == "gpt-image-1":
+            footer_parts.append("GPT-image-1")
+        elif model == "dall-e-3":
+            footer_parts.append("DALL·E 3")
+        elif model == "dall-e-2":
+            footer_parts.append("DALL·E 2")
+        else:
+            footer_parts.append(model)
+        
+        # Quality
+        if quality in ("high", "hd"):
+            footer_parts.append("High Quality")
+        elif quality in ("standard", "medium"):
+            footer_parts.append("Standard Quality")
+        
+        # Orientation
+        if size == "1536x1024" or size == "1792x1024":
+            footer_parts.append("Landscape")
+        elif size == "1024x1536" or size == "1024x1792":
+            footer_parts.append("Portrait")
+        elif size == "1024x1024":
+            footer_parts.append("Square")
+        
+        # Mode (if using input images)
+        if image_inputs:
+            mode_text = "Edit" if is_edit else "Input"
+            footer_parts.append(mode_text)
+            if len(image_inputs) > 1:
+                footer_parts.append(f"{len(image_inputs)} images")
+        
+        first_line = " | ".join(footer_parts)
+        
+        # Second line: Usage stats (standardized format)
+        usage_parts = []
+        
+        # Token usage (if available from usage_info) - rare for image generation
+        if usage_info:
+            if 'prompt_tokens' in usage_info and usage_info['prompt_tokens'] > 0:
+                input_tokens = usage_info['prompt_tokens']
+                if input_tokens >= 1000:
+                    input_str = f"{input_tokens / 1000:.1f}k"
+                else:
+                    input_str = str(input_tokens)
+                usage_parts.append(f"{input_str} input tokens")
+            if 'completion_tokens' in usage_info and usage_info['completion_tokens'] > 0:
+                output_tokens = usage_info['completion_tokens']
+                if output_tokens >= 1000:
+                    output_str = f"{output_tokens / 1000:.1f}k"
+                else:
+                    output_str = str(output_tokens)
+                usage_parts.append(f"{output_str} output tokens")
+        
+        # Cost (show $x.xx, but to first non-zero digit if under $0.01)
+        if cost >= 0.01:
+            cost_str = f"${cost:.2f}"
+        elif cost > 0:
+            # Find first non-zero digit
+            decimal_places = 2
+            while cost < (1 / (10 ** decimal_places)) and decimal_places < 10:
+                decimal_places += 1
+            cost_str = f"${cost:.{decimal_places}f}"
+        else:
+            cost_str = "$0.00"
+        usage_parts.append(cost_str)
+        
+        # Time
+        if generation_time > 0:
+            usage_parts.append(f"{generation_time} seconds")
+        
+        second_line = " | ".join(usage_parts)
+        
+        return f"{first_line}\n{second_line}"
 
     async def generate_image_streaming(self, img_prompt: str, img_quality: str, img_size: str, model: str = "gpt-image-1", image_inputs: list = None, is_edit: bool = False, interaction=None):
         """Generate image with streaming support using Responses API"""
@@ -191,24 +270,18 @@ class ImageGen(commands.Cog):
         
         # Update the final message to show completion
         if stream_message:
-            # Calculate timing and cost info for final footer
-            footer_parts = ["GPT-image-1"]
-            if img_quality == "high":
-                footer_parts.append("High Quality")
-            if img_size != "1024x1024":
-                if img_size == "1536x1024":
-                    footer_parts.append("Landscape")
-                elif img_size == "1024x1536":
-                    footer_parts.append("Portrait")
-            if image_inputs:
-                mode_text = "Edit" if is_edit else "Input"
-                footer_parts.append(mode_text)
-                if len(image_inputs) > 1:
-                    footer_parts.append(f"{len(image_inputs)} images")
-            
-            footer_first_line = " | ".join(footer_parts)
-            cost_text = f"~${cost:.2f}"
-            footer_text = f"{footer_first_line}\n{cost_text}"
+            # Build standardized footer
+            footer_text = self.build_footer(
+                model="gpt-image-1",
+                quality=img_quality,
+                size=img_size,
+                is_edit=is_edit,
+                image_inputs=image_inputs,
+                cost=cost,
+                cost_source="estimated",
+                generation_time=0,  # Streaming doesn't track time per message
+                usage_info={}
+            )
             
             try:
                 # Get the current embed and update it to show completion
@@ -437,11 +510,6 @@ class ImageGen(commands.Cog):
             else:
                 size = "1024x1024"
 
-        footer_text_parts = ["GPT-image-1" if model == "gpt-image-1" else "DALL·E 3"]
-        if quality == "high":
-            footer_text_parts.append("High Quality")
-        if orientation in ("Landscape", "Portrait"):
-            footer_text_parts.append(orientation)
             
         image_inputs = []
         is_edit = False
@@ -463,8 +531,6 @@ class ImageGen(commands.Cog):
                         image_input.name = attachment.filename
                         image_inputs.append(image_input)
                         is_edit = (image_mode == "edit")
-                        mode_text = "Edit" if is_edit else "Input"
-                        footer_text_parts.append(mode_text)
                     except Exception as e:
                         logger.error(f"Error reading attachment: {e}")
                         await interaction.followup.send("Error reading image attachment. Please try again.")
@@ -495,8 +561,6 @@ class ImageGen(commands.Cog):
         # Log total images found
         if image_inputs:
             logger.info(f"Processing {len(image_inputs)} images for generation")
-            if len(image_inputs) > 1:
-                footer_text_parts.append(f"{len(image_inputs)} images")
 
         # Check user quota before generating image (after collecting images for better cost estimation)
         remaining_quota = quota_manager.get_remaining_quota(user_id)
@@ -547,11 +611,18 @@ class ImageGen(commands.Cog):
             else:
                 logger.warning(f"Failed to track image generation usage for user {user_id}")
         
-        # Create footer with cost and timing
-        footer_first_line = " | ".join(footer_text_parts)
-        cost_text = f"${cost:.4f}" if cost_source == "actual" else f"~${cost:.2f}"
-        footer_second_line = f"{cost_text} | {generation_time} seconds"
-        footer_text = f"{footer_first_line}\n{footer_second_line}"
+        # Build standardized footer
+        footer_text = self.build_footer(
+            model=model,
+            quality=api_quality,
+            size=size,
+            is_edit=is_edit,
+            image_inputs=image_inputs,
+            cost=cost,
+            cost_source=cost_source,
+            generation_time=generation_time,
+            usage_info=usage_info
+        )
 
         for idx, url in enumerate(result_urls):
             try:
@@ -740,14 +811,6 @@ class ImageEditModal(discord.ui.Modal):
                 size = "1024x1024"
             
         is_edit = (image_mode_str == "edit")
-        mode_text = "Edit" if is_edit else "Input"
-        footer_text_parts = ["GPT-image-1", mode_text]
-        if quality_str == "high":
-            footer_text_parts.append("High Quality")
-        if orientation_str in ("Landscape", "Portrait"):
-            footer_text_parts.append(orientation_str)
-        if len(image_inputs) > 1:
-            footer_text_parts.append(f"{len(image_inputs)} images")
             
         try:
             # Use streaming if enabled and model supports it
@@ -781,11 +844,18 @@ class ImageEditModal(discord.ui.Modal):
             else:
                 logger.warning(f"Failed to track image generation usage for user {user_id}")
         
-        # Create footer with cost and timing
-        footer_first_line = " | ".join(footer_text_parts)
-        cost_text = f"${cost:.4f}" if cost_source == "actual" else f"~${cost:.2f}"
-        footer_second_line = f"{cost_text} | {generation_time} seconds"
-        footer_text = f"{footer_first_line}\n{footer_second_line}"
+        # Build standardized footer
+        footer_text = self.image_cog.build_footer(
+            model=model_str,
+            quality=api_quality,
+            size=size,
+            is_edit=is_edit,
+            image_inputs=image_inputs,
+            cost=cost,
+            cost_source=cost_source,
+            generation_time=generation_time,
+            usage_info=usage_info
+        )
         
         for idx, url in enumerate(result_urls):
             try:

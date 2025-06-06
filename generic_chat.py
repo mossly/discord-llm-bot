@@ -9,6 +9,51 @@ from user_quotas import quota_manager
 
 logger = logging.getLogger(__name__)
 
+def build_standardized_footer(model_name: str, input_tokens: int = 0, output_tokens: int = 0, cost: float = 0, elapsed_time: float = 0) -> str:
+    """Build standardized footer for AI responses"""
+    # First line: Clean model name only
+    first_line = model_name
+    
+    # Second line: Usage stats
+    usage_parts = []
+    
+    # Input tokens (abbreviate with k after 1000)
+    if input_tokens > 0:
+        if input_tokens >= 1000:
+            input_str = f"{input_tokens / 1000:.1f}k"
+        else:
+            input_str = str(input_tokens)
+        usage_parts.append(f"{input_str} input tokens")
+    
+    # Output tokens (abbreviate with k after 1000)
+    if output_tokens > 0:
+        if output_tokens >= 1000:
+            output_str = f"{output_tokens / 1000:.1f}k"
+        else:
+            output_str = str(output_tokens)
+        usage_parts.append(f"{output_str} output tokens")
+    
+    # Cost (show $x.xx, but to first non-zero digit if under $0.01)
+    if cost >= 0.01:
+        cost_str = f"${cost:.2f}"
+    elif cost > 0:
+        # Find first non-zero digit
+        decimal_places = 2
+        while cost < (1 / (10 ** decimal_places)) and decimal_places < 10:
+            decimal_places += 1
+        cost_str = f"${cost:.{decimal_places}f}"
+    else:
+        cost_str = "$0.00"
+    usage_parts.append(cost_str)
+    
+    # Time
+    if elapsed_time > 0:
+        usage_parts.append(f"{elapsed_time} seconds")
+    
+    second_line = " | ".join(usage_parts)
+    
+    return f"{first_line}\n{second_line}"
+
 async def process_attachments(prompt: str, attachments: list, is_slash: bool = False) -> (str, str):
     image_url = None
     final_prompt = prompt
@@ -140,49 +185,37 @@ async def perform_chat_query(
                         raise
         elapsed = round(time.time() - start_time, 2)
 
-        footer_first_line = [reply_footer]
-        
-        if use_fun:
-            footer_first_line.append("Fun Mode")
-        if web_search:
-            footer_first_line.append("Web Search")
-        if stats and stats.get('reduced_tokens'):
-            footer_first_line.append(f"Tokens reduced: {stats.get('original_max_tokens')} → {stats.get('reduced_max_tokens')}")
-            
-        footer_second_line = []
+        # Extract stats for standardized footer
+        input_tokens = 0
+        output_tokens = 0
+        total_cost = 0
         
         if stats:
-            tokens_prompt = stats.get('tokens_prompt', 0)
-            tokens_completion = stats.get('tokens_completion', 0)
+            input_tokens = stats.get('tokens_prompt', 0)
+            output_tokens = stats.get('tokens_completion', 0)
             total_cost = stats.get('total_cost', 0)
             
-            logger.info(f"Generation stats received: prompt_tokens={tokens_prompt}, completion_tokens={tokens_completion}, total_cost={total_cost}")
+            logger.info(f"Generation stats received: prompt_tokens={input_tokens}, completion_tokens={output_tokens}, total_cost={total_cost}")
             
-            prompt_tokens_str = f"{tokens_prompt / 1000:.1f}k" if tokens_prompt >= 1000 else str(tokens_prompt)
-            tokens_completion_str = f"{tokens_completion / 1000:.1f}k" if tokens_completion >= 1000 else str(tokens_completion)
-            
-            footer_second_line.append(f"{prompt_tokens_str} input tokens")
-            footer_second_line.append(f"{tokens_completion_str} output tokens")
-            
-            if total_cost is not None:
+            if total_cost is not None and total_cost > 0:
                 # Track usage in user quota system
                 if quota_manager.add_usage(user_id, total_cost):
                     logger.info(f"Tracked ${total_cost:.4f} usage for user {user_id}")
                 else:
                     logger.warning(f"Failed to track usage for user {user_id}")
-                if total_cost > 0:
-                    footer_second_line.append(f"${total_cost:.4f}")
-                else:
-                    footer_second_line.append("$0.0000")
         else:
             logger.warning("No generation stats received from API")
         
-        footer_second_line.append(f"{elapsed} seconds")
+        # Build standardized footer
+        footer = build_standardized_footer(
+            model_name=reply_footer,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=total_cost,
+            elapsed_time=elapsed
+        )
         
-        first_line = " | ".join(footer_first_line)
-        second_line = " | ".join(footer_second_line)
-        
-        return result, elapsed, f"{first_line}\n{second_line}"
+        return result, elapsed, footer
             
     except Exception as e:
         logger.exception("Error in perform_chat_query: %s", e)
