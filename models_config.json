@@ -1,82 +1,24 @@
 {
-  "gpt-4o-mini": {
-    "name": "GPT-4o-mini by OpenAI",
-    "color": 3454294,
-    "default_footer": "gpt-4o-mini",
-    "api_model": "openai/gpt-4o-mini",
-    "supports_images": true,
-    "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
+  "_comment": "Models configuration template - add your models here",
+  "_field_descriptions": {
+    "name": "Display name shown to users",
+    "color": "Embed color (decimal format)",
+    "default_footer": "Footer text for responses",
+    "api_model": "Model identifier for the API",
+    "supports_images": "Whether model can process images",
+    "api": "API provider (openrouter, openai)",
+    "enabled": "Whether model is available",
+    "admin_only": "Restrict to admin users only"
   },
-  "gpt-o3-mini": {
-    "name": "GPT-o3-mini by OpenAI",
+  
+  "example-model": {
+    "name": "Example Model by Provider",
     "color": 3454294,
-    "default_footer": "o3-mini | CoT",
-    "api_model": "openai/o3-mini",
+    "default_footer": "Example Model",
+    "api_model": "provider/model-name",
     "supports_images": false,
     "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
-  },
-  "deepseek-v3": {
-    "name": "DeepSeek v3 by DeepSeek",
-    "color": 3454294,
-    "default_footer": "Deepseek-v3",
-    "api_model": "deepseek/deepseek-chat",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
-  },
-  "claude-3.7-sonnet": {
-    "name": "Claude 3.7 Sonnet by Anthropic",
-    "color": 3454294,
-    "default_footer": "Claude 3.7 Sonnet",
-    "api_model": "anthropic/claude-3.7-sonnet:beta",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
-  },
-  "claude-3.7-sonnet:thinking": {
-    "name": "Claude 3.7 Sonnet (Thinking) by Anthropic",
-    "color": 3454294,
-    "default_footer": "Claude 3.7 Sonnet (Thinking)",
-    "api_model": "anthropic/claude-3.7-sonnet:thinking",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
-  },
-  "gemini-2.0-flash-lite": {
-    "name": "Gemini 2.0 Flash Lite by Google",
-    "color": 3454294,
-    "default_footer": "Gemini 2.0 Flash Lite",
-    "api_model": "google/gemini-2.0-flash-lite-001",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
-  },
-  "grok-2": {
-    "name": "Grok 2 by X-AI",
-    "color": 3454294,
-    "default_footer": "Grok 2",
-    "api_model": "x-ai/grok-2-1212",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": true,
-    "admin_only": false
-  },
-  "mistral-large": {
-    "name": "Mistral Large by Mistral AI",
-    "color": 3454294,
-    "default_footer": "Mistral Large",
-    "api_model": "mistralai/mistral-large-2411",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": true,
+    "enabled": false,
     "admin_only": false
   }
 }
