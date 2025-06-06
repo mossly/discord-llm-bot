@@ -457,26 +457,30 @@ async def ai_context_menu(interaction: Interaction, message: discord.Message):
 
 @app_commands.context_menu(name="Generate with Image")
 async def edit_image_context_menu(interaction: Interaction, message: discord.Message):
-    # Check if message has images
-    has_images = False
+    # Count images in message
+    image_count = 0
+    
+    # Check attachments
     for att in message.attachments:
         if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
-            has_images = True
-            break
+            image_count += 1
     
-    # Also check embeds for images
-    if not has_images:
-        for embed in message.embeds:
-            if embed.image:
-                has_images = True
-                break
+    # Check embeds for images
+    for embed in message.embeds:
+        if embed.image:
+            image_count += 1
     
-    if not has_images:
+    if image_count == 0:
         await interaction.response.send_message(
-            "This message doesn't contain any images to edit.",
+            "This message doesn't contain any images to use.",
             ephemeral=True
         )
         return
+    
+    # Show multi-image feedback but continue to modal
+    if image_count > 1:
+        # We'll send the modal and let the user know about multiple images in the title
+        pass
     
     # Get the ImageGen cog to access the modal
     image_cog = interaction.client.get_cog("ImageGen")

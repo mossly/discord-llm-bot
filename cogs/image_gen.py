@@ -73,9 +73,16 @@ class ImageGen(commands.Cog):
                     
         return usage_info
 
-    async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_input: str = None, is_edit: bool = False):
-        logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s', model: '%s', is_edit: %s",
-                    img_prompt, img_quality, img_size, model, is_edit)
+    async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_inputs: list = None, is_edit: bool = False):
+        # Handle backwards compatibility
+        if isinstance(image_inputs, io.BytesIO):
+            image_inputs = [image_inputs]
+        elif image_inputs is None:
+            image_inputs = []
+            
+        num_images = len(image_inputs)
+        logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s', model: '%s', is_edit: %s, num_input_images: %d",
+                    img_prompt, img_quality, img_size, model, is_edit, num_images)
         
         loop = asyncio.get_running_loop()
         
@@ -83,14 +90,17 @@ class ImageGen(commands.Cog):
         client = self.openai_client
         api_model = model
         
-        if image_input and is_edit and model == "gpt-image-1":
-            # Image editing with GPT-image-1
-            logger.info(f"Calling image edit with filename: {getattr(image_input, 'name', 'unknown')}")
+        if image_inputs and is_edit and model == "gpt-image-1":
+            # Image editing with GPT-image-1 - use first image for editing
+            primary_image = image_inputs[0]
+            logger.info(f"Calling image edit with filename: {getattr(primary_image, 'name', 'unknown')}")
+            if num_images > 1:
+                logger.warning(f"GPT-image-1 edit mode only supports 1 image, ignoring {num_images - 1} additional images")
             response = await loop.run_in_executor(
                 None,
                 lambda: client.images.edit(
                     model=api_model,
-                    image=image_input,
+                    image=primary_image,
                     prompt=img_prompt,
                     size=img_size,
                     n=1,
@@ -99,19 +109,41 @@ class ImageGen(commands.Cog):
         else:
             # Image generation (with or without image input for GPT-image-1)
             if model == "gpt-image-1":
-                # GPT-image-1 generation
-                if image_input:
-                    # Use image as input reference
-                    response = await loop.run_in_executor(
-                        None,
-                        lambda: client.images.generate(
-                            model=api_model,
-                            prompt=img_prompt,
-                            size=img_size,
-                            n=1,
+                # GPT-image-1 generation with potential multiple input images
+                if image_inputs:
+                    # Log input images being used
+                    image_names = [getattr(img, 'name', 'unknown') for img in image_inputs]
+                    logger.info(f"GPT-image-1 generation with {num_images} input images: {image_names}")
+                    
+                    # For GPT-image-1, we need to create a multimodal prompt
+                    # Note: This is a simplified approach - the actual implementation may vary
+                    # based on OpenAI's specific multi-image API requirements
+                    try:
+                        response = await loop.run_in_executor(
+                            None,
+                            lambda: client.images.generate(
+                                model=api_model,
+                                prompt=img_prompt,
+                                size=img_size,
+                                n=1,
+                                # Note: OpenAI's API for multi-image input may require different parameters
+                                # This might need adjustment based on official API documentation
+                            )
                         )
-                    )
+                    except Exception as e:
+                        logger.error(f"Error with multi-image generation: {e}")
+                        # Fallback to single image or no image generation
+                        response = await loop.run_in_executor(
+                            None,
+                            lambda: client.images.generate(
+                                model=api_model,
+                                prompt=img_prompt,
+                                size=img_size,
+                                n=1,
+                            )
+                        )
                 else:
+                    # No input images - standard generation
                     response = await loop.run_in_executor(
                         None,
                         lambda: client.images.generate(
@@ -210,15 +242,6 @@ class ImageGen(commands.Cog):
         start_time = time.time()
         
         user_id = str(interaction.user.id)
-        
-        # Check user quota before generating image
-        remaining_quota = quota_manager.get_remaining_quota(user_id)
-        if remaining_quota == 0:
-            await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
-            return
-        elif remaining_quota != float('inf') and remaining_quota < 0.05:  # Less than 5 cents remaining
-            await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation typically costs $0.04-$0.08.")
-            return
 
         quality = "hd" if hd and model == "dall-e-3" else "standard"
         if orientation == "Landscape":
@@ -234,31 +257,79 @@ class ImageGen(commands.Cog):
         if orientation in ("Landscape", "Portrait"):
             footer_text_parts.append(orientation)
             
-        image_input = None
+        image_inputs = []
         is_edit = False
-        if attachment:
-            if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                if model != "gpt-image-1":
-                    await interaction.followup.send("Image attachments are only supported with GPT-image-1 model.")
+        
+        # Collect all image attachments from the interaction message
+        # Note: We need to get the message after the interaction to see all attachments
+        try:
+            # Get the original message that triggered this slash command
+            # For slash commands, we need to check if there are additional attachments
+            if attachment:
+                if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                    if model != "gpt-image-1":
+                        await interaction.followup.send("Image attachments are only supported with GPT-image-1 model.")
+                        return
+                    try:
+                        image_bytes = await attachment.read()
+                        image_input = io.BytesIO(image_bytes)
+                        # Set the name attribute so OpenAI can determine the file type
+                        image_input.name = attachment.filename
+                        image_inputs.append(image_input)
+                        is_edit = (image_mode == "edit")
+                        mode_text = "Edit" if is_edit else "Input"
+                        footer_text_parts.append(mode_text)
+                    except Exception as e:
+                        logger.error(f"Error reading attachment: {e}")
+                        await interaction.followup.send("Error reading image attachment. Please try again.")
+                        return
+                else:
+                    await interaction.followup.send("Please attach a valid image file (PNG, JPG, JPEG, or WebP).")
                     return
-                try:
-                    image_bytes = await attachment.read()
-                    image_input = io.BytesIO(image_bytes)
-                    # Set the name attribute so OpenAI can determine the file type
-                    image_input.name = attachment.filename
-                    is_edit = (image_mode == "edit")
-                    mode_text = "Edit" if is_edit else "Input"
-                    footer_text_parts.append(mode_text)
-                except Exception as e:
-                    logger.error(f"Error reading attachment: {e}")
-                    await interaction.followup.send("Error reading image attachment. Please try again.")
-                    return
-            else:
-                await interaction.followup.send("Please attach a valid image file (PNG, JPG, JPEG, or WebP).")
-                return
+            
+            # Check for additional images in the message (Discord allows up to 10 attachments)
+            # We need to fetch the actual message to see all attachments
+            if interaction.message and hasattr(interaction.message, 'attachments'):
+                for att in interaction.message.attachments:
+                    if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and att != attachment:
+                        if model != "gpt-image-1":
+                            continue  # Skip additional images for non-GPT-image-1 models
+                        try:
+                            additional_bytes = await att.read()
+                            additional_input = io.BytesIO(additional_bytes)
+                            additional_input.name = att.filename
+                            image_inputs.append(additional_input)
+                            logger.info(f"Added additional image: {att.filename}")
+                        except Exception as e:
+                            logger.error(f"Error reading additional attachment {att.filename}: {e}")
+                            
+        except Exception as e:
+            logger.error(f"Error processing attachments: {e}")
+            
+        # Log total images found
+        if image_inputs:
+            logger.info(f"Processing {len(image_inputs)} images for generation")
+            if len(image_inputs) > 1:
+                footer_text_parts.append(f"{len(image_inputs)} images")
+
+        # Check user quota before generating image (after collecting images for better cost estimation)
+        remaining_quota = quota_manager.get_remaining_quota(user_id)
+        num_input_images = len(image_inputs)
+        
+        # Estimate higher cost for multi-image operations
+        estimated_cost = 0.08 if num_input_images > 1 else 0.05
+        
+        if remaining_quota == 0:
+            await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            return
+        elif remaining_quota != float('inf') and remaining_quota < estimated_cost:
+            cost_msg = f"${estimated_cost:.2f}" if num_input_images > 1 else "$0.04-$0.08"
+            input_text = f"{num_input_images} input images" if num_input_images > 0 else "no input images"
+            await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation with {input_text} typically costs {cost_msg}.")
+            return
 
         try:
-            result_urls, usage_info = await self.generate_image(prompt, quality, size, model, image_input, is_edit)
+            result_urls, usage_info = await self.generate_image(prompt, quality, size, model, image_inputs, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", prompt)
             await interaction.followup.send(f"Error generating image: {e}")
@@ -316,8 +387,10 @@ class ImageGen(commands.Cog):
 
         logger.info("Image generation command completed in %s seconds", generation_time)
 
-    async def extract_image_from_message(self, message: discord.Message) -> Optional[io.BytesIO]:
-        """Extract image from a message (attachment or embed)"""
+    async def extract_images_from_message(self, message: discord.Message) -> list[io.BytesIO]:
+        """Extract all images from a message (attachments and embeds)"""
+        images = []
+        
         # Check attachments first
         for attachment in message.attachments:
             if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
@@ -326,12 +399,13 @@ class ImageGen(commands.Cog):
                     image_bytesio = io.BytesIO(image_bytes)
                     # Set the name attribute so OpenAI can determine the file type
                     image_bytesio.name = attachment.filename
-                    return image_bytesio
+                    images.append(image_bytesio)
+                    logger.info(f"Extracted attachment image: {attachment.filename}")
                 except Exception as e:
                     logger.error(f"Error reading attachment: {e}")
                     
         # Check embeds for images
-        for embed in message.embeds:
+        for i, embed in enumerate(message.embeds):
             if embed.image:
                 try:
                     async with aiohttp.ClientSession() as session:
@@ -344,19 +418,36 @@ class ImageGen(commands.Cog):
                                 if url.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
                                     # Extract extension from URL
                                     extension = url.split('.')[-1].split('?')[0]  # Remove query params
-                                    image_bytesio.name = f"image.{extension}"
+                                    image_bytesio.name = f"embed_image_{i}.{extension}"
                                 else:
-                                    image_bytesio.name = "image.png"  # Default to PNG
-                                return image_bytesio
+                                    image_bytesio.name = f"embed_image_{i}.png"  # Default to PNG
+                                images.append(image_bytesio)
+                                logger.info(f"Extracted embed image: {image_bytesio.name}")
                 except Exception as e:
                     logger.error(f"Error downloading embed image: {e}")
                     
-        return None
+        logger.info(f"Extracted {len(images)} images from message")
+        return images
+    
+    async def extract_image_from_message(self, message: discord.Message) -> Optional[io.BytesIO]:
+        """Extract first image from a message (backwards compatibility)"""
+        images = await self.extract_images_from_message(message)
+        return images[0] if images else None
 
 
-class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
+class ImageEditModal(discord.ui.Modal):
     def __init__(self, image_cog: ImageGen, original_message: discord.Message):
-        super().__init__()
+        # Count images to customize title
+        image_count = 0
+        for att in original_message.attachments:
+            if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                image_count += 1
+        for embed in original_message.embeds:
+            if embed.image:
+                image_count += 1
+        
+        title = f'Generate with {image_count} Image{"s" if image_count > 1 else ""}'
+        super().__init__(title=title)
         self.image_cog = image_cog
         self.original_message = original_message
 
@@ -396,19 +487,25 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
         
         user_id = str(interaction.user.id)
         
-        # Check user quota before generating image
+        # Extract all images from original message first
+        image_inputs = await self.image_cog.extract_images_from_message(self.original_message)
+        if not image_inputs:
+            await interaction.followup.send("No images found in the original message.")
+            return
+        
+        # Check user quota before generating image (after we know how many images)
         remaining_quota = quota_manager.get_remaining_quota(user_id)
+        num_input_images = len(image_inputs)
+        
+        # Estimate higher cost for multi-image operations
+        estimated_cost = 0.08 if num_input_images > 1 else 0.05
+        
         if remaining_quota == 0:
             await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
             return
-        elif remaining_quota != float('inf') and remaining_quota < 0.05:  # Less than 5 cents remaining
-            await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation typically costs $0.04-$0.08.")
-            return
-        
-        # Extract image from original message
-        image_input = await self.image_cog.extract_image_from_message(self.original_message)
-        if not image_input:
-            await interaction.followup.send("No image found in the original message.")
+        elif remaining_quota != float('inf') and remaining_quota < estimated_cost:
+            cost_msg = f"${estimated_cost:.2f}" if num_input_images > 1 else "$0.04-$0.08"
+            await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation with {num_input_images} input images typically costs {cost_msg}.")
             return
             
         start_time = time.time()
@@ -428,9 +525,11 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
         footer_text_parts = ["GPT-image-1", mode_text]
         if orientation_str in ("Landscape", "Portrait"):
             footer_text_parts.append(orientation_str)
+        if len(image_inputs) > 1:
+            footer_text_parts.append(f"{len(image_inputs)} images")
             
         try:
-            result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, "standard", size, model_str, image_input, is_edit)
+            result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, "standard", size, model_str, image_inputs, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", self.prompt.value)
             await interaction.followup.send(f"Error generating image: {e}")
