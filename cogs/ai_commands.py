@@ -443,9 +443,46 @@ async def ai_context_menu(interaction: Interaction, message: discord.Message):
     modal = AIContextMenus.ModelSelectModal(reference_message, message, interaction.channel)
     await interaction.response.send_modal(modal)
 
+@app_commands.context_menu(name="Generate with Image")
+async def edit_image_context_menu(interaction: Interaction, message: discord.Message):
+    # Check if message has images
+    has_images = False
+    for att in message.attachments:
+        if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            has_images = True
+            break
+    
+    # Also check embeds for images
+    if not has_images:
+        for embed in message.embeds:
+            if embed.image:
+                has_images = True
+                break
+    
+    if not has_images:
+        await interaction.response.send_message(
+            "This message doesn't contain any images to edit.",
+            ephemeral=True
+        )
+        return
+    
+    # Get the ImageGen cog to access the modal
+    image_cog = interaction.client.get_cog("ImageGen")
+    if not image_cog:
+        await interaction.response.send_message(
+            "Image editing functionality is not available.",
+            ephemeral=True
+        )
+        return
+    
+    # Import the modal class from image_gen
+    from .image_gen import ImageEditModal
+    modal = ImageEditModal(image_cog, message)
+    await interaction.response.send_modal(modal)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(AICommands(bot))
     await bot.add_cog(AIContextMenus(bot))
     
     bot.tree.add_command(ai_context_menu)
+    bot.tree.add_command(edit_image_context_menu)
