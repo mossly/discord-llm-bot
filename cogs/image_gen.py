@@ -85,6 +85,7 @@ class ImageGen(commands.Cog):
         
         if image_input and is_edit and model == "gpt-image-1":
             # Image editing with GPT-image-1
+            logger.info(f"Calling image edit with filename: {getattr(image_input, 'name', 'unknown')}")
             response = await loop.run_in_executor(
                 None,
                 lambda: client.images.edit(
@@ -243,6 +244,8 @@ class ImageGen(commands.Cog):
                 try:
                     image_bytes = await attachment.read()
                     image_input = io.BytesIO(image_bytes)
+                    # Set the name attribute so OpenAI can determine the file type
+                    image_input.name = attachment.filename
                     is_edit = (image_mode == "edit")
                     mode_text = "Edit" if is_edit else "Input"
                     footer_text_parts.append(mode_text)
@@ -320,7 +323,10 @@ class ImageGen(commands.Cog):
             if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
                 try:
                     image_bytes = await attachment.read()
-                    return io.BytesIO(image_bytes)
+                    image_bytesio = io.BytesIO(image_bytes)
+                    # Set the name attribute so OpenAI can determine the file type
+                    image_bytesio.name = attachment.filename
+                    return image_bytesio
                 except Exception as e:
                     logger.error(f"Error reading attachment: {e}")
                     
@@ -332,7 +338,16 @@ class ImageGen(commands.Cog):
                         async with session.get(embed.image.url) as resp:
                             if resp.status == 200:
                                 image_bytes = await resp.read()
-                                return io.BytesIO(image_bytes)
+                                image_bytesio = io.BytesIO(image_bytes)
+                                # Extract filename from URL or use default .png
+                                url = embed.image.url
+                                if url.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                                    # Extract extension from URL
+                                    extension = url.split('.')[-1].split('?')[0]  # Remove query params
+                                    image_bytesio.name = f"image.{extension}"
+                                else:
+                                    image_bytesio.name = "image.png"  # Default to PNG
+                                return image_bytesio
                 except Exception as e:
                     logger.error(f"Error downloading embed image: {e}")
                     
