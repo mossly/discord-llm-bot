@@ -85,6 +85,16 @@ class AICommands(commands.Cog):
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
         
+        # Get user ID for quota tracking
+        if ctx:
+            user_id = str(ctx.author.id)
+        elif interaction:
+            user_id = str(interaction.user.id)
+        elif reply_user:
+            user_id = str(reply_user.id)
+        else:
+            user_id = "unknown"
+        
         if image_url and not config.get("supports_images", False):
             error_embed = discord.Embed(
                 title="ERROR",
@@ -115,6 +125,7 @@ class AICommands(commands.Cog):
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
                     channel=channel,
+                    user_id=user_id,
                     duck_cog=duck_cog,
                     image_url=img_url,
                     reference_message=reference_message,
@@ -129,6 +140,7 @@ class AICommands(commands.Cog):
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
                     channel=channel,
+                    user_id=user_id,
                     duck_cog=duck_cog,
                     image_url=img_url,
                     reference_message=reference_message,
