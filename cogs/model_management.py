@@ -105,26 +105,44 @@ class ModelManagement(commands.Cog):
         
         return available
     
-    @app_commands.command(name="models", description="[ADMIN] Manage AI models")
+    @app_commands.command(name="models", description="Manage AI models (admin) or list available models (users)")
     @app_commands.describe(
         action="Action to perform",
-        model="Model to manage (for enable/disable/info actions)",
-        admin_only="Set if model should be admin-only (for enable action)"
+        model="Model key to manage",
+        admin_only="Set if model should be admin-only (for enable/add actions)",
+        display_name="Display name for the model (for add action)",
+        api_model="API model identifier (for add action)",
+        api_provider="API provider: openai or openrouter (for add action)",
+        supports_images="Whether model supports images (for add action)",
+        footer_text="Footer text to display (for add action)"
     )
     async def manage_models(
         self, 
         interaction: discord.Interaction, 
-        action: Literal["list", "enable", "disable", "info", "reload"],
+        action: Literal["list", "available", "add", "enable", "disable", "info", "reload"],
         model: Optional[str] = None,
-        admin_only: Optional[bool] = None
+        admin_only: Optional[bool] = None,
+        display_name: Optional[str] = None,
+        api_model: Optional[str] = None,
+        api_provider: Optional[Literal["openai", "openrouter"]] = None,
+        supports_images: Optional[bool] = None,
+        footer_text: Optional[str] = None
     ):
-        """Admin command to manage AI models"""
-        if not self.is_admin(interaction.user.id):
+        """Command to manage AI models (admin) or list available models (users)"""
+        # Allow 'available' action for all users, but require admin for other actions
+        if action != "available" and not self.is_admin(interaction.user.id):
             await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
             return
         
         if action == "list":
             await self._list_models(interaction)
+        elif action == "available":
+            await self._list_available_models(interaction)
+        elif action == "add":
+            if not model:
+                await interaction.response.send_message("❌ Model key is required for add action.", ephemeral=True)
+                return
+            await self._add_model(interaction, model, display_name, api_model, api_provider, supports_images, footer_text, admin_only or False)
         elif action == "enable":
             if not model:
                 await interaction.response.send_message("❌ Model name is required for enable action.", ephemeral=True)
@@ -182,10 +200,102 @@ class ModelManagement(commands.Cog):
         embed.set_footer(text="✅ = Enabled | ❌ = Disabled | 🔓 = Public | 🔒 = Admin Only")
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
+    async def _list_available_models(self, interaction: discord.Interaction):
+        """List models available to the user"""
+        available_models = self.get_available_models(interaction.user.id)
+        
+        if not available_models:
+            embed = discord.Embed(
+                title="No Models Available",
+                description="No AI models are currently available to you.",
+                color=0xDC143C
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title="🤖 Available AI Models",
+            color=0x32a956
+        )
+        
+        model_lines = []
+        for model_key, config in available_models.items():
+            name = config.get("name", model_key)
+            supports_images = "🖼️" if config.get("supports_images", False) else ""
+            model_lines.append(f"**{model_key}** - {name} {supports_images}")
+        
+        embed.description = "\n".join(model_lines)
+        embed.set_footer(text="Use these model names with the /chat command | 🖼️ = Supports images")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    async def _add_model(self, interaction: discord.Interaction, model_key: str, display_name: str, api_model: str, api_provider: str, supports_images: bool, footer_text: str, admin_only: bool):
+        """Add a new model configuration"""
+        # Validate required parameters
+        if not api_model:
+            await interaction.response.send_message("❌ API model identifier is required for add action.", ephemeral=True)
+            return
+        
+        if not api_provider:
+            await interaction.response.send_message("❌ API provider (openai/openrouter) is required for add action.", ephemeral=True)
+            return
+        
+        # Check if model already exists
+        if model_key in self.models_config:
+            await interaction.response.send_message(f"❌ Model '{model_key}' already exists. Use 'enable' or 'info' to manage it.", ephemeral=True)
+            return
+        
+        # Set defaults for optional parameters
+        display_name = display_name or model_key
+        footer_text = footer_text or model_key
+        supports_images = supports_images or False
+        
+        # Create new model configuration
+        new_model_config = {
+            "name": display_name,
+            "color": 0x32a956,  # Default green color
+            "default_footer": footer_text,
+            "api_model": api_model,
+            "supports_images": supports_images,
+            "api": api_provider,
+            "enabled": True,
+            "admin_only": admin_only
+        }
+        
+        # Add to configuration
+        self.models_config[model_key] = new_model_config
+        self._save_models_config()
+        
+        # Also update the default models config in ai_commands for runtime use
+        from .ai_commands import MODEL_CONFIG
+        MODEL_CONFIG[model_key] = {
+            "name": display_name,
+            "color": 0x32a956,
+            "default_footer": footer_text,
+            "api_model": api_model,
+            "supports_images": supports_images,
+            "api": api_provider
+        }
+        
+        access_text = "admin-only" if admin_only else "public"
+        embed = discord.Embed(
+            title="✅ Model Added",
+            description=f"New model **{model_key}** has been added and enabled ({access_text})",
+            color=0x32a956
+        )
+        embed.add_field(name="Display Name", value=display_name, inline=True)
+        embed.add_field(name="API Model", value=api_model, inline=True)
+        embed.add_field(name="API Provider", value=api_provider, inline=True)
+        embed.add_field(name="Supports Images", value="✅ Yes" if supports_images else "❌ No", inline=True)
+        embed.add_field(name="Footer", value=footer_text, inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
     async def _enable_model(self, interaction: discord.Interaction, model_key: str, admin_only: bool):
         """Enable a model"""
-        if model_key not in self.default_models:
-            available_models = ", ".join(self.default_models.keys())
+        # Check if model exists in current config or default models
+        if model_key not in self.models_config and model_key not in self.default_models:
+            available_models = ", ".join(list(self.default_models.keys()) + [k for k in self.models_config.keys() if k not in self.default_models])
             await interaction.response.send_message(
                 f"❌ Unknown model: {model_key}\nAvailable models: {available_models}", 
                 ephemeral=True
@@ -194,7 +304,11 @@ class ModelManagement(commands.Cog):
         
         # Ensure model exists in config
         if model_key not in self.models_config:
-            self.models_config[model_key] = self.default_models[model_key].copy()
+            if model_key in self.default_models:
+                self.models_config[model_key] = self.default_models[model_key].copy()
+            else:
+                await interaction.response.send_message(f"❌ Model {model_key} configuration not found.", ephemeral=True)
+                return
         
         self.models_config[model_key]["enabled"] = True
         self.models_config[model_key]["admin_only"] = admin_only

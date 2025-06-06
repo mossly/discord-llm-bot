@@ -285,38 +285,6 @@ class AICommands(commands.Cog):
             model = "gpt-4o-mini"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, max_tokens=max_tokens or 8000)
-    
-    @app_commands.command(name="list-models", description="List available AI models")
-    async def list_models(self, interaction: Interaction):
-        """List all models available to the user"""
-        available_models = self._get_available_models(interaction.user.id)
-        
-        if not available_models:
-            embed = discord.Embed(
-                title="No Models Available",
-                description="No AI models are currently available to you.",
-                color=0xDC143C
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        embed = discord.Embed(
-            title="🤖 Available AI Models",
-            color=0x32a956
-        )
-        
-        model_lines = []
-        for model_key in available_models:
-            if model_key in MODEL_CONFIG:
-                config = MODEL_CONFIG[model_key]
-                name = config.get("name", model_key)
-                supports_images = "🖼️" if config.get("supports_images", False) else ""
-                model_lines.append(f"**{model_key}** - {name} {supports_images}")
-        
-        embed.description = "\n".join(model_lines)
-        embed.set_footer(text="Use these model names with the /chat command | 🖼️ = Supports images")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
