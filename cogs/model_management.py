@@ -14,7 +14,10 @@ class ModelManagement(commands.Cog):
         # Load admin IDs from environment variable and file
         self.admin_ids = self._load_admin_ids()
         # Load model configuration
-        self.models_config_file = "models_config.json"
+        # Ensure /data directory exists
+        os.makedirs("/data", exist_ok=True)
+        self.models_config_file = "/data/models_config.json"
+        self.models_config_default_file = "models_config_default.json"  # Keep default in repo
         self.models_config = self._load_models_config()
     
     def _load_admin_ids(self) -> set:
@@ -32,8 +35,8 @@ class ModelManagement(commands.Cog):
         
         # Try loading from admin_ids.txt file
         try:
-            if os.path.exists('admin_ids.txt'):
-                with open('admin_ids.txt', 'r') as f:
+            if os.path.exists('/data/admin_ids.txt'):
+                with open('/data/admin_ids.txt', 'r') as f:
                     for line in f:
                         line = line.strip()
                         if line and not line.startswith('#'):
@@ -53,18 +56,35 @@ class ModelManagement(commands.Cog):
         return admin_ids
     
     def _load_models_config(self) -> dict:
-        """Load models configuration from file"""
-        try:
-            if os.path.exists(self.models_config_file):
+        """Load models configuration from file, with fallback to default"""
+        # First try to load local config file
+        if os.path.exists(self.models_config_file):
+            try:
                 with open(self.models_config_file, 'r') as f:
                     config = json.load(f)
                     logger.info(f"Loaded models configuration from {self.models_config_file}")
                     return config
-        except (json.JSONDecodeError, IOError) as e:
-            logger.warning(f"Could not load models config: {e}")
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Could not load models config: {e}")
         
-        # Return empty config if no file exists
-        logger.info("No models configuration file found. Starting with empty configuration.")
+        # If local config doesn't exist, try to copy from default
+        if os.path.exists(self.models_config_default_file):
+            try:
+                # Copy default to local config
+                import shutil
+                shutil.copy2(self.models_config_default_file, self.models_config_file)
+                logger.info(f"Copied default configuration from {self.models_config_default_file} to {self.models_config_file}")
+                
+                # Load the newly copied config
+                with open(self.models_config_file, 'r') as f:
+                    config = json.load(f)
+                    logger.info(f"Loaded models configuration from copied file")
+                    return config
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Could not copy/load default models config: {e}")
+        
+        # Return empty config if no files exist
+        logger.info("No models configuration files found. Starting with empty configuration.")
         return {}
     
     def _save_models_config(self):
