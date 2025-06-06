@@ -86,6 +86,9 @@ class ModelManagement(commands.Cog):
         is_user_admin = user_id and self.is_admin(user_id)
         
         for model_key, config in self.models_config.items():
+            # Skip comment fields that are strings instead of dicts
+            if not isinstance(config, dict):
+                continue
             if config.get("enabled", True):
                 if not config.get("admin_only", False) or is_user_admin:
                     available[model_key] = config

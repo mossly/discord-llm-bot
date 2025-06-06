@@ -23,7 +23,7 @@ class ImageGen(commands.Cog):
             api_key=os.getenv("OPENROUTER_API_KEY")
         )
         
-    def calculate_image_cost(self, model: str, size: str, quality: str = "standard", is_edit: bool = False) -> float:
+    def calculate_image_cost(self, model: str, size: str, quality: str = "high", is_edit: bool = False) -> float:
         """Calculate the cost of image generation based on model and parameters"""
         if model == "dall-e-3":
             if quality == "hd":
@@ -259,6 +259,7 @@ class ImageGen(commands.Cog):
                     image=primary_image,
                     prompt=img_prompt,
                     size=img_size,
+                    quality=img_quality,
                     n=1,
                 )
             )
@@ -280,6 +281,7 @@ class ImageGen(commands.Cog):
                             image=image_inputs,  # Pass all input images
                             prompt=img_prompt,
                             size=img_size,
+                            quality=img_quality,
                             n=1,
                         )
                     )
@@ -291,6 +293,7 @@ class ImageGen(commands.Cog):
                             model=api_model,
                             prompt=img_prompt,
                             size=img_size,
+                            quality=img_quality,
                             n=1,
                         )
                     )
