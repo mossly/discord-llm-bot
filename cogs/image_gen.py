@@ -237,7 +237,7 @@ class ImageGen(commands.Cog):
                 file = discord.File(io.BytesIO(image_data), filename=f"generating_image.png")
                 
                 embed = discord.Embed(
-                    title="🎨 Generating...", 
+                    title="Generating...", 
                     description=f"**Step {idx+1}**\n{img_prompt[:100]}{'...' if len(img_prompt) > 100 else ''}", 
                     color=0x32a956
                 )
@@ -288,7 +288,7 @@ class ImageGen(commands.Cog):
                 if stream_message.embeds:
                     final_embed = stream_message.embeds[0]
                     # Update title to show completion
-                    final_embed.title = "🎨 Generated"
+                    final_embed.title = "Generated"
                     # Update description to remove "Step X" 
                     final_embed.description = img_prompt[:100] + ('...' if len(img_prompt) > 100 else '')
                     # Update footer to remove streaming indicators
