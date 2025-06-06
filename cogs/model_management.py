@@ -172,6 +172,9 @@ class ModelManagement(commands.Cog):
         disabled_models = []
         
         for model_key, config in self.models_config.items():
+            # Skip comment fields that are strings instead of dicts
+            if not isinstance(config, dict):
+                continue
             status_emoji = "✅" if config.get("enabled", True) else "❌"
             admin_emoji = "🔒" if config.get("admin_only", False) else "🔓"
             model_name = config.get("name", model_key)

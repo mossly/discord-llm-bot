@@ -182,14 +182,28 @@ class ImageGen(commands.Cog):
                     sent_messages[idx] = await interaction.followup.send(file=file, embed=embed)
             
             elif event.type == "response.image_generation_call.completed":
-                # Get final image
-                final_image_data = event.result
+                # Get final image from the event's image data
+                if hasattr(event, 'image_url'):
+                    final_image_data = event.image_url
+                elif hasattr(event, 'b64_json'):
+                    final_image_data = event.b64_json
+                elif hasattr(event, 'output'):
+                    final_image_data = event.output
+                else:
+                    logger.error(f"Completed event missing image data. Available attributes: {dir(event)}")
+                    final_image_data = None
                 logger.info("Received final image")
                 break
         
-        # Replace partial images with final result
+        # Replace partial images with final result one by one
         if final_image_data:
-            image_data = base64.b64decode(final_image_data)
+            if final_image_data.startswith("data:image/"):
+                # Handle data URL format
+                image_data = base64.b64decode(final_image_data.split(",", 1)[1])
+            else:
+                # Assume it's already base64
+                image_data = base64.b64decode(final_image_data)
+            
             file = discord.File(io.BytesIO(image_data), filename="generated_image.png")
             
             embed = discord.Embed(title="", description=img_prompt, color=0x32a956)
@@ -213,18 +227,29 @@ class ImageGen(commands.Cog):
             footer_text = " | ".join(footer_parts)
             embed.set_footer(text=footer_text)
             
-            # Delete partial messages and send final
-            for msg in sent_messages.values():
+            # Replace partial images one by one with the final result
+            final_message = None
+            for idx, msg in sent_messages.items():
                 try:
-                    await msg.delete()
-                except (discord.NotFound, discord.Forbidden):
-                    pass
+                    # Create a new file object for each message (Discord doesn't allow reusing file objects)
+                    new_file = discord.File(io.BytesIO(image_data), filename="generated_image.png")
+                    # Replace each partial message with the final image
+                    await msg.edit(embed=embed, attachments=[new_file])
+                    final_message = msg
+                    logger.info(f"Replaced partial image {idx} with final result")
+                    # Small delay between replacements for better UX
+                    await asyncio.sleep(0.5)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                    logger.warning(f"Could not replace partial message {idx}: {e}")
+                    continue
             
-            # Send final image
-            await interaction.followup.send(file=file, embed=embed)
+            # If no messages were successfully replaced, send new final image
+            if not final_message:
+                await interaction.followup.send(file=file, embed=embed)
             
             # Return format expected by calling code
-            return [f"data:image/png;base64,{final_image_data}"], {}
+            data_url = f"data:image/png;base64,{final_image_data}" if not final_image_data.startswith("data:") else final_image_data
+            return [data_url], {}
         
         # Fallback if no final image received
         return [], {}
