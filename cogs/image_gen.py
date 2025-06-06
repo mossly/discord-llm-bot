@@ -32,7 +32,7 @@ class ImageGen(commands.Cog):
                 return 0.04  # Standard quality
         elif model == "gpt-image-1":
             # GPT-image-1 pricing with quality considerations
-            base_cost = 0.20 if quality == "hd" else 0.06  # High quality costs more
+            base_cost = 0.20 if quality == "high" else 0.06  # High quality costs more
             if is_edit:
                 return base_cost * 1.3  # Edit operations tend to be more expensive
             else:
@@ -387,7 +387,10 @@ class ImageGen(commands.Cog):
         user_id = str(interaction.user.id)
 
         # Map quality parameter to API format
-        api_quality = "hd" if quality == "high" and model == "dall-e-3" else "standard"
+        if model == "gpt-image-1":
+            api_quality = "high" if quality == "high" else "medium"
+        else:
+            api_quality = "hd" if quality == "high" else "standard"
         
         # Different size support for different models
         if model == "gpt-image-1":
@@ -665,7 +668,7 @@ class ImageEditModal(discord.ui.Modal):
         
         # Get quality setting
         quality_str = self.quality.value.strip().lower() or "high"
-        quality_str = "high" if quality_str in ("high", "hd") else "standard"
+        quality_str = "high" if quality_str in ("high", "hd") else "high"
         
         # Estimate cost based on quality and multi-image operations
         base_cost = 0.20 if quality_str == "high" else 0.06
