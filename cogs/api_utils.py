@@ -183,6 +183,13 @@ class APIUtils(commands.Cog):
                 generation_stats = await self.fetch_generation_stats(generation_id)
                 
             return content, generation_stats
+        except openai.APIStatusError as e:
+            # Re-raise 402 errors to be handled by the caller
+            if e.status_code == 402:
+                logger.error(f"OpenRouter quota error (402): {e}")
+                raise
+            logger.exception("API Status Error in request: %s", e)
+            return f"I'm sorry, there was an error communicating with the AI service: {str(e)}", {}
         except Exception as e:
             logger.exception("Error in API request: %s", e)
             return f"I'm sorry, there was an error communicating with the AI service: {str(e)}", {}

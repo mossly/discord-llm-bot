@@ -3,6 +3,7 @@ import logging
 import openai
 import discord
 import aiohttp
+import re
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from user_quotas import quota_manager
 
@@ -83,18 +84,60 @@ async def perform_chat_query(
             reraise=True,
         ):
             with attempt:
-                result, stats = await api_cog.send_request(
-                    model=model,
-                    message_content=prompt,
-                    reference_message=reference_message,
-                    image_url=image_url,
-                    api=api,
-                    use_emojis=True if use_fun else False,
-                    emoji_channel=channel,
-                    use_fun=use_fun,
-                    max_tokens=max_tokens
-                )
-                break
+                try:
+                    result, stats = await api_cog.send_request(
+                        model=model,
+                        message_content=prompt,
+                        reference_message=reference_message,
+                        image_url=image_url,
+                        api=api,
+                        use_emojis=True if use_fun else False,
+                        emoji_channel=channel,
+                        use_fun=use_fun,
+                        max_tokens=max_tokens
+                    )
+                    break
+                except openai.APIStatusError as e:
+                    # Handle OpenRouter 402 quota error
+                    if e.status_code == 402:
+                        error_message = str(e)
+                        # Try to get the error message from the exception
+                        if hasattr(e, 'body') and isinstance(e.body, dict):
+                            error_message = e.body.get('error', {}).get('message', error_message)
+                        
+                        # Extract the affordable tokens from error message
+                        affordable_match = re.search(r'can only afford (\d+)', error_message)
+                        if affordable_match:
+                            affordable_tokens = int(affordable_match.group(1))
+                            # Use 90% of affordable tokens to leave some buffer
+                            new_max_tokens = int(affordable_tokens * 0.9)
+                            
+                            logger.warning(f"OpenRouter quota error: requested {max_tokens}, can afford {affordable_tokens}, retrying with {new_max_tokens}")
+                            
+                            # Retry with reduced tokens
+                            result, stats = await api_cog.send_request(
+                                model=model,
+                                message_content=prompt,
+                                reference_message=reference_message,
+                                image_url=image_url,
+                                api=api,
+                                use_emojis=True if use_fun else False,
+                                emoji_channel=channel,
+                                use_fun=use_fun,
+                                max_tokens=new_max_tokens
+                            )
+                            # Add note about reduced tokens to stats
+                            if stats:
+                                stats['reduced_tokens'] = True
+                                stats['original_max_tokens'] = max_tokens
+                                stats['reduced_max_tokens'] = new_max_tokens
+                            break
+                        else:
+                            # Can't parse affordable tokens, re-raise
+                            raise
+                    else:
+                        # Different error, re-raise
+                        raise
         elapsed = round(time.time() - start_time, 2)
 
         footer_first_line = [reply_footer]
@@ -103,6 +146,8 @@ async def perform_chat_query(
             footer_first_line.append("Fun Mode")
         if web_search:
             footer_first_line.append("Web Search")
+        if stats and stats.get('reduced_tokens'):
+            footer_first_line.append(f"Tokens reduced: {stats.get('original_max_tokens')} → {stats.get('reduced_max_tokens')}")
             
         footer_second_line = []
         

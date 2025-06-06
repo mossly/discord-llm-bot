@@ -73,6 +73,162 @@ class ImageGen(commands.Cog):
                     
         return usage_info
 
+    async def generate_image_streaming(self, img_prompt: str, img_quality: str, img_size: str, model: str = "gpt-image-1", image_inputs: list = None, is_edit: bool = False, interaction=None):
+        """Generate image with streaming support using Responses API"""
+        if model != "gpt-image-1":
+            # Fallback to regular generation for non-streaming models
+            return await self.generate_image(img_prompt, img_quality, img_size, model, image_inputs, is_edit)
+        
+        # Handle backwards compatibility
+        if isinstance(image_inputs, io.BytesIO):
+            image_inputs = [image_inputs]
+        elif image_inputs is None:
+            image_inputs = []
+            
+        num_images = len(image_inputs)
+        logger.info("Entering streaming generate_image function with prompt: '%s', quality: '%s', size: '%s', model: '%s', is_edit: %s, num_input_images: %d",
+                    img_prompt, img_quality, img_size, model, is_edit, num_images)
+        
+        # Use OpenAI client for Responses API
+        client = self.openai_client
+        
+        # Prepare input for Responses API
+        input_content = [{"type": "input_text", "text": img_prompt}]
+        
+        # Add input images if provided
+        if image_inputs:
+            for image_input in image_inputs:
+                # Convert BytesIO to base64
+                image_input.seek(0)
+                image_bytes = image_input.read()
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                
+                # Determine MIME type from filename
+                filename = getattr(image_input, 'name', 'image.png').lower()
+                if filename.endswith('.jpg') or filename.endswith('.jpeg'):
+                    mime_type = 'image/jpeg'
+                elif filename.endswith('.webp'):
+                    mime_type = 'image/webp'
+                else:
+                    mime_type = 'image/png'
+                
+                input_content.append({
+                    "type": "input_image",
+                    "image_url": f"data:{mime_type};base64,{image_base64}"
+                })
+        
+        # Prepare tools configuration
+        tools = [{
+            "type": "image_generation",
+            "partial_images": 2,  # Request 2 partial images
+            "size": img_size,
+            "quality": img_quality
+        }]
+        
+        # Create streaming response
+        stream = await asyncio.to_thread(
+            lambda: client.responses.create(
+                model="gpt-4o",  # Use supported model for Responses API
+                input=[{
+                    "role": "user",
+                    "content": input_content
+                }],
+                tools=tools,
+                stream=True
+            )
+        )
+        
+        # Track partial images and messages
+        partial_images = {}
+        sent_messages = {}
+        final_image_data = None
+        
+        # Process streaming events
+        def process_stream():
+            for event in stream:
+                yield event
+        
+        for event in await asyncio.to_thread(list, process_stream()):
+            if event.type == "response.image_generation_call.partial_image":
+                idx = event.partial_image_index
+                image_base64 = event.partial_image_b64
+                
+                logger.info(f"Received partial image {idx}")
+                
+                # Store partial image
+                partial_images[idx] = image_base64
+                
+                # Create Discord file and embed
+                image_data = base64.b64decode(image_base64)
+                file = discord.File(io.BytesIO(image_data), filename=f"partial_image_{idx}.png")
+                
+                embed = discord.Embed(
+                    title="🎨 Generating...", 
+                    description=f"**Partial Preview {idx+1}**\n{img_prompt[:100]}{'...' if len(img_prompt) > 100 else ''}", 
+                    color=0x32a956
+                )
+                embed.set_image(url=f"attachment://partial_image_{idx}.png")
+                embed.set_footer(text=f"GPT-image-1 | Streaming | Partial {idx+1}")
+                
+                if idx in sent_messages:
+                    # Edit existing message
+                    try:
+                        await sent_messages[idx].edit(embed=embed, attachments=[file])
+                    except discord.NotFound:
+                        # Message was deleted, send new one
+                        sent_messages[idx] = await interaction.followup.send(file=file, embed=embed)
+                else:
+                    # Send new message
+                    sent_messages[idx] = await interaction.followup.send(file=file, embed=embed)
+            
+            elif event.type == "response.image_generation_call.completed":
+                # Get final image
+                final_image_data = event.result
+                logger.info("Received final image")
+                break
+        
+        # Replace partial images with final result
+        if final_image_data:
+            image_data = base64.b64decode(final_image_data)
+            file = discord.File(io.BytesIO(image_data), filename="generated_image.png")
+            
+            embed = discord.Embed(title="", description=img_prompt, color=0x32a956)
+            embed.set_image(url="attachment://generated_image.png")
+            
+            # Calculate timing and cost info
+            footer_parts = ["GPT-image-1"]
+            if img_quality == "high":
+                footer_parts.append("High Quality")
+            if img_size != "1024x1024":
+                if img_size == "1536x1024":
+                    footer_parts.append("Landscape")
+                elif img_size == "1024x1536":
+                    footer_parts.append("Portrait")
+            if image_inputs:
+                mode_text = "Edit" if is_edit else "Input"
+                footer_parts.append(mode_text)
+                if len(image_inputs) > 1:
+                    footer_parts.append(f"{len(image_inputs)} images")
+            
+            footer_text = " | ".join(footer_parts)
+            embed.set_footer(text=footer_text)
+            
+            # Delete partial messages and send final
+            for msg in sent_messages.values():
+                try:
+                    await msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+            
+            # Send final image
+            await interaction.followup.send(file=file, embed=embed)
+            
+            # Return format expected by calling code
+            return [f"data:image/png;base64,{final_image_data}"], {}
+        
+        # Fallback if no final image received
+        return [], {}
+
     async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_inputs: list = None, is_edit: bool = False):
         # Handle backwards compatibility
         if isinstance(image_inputs, io.BytesIO):
@@ -109,39 +265,24 @@ class ImageGen(commands.Cog):
         else:
             # Image generation (with or without image input for GPT-image-1)
             if model == "gpt-image-1":
-                # GPT-image-1 generation with potential multiple input images
+                # GPT-image-1 supports using images as input for generation via the edit endpoint
                 if image_inputs:
                     # Log input images being used
                     image_names = [getattr(img, 'name', 'unknown') for img in image_inputs]
                     logger.info(f"GPT-image-1 generation with {num_images} input images: {image_names}")
                     
-                    # For GPT-image-1, we need to create a multimodal prompt
-                    # Note: This is a simplified approach - the actual implementation may vary
-                    # based on OpenAI's specific multi-image API requirements
-                    try:
-                        response = await loop.run_in_executor(
-                            None,
-                            lambda: client.images.generate(
-                                model=api_model,
-                                prompt=img_prompt,
-                                size=img_size,
-                                n=1,
-                                # Note: OpenAI's API for multi-image input may require different parameters
-                                # This might need adjustment based on official API documentation
-                            )
+                    # For GPT-image-1 with input images, use the edit endpoint even for "input" mode
+                    # This allows the model to use the images as references for generation
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: client.images.edit(
+                            model=api_model,
+                            image=image_inputs,  # Pass all input images
+                            prompt=img_prompt,
+                            size=img_size,
+                            n=1,
                         )
-                    except Exception as e:
-                        logger.error(f"Error with multi-image generation: {e}")
-                        # Fallback to single image or no image generation
-                        response = await loop.run_in_executor(
-                            None,
-                            lambda: client.images.generate(
-                                model=api_model,
-                                prompt=img_prompt,
-                                size=img_size,
-                                n=1,
-                            )
-                        )
+                    )
                 else:
                     # No input images - standard generation
                     response = await loop.run_in_executor(
@@ -226,7 +367,8 @@ class ImageGen(commands.Cog):
         quality="Image quality level (high recommended for best results)",
         orientation="Choose the image orientation (Square, Landscape, or Portrait)",
         attachment="Optional input image",
-        image_mode="How to use the attached image (only for GPT-image-1)"
+        image_mode="How to use the attached image (only for GPT-image-1)",
+        streaming="Enable partial image streaming (GPT-image-1 only)"
     )
     async def gen(
         self,
@@ -236,7 +378,8 @@ class ImageGen(commands.Cog):
         quality: Literal["standard", "high"] = "high",
         orientation: Literal["Square", "Landscape", "Portrait"] = "Square",
         attachment: Optional[discord.Attachment] = None,
-        image_mode: Literal["input", "edit"] = "input"
+        image_mode: Literal["input", "edit"] = "input",
+        streaming: bool = False
     ):
         await interaction.response.defer()
         start_time = time.time()
@@ -245,12 +388,24 @@ class ImageGen(commands.Cog):
 
         # Map quality parameter to API format
         api_quality = "hd" if quality == "high" and model == "dall-e-3" else "standard"
-        if orientation == "Landscape":
-            size = "1792x1024"
-        elif orientation == "Portrait":
-            size = "1024x1792"
+        
+        # Different size support for different models
+        if model == "gpt-image-1":
+            # GPT-image-1 supports: 1024x1024, 1024x1536, 1536x1024, auto
+            if orientation == "Landscape":
+                size = "1536x1024"
+            elif orientation == "Portrait":
+                size = "1024x1536"
+            else:
+                size = "1024x1024"
         else:
-            size = "1024x1024"
+            # DALL-E 3 supports: 1024x1024, 1024x1792, 1792x1024
+            if orientation == "Landscape":
+                size = "1792x1024"
+            elif orientation == "Portrait":
+                size = "1024x1792"
+            else:
+                size = "1024x1024"
 
         footer_text_parts = ["GPT-image-1" if model == "gpt-image-1" else "DALL·E 3"]
         if quality == "high":
@@ -331,7 +486,15 @@ class ImageGen(commands.Cog):
             return
 
         try:
-            result_urls, usage_info = await self.generate_image(prompt, api_quality, size, model, image_inputs, is_edit)
+            # Use streaming if enabled and model supports it
+            if streaming and model == "gpt-image-1":
+                result_urls, usage_info = await self.generate_image_streaming(
+                    prompt, api_quality, size, model, image_inputs, is_edit, interaction
+                )
+                # Streaming method handles its own Discord output, so we can return early
+                return
+            else:
+                result_urls, usage_info = await self.generate_image(prompt, api_quality, size, model, image_inputs, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", prompt)
             await interaction.followup.send(f"Error generating image: {e}")
@@ -491,6 +654,14 @@ class ImageEditModal(discord.ui.Modal):
         required=False,
         max_length=10
     )
+    
+    streaming = discord.ui.TextInput(
+        label='Streaming (true/false)',
+        placeholder='false',
+        default='false',
+        required=False,
+        max_length=5
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -527,16 +698,29 @@ class ImageEditModal(discord.ui.Modal):
         model_str = self.model.value.strip() or "gpt-image-1"
         orientation_str = self.orientation.value.strip() or "Square"
         image_mode_str = self.image_mode.value.strip().lower() or "input"
+        streaming_str = self.streaming.value.strip().lower() or "false"
+        use_streaming = streaming_str in ("true", "yes", "1", "on")
         
         # Map quality to API format
         api_quality = "hd" if quality_str == "high" and model_str == "dall-e-3" else "standard"
         
-        if orientation_str == "Landscape":
-            size = "1792x1024"
-        elif orientation_str == "Portrait":
-            size = "1024x1792"
+        # Different size support for different models
+        if model_str == "gpt-image-1":
+            # GPT-image-1 supports: 1024x1024, 1024x1536, 1536x1024, auto
+            if orientation_str == "Landscape":
+                size = "1536x1024"
+            elif orientation_str == "Portrait":
+                size = "1024x1536"
+            else:
+                size = "1024x1024"
         else:
-            size = "1024x1024"
+            # DALL-E 3 supports: 1024x1024, 1024x1792, 1792x1024
+            if orientation_str == "Landscape":
+                size = "1792x1024"
+            elif orientation_str == "Portrait":
+                size = "1024x1792"
+            else:
+                size = "1024x1024"
             
         is_edit = (image_mode_str == "edit")
         mode_text = "Edit" if is_edit else "Input"
@@ -549,7 +733,15 @@ class ImageEditModal(discord.ui.Modal):
             footer_text_parts.append(f"{len(image_inputs)} images")
             
         try:
-            result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, api_quality, size, model_str, image_inputs, is_edit)
+            # Use streaming if enabled and model supports it
+            if use_streaming and model_str == "gpt-image-1":
+                result_urls, usage_info = await self.image_cog.generate_image_streaming(
+                    self.prompt.value, api_quality, size, model_str, image_inputs, is_edit, interaction
+                )
+                # Streaming method handles its own Discord output, so we can return early
+                return
+            else:
+                result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, api_quality, size, model_str, image_inputs, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", self.prompt.value)
             await interaction.followup.send(f"Error generating image: {e}")
