@@ -79,21 +79,49 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
+    def _get_available_models(self, user_id: int) -> list:
+        """Get list of available model keys for a user"""
+        model_management = self.bot.get_cog("ModelManagement")
+        if model_management:
+            available_models = model_management.get_available_models(user_id)
+            return list(available_models.keys())
+        else:
+            # Fallback to all models if model management is not available
+            return list(MODEL_CONFIG.keys())
+    
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, reply_user=None, max_tokens: int = 8000):
+        # Get user ID for quota tracking and model availability check
+        if ctx:
+            user_id = str(ctx.author.id)
+            user_id_int = ctx.author.id
+        elif interaction:
+            user_id = str(interaction.user.id)
+            user_id_int = interaction.user.id
+        elif reply_user:
+            user_id = str(reply_user.id)
+            user_id_int = reply_user.id
+        else:
+            user_id = "unknown"
+            user_id_int = 0
+        
+        # Check if model is available to this user
+        available_models = self._get_available_models(user_id_int)
+        if model_key not in available_models:
+            error_embed = discord.Embed(
+                title="Model Not Available",
+                description=f"The model '{model_key}' is not currently available.",
+                color=0xDC143C
+            )
+            if ctx:
+                await ctx.reply(embed=error_embed)
+            else:
+                await interaction.followup.send(embed=error_embed)
+            return
+        
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
-        
-        # Get user ID for quota tracking
-        if ctx:
-            user_id = str(ctx.author.id)
-        elif interaction:
-            user_id = str(interaction.user.id)
-        elif reply_user:
-            user_id = str(reply_user.id)
-        else:
-            user_id = "unknown"
         
         if image_url and not config.get("supports_images", False):
             error_embed = discord.Embed(
@@ -206,21 +234,33 @@ class AICommands(commands.Cog):
         else:
             await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
-    @app_commands.command(name="chat", description="Select a model and provide a prompt")
+    async def model_autocomplete(self, interaction: Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """Autocomplete function for model parameter"""
+        available_models = self._get_available_models(interaction.user.id)
+        choices = []
+        
+        for model_key in available_models:
+            if current.lower() in model_key.lower():
+                if model_key in MODEL_CONFIG:
+                    name = MODEL_CONFIG[model_key].get("name", model_key)
+                    choices.append(app_commands.Choice(name=f"{model_key} - {name}", value=model_key))
+                
+        return choices[:25]  # Discord limits to 25 choices
+    
+    @app_commands.command(name="chat", description="Chat with an AI model")
     @app_commands.describe(
-        model="Model to use for the response",
+        model="Model to use for the response (type model name)",
         fun="Toggle fun mode",
         web_search="Toggle web search",
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)",
         max_tokens="Maximum tokens for response (default: 8000)"
     )
+    @app_commands.autocomplete(model=model_autocomplete)
     async def chat_slash(
         self, 
         interaction: Interaction, 
-        model: Literal["gpt-4o-mini", "gpt-o3-mini", "deepseek-v3",
-                        "claude-3.7-sonnet", "claude-3.7-sonnet:thinking",
-                        "gemini-2.0-flash-lite", "grok-2", "mistral-large"],
+        model: str,
         prompt: str, 
         fun: bool = False,
         web_search: bool = False,
@@ -245,6 +285,38 @@ class AICommands(commands.Cog):
             model = "gpt-4o-mini"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, max_tokens=max_tokens or 8000)
+    
+    @app_commands.command(name="list-models", description="List available AI models")
+    async def list_models(self, interaction: Interaction):
+        """List all models available to the user"""
+        available_models = self._get_available_models(interaction.user.id)
+        
+        if not available_models:
+            embed = discord.Embed(
+                title="No Models Available",
+                description="No AI models are currently available to you.",
+                color=0xDC143C
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title="🤖 Available AI Models",
+            color=0x32a956
+        )
+        
+        model_lines = []
+        for model_key in available_models:
+            if model_key in MODEL_CONFIG:
+                config = MODEL_CONFIG[model_key]
+                name = config.get("name", model_key)
+                supports_images = "🖼️" if config.get("supports_images", False) else ""
+                model_lines.append(f"**{model_key}** - {name} {supports_images}")
+        
+        embed.description = "\n".join(model_lines)
+        embed.set_footer(text="Use these model names with the /chat command | 🖼️ = Supports images")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -283,8 +355,11 @@ class AIContextMenus(commands.Cog):
                 has_image=self.has_image,
                 reference_message=self.reference_message,
                 original_message=self.original_message,
-                additional_text=formatted_prompt
+                additional_text=formatted_prompt,
+                user_id=interaction.user.id
             )
+            # Store bot reference for model availability check
+            view._bot_ref = interaction.client
             
             await interaction.response.send_message(
                 "Please select an AI model and click Submit:",
@@ -294,12 +369,13 @@ class AIContextMenus(commands.Cog):
 
 
 class ModelSelectionView(discord.ui.View):
-    def __init__(self, has_image, reference_message, original_message, additional_text):
+    def __init__(self, has_image, reference_message, original_message, additional_text, user_id=None):
         super().__init__(timeout=120)
         self.has_image = has_image
         self.reference_message = reference_message
         self.original_message = original_message
         self.additional_text = additional_text
+        self.user_id = user_id
         self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
         self.fun = False
         self.web_search = False
@@ -310,58 +386,55 @@ class ModelSelectionView(discord.ui.View):
     def _create_dropdown(self):
         options = []
         
-        options.append(discord.SelectOption(
-            label="GPT-4o-mini", 
-            value="gpt-4o-mini",
-            description="OpenAI model with image support",
-            default=self.selected_model == "gpt-4o-mini"
-        ))
+        # Get available models for this user
+        # We need to get the bot instance to access the AICommands cog
+        if hasattr(self, '_bot_ref'):
+            ai_commands = self._bot_ref.get_cog("AICommands")
+            if ai_commands:
+                available_models = ai_commands._get_available_models(self.user_id or 0)
+            else:
+                available_models = list(MODEL_CONFIG.keys())
+        else:
+            available_models = list(MODEL_CONFIG.keys())
         
+        # Add models that are available to the user
+        model_configs = {
+            "gpt-4o-mini": {"label": "GPT-4o-mini", "description": "OpenAI model with image support"},
+            "gpt-o3-mini": {"label": "GPT-o3-mini", "description": "OpenAI reasoning model"},
+            "deepseek-v3": {"label": "Deepseek v3", "description": "Deepseek chat model"},
+            "claude-3.7-sonnet": {"label": "Anthropic Claude 3.7 Sonnet", "description": "Anthropic chat model"},
+            "claude-3.7-sonnet:thinking": {"label": "Anthropic Claude 3.7 Sonnet (Thinking)", "description": "Anthropic reasoning model"},
+            "gemini-2.0-flash-lite": {"label": "Google Gemini 2.0 Flash Lite", "description": "Google chat model"},
+            "grok-2": {"label": "X-AI Grok 2", "description": "X-AI chat model"},
+            "mistral-large": {"label": "Mistral", "description": "Mistral AI chat model"}
+        }
+        
+        # Add GPT-4o-mini first if available (always works with images)
+        if "gpt-4o-mini" in available_models:
+            options.append(discord.SelectOption(
+                label=model_configs["gpt-4o-mini"]["label"],
+                value="gpt-4o-mini",
+                description=model_configs["gpt-4o-mini"]["description"],
+                default=self.selected_model == "gpt-4o-mini"
+            ))
+        
+        # Add other models if no image or if they support images
         if not self.has_image:
-            options.extend([
-                discord.SelectOption(
-                    label="GPT-o3-mini", 
-                    value="gpt-o3-mini", 
-                    description="OpenAI reasoning model",
-                    default=self.selected_model == "gpt-o3-mini"
-                ),
-                discord.SelectOption(
-                    label="Deepseek v3", 
-                    value="deepseek-v3", 
-                    description="Deepseek chat model",
-                    default=self.selected_model == "deepseek-v3"
-                ),
-                discord.SelectOption(
-                    label="Anthropic Claude 3.7 Sonnet", 
-                    value="claude-3.7-sonnet", 
-                    description="Anthropic chat model",
-                    default=self.selected_model == "claude-3.7-sonnet"
-                ),
-                discord.SelectOption(
-                    label="Anthropic Claude 3.7 Sonnet (Thinking)", 
-                    value="claude-3.7-sonnet:thinking", 
-                    description="Anthropic reasoning model",
-                    default=self.selected_model == "claude-3.7-sonnet:thinking"
-                ),
-                discord.SelectOption(
-                    label="Google Gemini 2.0 Flash Lite", 
-                    value="gemini-2.0-flash-lite", 
-                    description="Google chat model",
-                    default=self.selected_model == "gemini-2.0-flash-lite"
-                ),
-                discord.SelectOption(
-                    label="X-AI Grok 2", 
-                    value="grok-2", 
-                    description="X-AI chat model",
-                    default=self.selected_model == "grok-2"
-                ),
-                discord.SelectOption(
-                    label="Mistral", 
-                    value="mistral-large", 
-                    description="Mistral AI chat model",
-                    default=self.selected_model == "mistral-large"
-                )
-            ])
+            for model_key in available_models:
+                if model_key != "gpt-4o-mini" and model_key in model_configs:
+                    options.append(discord.SelectOption(
+                        label=model_configs[model_key]["label"],
+                        value=model_key,
+                        description=model_configs[model_key]["description"],
+                        default=self.selected_model == model_key
+                    ))
+        
+        if not options:
+            options.append(discord.SelectOption(
+                label="No models available",
+                value="none",
+                description="No models are currently available"
+            ))
         
         self.model_select = discord.ui.Select(
             placeholder="Choose AI model",
