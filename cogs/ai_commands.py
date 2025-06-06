@@ -79,6 +79,15 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
+    def _get_model_config(self, model_key: str) -> dict:
+        """Get configuration for a specific model"""
+        model_management = self.bot.get_cog("ModelManagement")
+        if model_management and model_key in model_management.models_config:
+            return model_management.models_config[model_key]
+        else:
+            # Fallback to hardcoded config if model management not available
+            return MODEL_CONFIG.get(model_key, {})
+    
     def _get_available_models(self, user_id: int) -> list:
         """Get list of available model keys for a user"""
         model_management = self.bot.get_cog("ModelManagement")
@@ -118,7 +127,19 @@ class AICommands(commands.Cog):
                 await interaction.followup.send(embed=error_embed)
             return
         
-        config = MODEL_CONFIG[model_key]
+        config = self._get_model_config(model_key)
+        if not config:
+            error_embed = discord.Embed(
+                title="Model Configuration Error",
+                description=f"Configuration for model '{model_key}' not found.",
+                color=0xDC143C
+            )
+            if ctx:
+                await ctx.reply(embed=error_embed)
+            else:
+                await interaction.followup.send(embed=error_embed)
+            return
+        
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
@@ -241,8 +262,9 @@ class AICommands(commands.Cog):
         
         for model_key in available_models:
             if current.lower() in model_key.lower():
-                if model_key in MODEL_CONFIG:
-                    name = MODEL_CONFIG[model_key].get("name", model_key)
+                config = self._get_model_config(model_key)
+                if config:
+                    name = config.get("name", model_key)
                     choices.append(app_commands.Choice(name=f"{model_key} - {name}", value=model_key))
                 
         return choices[:25]  # Discord limits to 25 choices
@@ -276,10 +298,11 @@ class AICommands(commands.Cog):
         if attachment:
             has_image = attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
         
-        if has_image and not MODEL_CONFIG[model].get("supports_images", False):
+        model_config = self._get_model_config(model)
+        if has_image and model_config and not model_config.get("supports_images", False):
             await interaction.followup.send(
                 f"⚠️ Automatically switched to GPT-4o-mini because you attached an image " 
-                f"and {MODEL_CONFIG[model]['name']} doesn't support image processing.",
+                f"and {model_config.get('name', model)} doesn't support image processing.",
                 ephemeral=True
             )
             model = "gpt-4o-mini"
@@ -363,7 +386,16 @@ class ModelSelectionView(discord.ui.View):
             else:
                 available_models = list(MODEL_CONFIG.keys())
         else:
-            available_models = list(MODEL_CONFIG.keys())
+            # Try to get from AICommands cog
+            if hasattr(self, '_bot_ref'):
+                ai_commands = self._bot_ref.get_cog("AICommands")
+                if ai_commands:
+                    # Use hardcoded fallback if no model management
+                    available_models = list(MODEL_CONFIG.keys())
+                else:
+                    available_models = []
+            else:
+                available_models = []
         
         # Add models that are available to the user
         model_configs = {
