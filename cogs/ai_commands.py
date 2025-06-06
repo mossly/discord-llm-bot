@@ -8,72 +8,6 @@ from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
-MODEL_CONFIG = {
-    "gpt-4o-mini": {
-        "name": "GPT-4o-mini by OpenAI",
-        "color": 0x32a956,
-        "default_footer": "gpt-4o-mini",
-        "api_model": "openai/gpt-4o-mini",
-        "supports_images": True,
-        "api": "openrouter"
-    },
-    "gpt-o3-mini": {
-        "name": "GPT-o3-mini by OpenAI",
-        "color": 0x32a956,
-        "default_footer": "o3-mini | CoT",
-        "api_model": "openai/o3-mini",
-        "supports_images": False,
-        "api": "openrouter"
-    },
-    "deepseek-v3": {
-        "name": "DeepSeek v3 by DeepSeek",
-        "color": 0x32a956, 
-        "default_footer": "Deepseek-v3",
-        "api_model": "deepseek/deepseek-chat",
-        "supports_images": False,
-        "api": "openrouter"
-    },
-    "claude-3.7-sonnet": {
-        "name": "Claude 3.7 Sonnet by Anthropic",
-        "color": 0x32a956,
-        "default_footer": "Claude 3.7 Sonnet",
-        "api_model": "anthropic/claude-3.7-sonnet:beta",
-        "supports_images": False,
-        "api": "openrouter"
-    },
-    "claude-3.7-sonnet:thinking": {
-        "name": "Claude 3.7 Sonnet (Thinking) by Anthropic",
-        "color": 0x32a956,
-        "default_footer": "Claude 3.7 Sonnet (Thinking)",
-        "api_model": "anthropic/claude-3.7-sonnet:thinking",
-        "supports_images": False,
-        "api": "openrouter"
-    },
-    "gemini-2.0-flash-lite": {
-        "name": "Gemini 2.0 Flash Lite by Google",
-        "color": 0x32a956,
-        "default_footer": "Gemini 2.0 Flash Lite",
-        "api_model": "google/gemini-2.0-flash-lite-001",
-        "supports_images": False,
-        "api": "openrouter"
-    },
-    "grok-2": {
-        "name": "Grok 2 by X-AI",
-        "color": 0x32a956,
-        "default_footer": "Grok 2",
-        "api_model": "x-ai/grok-2-1212",
-        "supports_images": False,
-        "api": "openrouter"
-    },
-    "mistral-large": {
-        "name": "Mistral Large by Mistral AI",
-        "color": 0x32a956,
-        "default_footer": "Mistral Large",
-        "api_model": "mistralai/mistral-large-2411",
-        "supports_images": False,
-        "api": "openrouter"
-    }
-}
 
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -85,8 +19,8 @@ class AICommands(commands.Cog):
         if model_management and model_key in model_management.models_config:
             return model_management.models_config[model_key]
         else:
-            # Fallback to hardcoded config if model management not available
-            return MODEL_CONFIG.get(model_key, {})
+            # No fallback - models must be configured in models_config.json
+            return {}
     
     def _get_available_models(self, user_id: int) -> list:
         """Get list of available model keys for a user"""
@@ -95,8 +29,8 @@ class AICommands(commands.Cog):
             available_models = model_management.get_available_models(user_id)
             return list(available_models.keys())
         else:
-            # Fallback to all models if model management is not available
-            return list(MODEL_CONFIG.keys())
+            # No fallback - return empty list if model management is not available
+            return []
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
@@ -351,6 +285,10 @@ class AIContextMenus(commands.Cog):
             )
             # Store bot reference for model availability check
             view._bot_ref = interaction.client
+            # Refresh dropdown now that we have bot reference
+            view.clear_items()
+            view._create_dropdown()
+            view._create_buttons()
             
             await interaction.response.send_message(
                 "Please select an AI model and click Submit:",
@@ -379,53 +317,42 @@ class ModelSelectionView(discord.ui.View):
         
         # Get available models for this user
         # We need to get the bot instance to access the AICommands cog
-        if hasattr(self, '_bot_ref'):
+        if hasattr(self, '_bot_ref') and self._bot_ref:
             ai_commands = self._bot_ref.get_cog("AICommands")
             if ai_commands:
                 available_models = ai_commands._get_available_models(self.user_id or 0)
             else:
-                available_models = list(MODEL_CONFIG.keys())
-        else:
-            # Try to get from AICommands cog
-            if hasattr(self, '_bot_ref'):
-                ai_commands = self._bot_ref.get_cog("AICommands")
-                if ai_commands:
-                    # Use hardcoded fallback if no model management
-                    available_models = list(MODEL_CONFIG.keys())
-                else:
-                    available_models = []
-            else:
                 available_models = []
+        else:
+            # No bot reference available - no models available
+            available_models = []
         
-        # Add models that are available to the user
-        model_configs = {
-            "gpt-4o-mini": {"label": "GPT-4o-mini", "description": "OpenAI model with image support"},
-            "gpt-o3-mini": {"label": "GPT-o3-mini", "description": "OpenAI reasoning model"},
-            "deepseek-v3": {"label": "Deepseek v3", "description": "Deepseek chat model"},
-            "claude-3.7-sonnet": {"label": "Anthropic Claude 3.7 Sonnet", "description": "Anthropic chat model"},
-            "claude-3.7-sonnet:thinking": {"label": "Anthropic Claude 3.7 Sonnet (Thinking)", "description": "Anthropic reasoning model"},
-            "gemini-2.0-flash-lite": {"label": "Google Gemini 2.0 Flash Lite", "description": "Google chat model"},
-            "grok-2": {"label": "X-AI Grok 2", "description": "X-AI chat model"},
-            "mistral-large": {"label": "Mistral", "description": "Mistral AI chat model"}
-        }
+        # Get model configurations from the model management system
+        model_management = None
+        if hasattr(self, '_bot_ref') and self._bot_ref:
+            model_management = self._bot_ref.get_cog("ModelManagement")
         
-        # Add GPT-4o-mini first if available (always works with images)
-        if "gpt-4o-mini" in available_models:
-            options.append(discord.SelectOption(
-                label=model_configs["gpt-4o-mini"]["label"],
-                value="gpt-4o-mini",
-                description=model_configs["gpt-4o-mini"]["description"],
-                default=self.selected_model == "gpt-4o-mini"
-            ))
-        
-        # Add other models if no image or if they support images
-        if not self.has_image:
+        # Add image-supporting models first if we have an image
+        if self.has_image:
             for model_key in available_models:
-                if model_key != "gpt-4o-mini" and model_key in model_configs:
+                if model_management and model_key in model_management.models_config:
+                    model_config = model_management.models_config[model_key]
+                    if model_config.get("supports_images", False):
+                        options.append(discord.SelectOption(
+                            label=model_config.get("name", model_key),
+                            value=model_key,
+                            description=f"Supports images | {model_config.get('name', model_key)}",
+                            default=self.selected_model == model_key
+                        ))
+        else:
+            # Add all available models if no image
+            for model_key in available_models:
+                if model_management and model_key in model_management.models_config:
+                    model_config = model_management.models_config[model_key]
                     options.append(discord.SelectOption(
-                        label=model_configs[model_key]["label"],
+                        label=model_config.get("name", model_key),
                         value=model_key,
-                        description=model_configs[model_key]["description"],
+                        description=model_config.get("name", model_key),
                         default=self.selected_model == model_key
                     ))
         
