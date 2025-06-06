@@ -142,12 +142,8 @@ class ImageGen(commands.Cog):
         partial_images = {}
         stream_message = None
         
-        # Process streaming events
-        def process_stream():
-            for event in stream:
-                yield event
-        
-        for event in await asyncio.to_thread(list, process_stream()):
+        # Process streaming events as they arrive
+        for event in stream:
             if event.type == "response.image_generation_call.partial_image":
                 idx = event.partial_image_index
                 image_base64 = event.partial_image_b64
@@ -182,6 +178,9 @@ class ImageGen(commands.Cog):
                         logger.warning(f"Could not update streaming message with partial {idx}: {e}")
                         # Fallback: send new message
                         stream_message = await interaction.followup.send(file=file, embed=embed)
+                
+                # Yield control to allow other async operations
+                await asyncio.sleep(0)
             
             elif event.type == "response.image_generation_call.completed":
                 logger.info("Image generation completed - using latest partial image as final result")
