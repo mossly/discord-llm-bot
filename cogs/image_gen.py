@@ -138,9 +138,9 @@ class ImageGen(commands.Cog):
             )
         )
         
-        # Track partial images and messages
+        # Track partial images and the single message
         partial_images = {}
-        sent_messages = {}
+        stream_message = None
         final_image_data = None
         
         # Process streaming events
@@ -160,56 +160,56 @@ class ImageGen(commands.Cog):
                 
                 # Create Discord file and embed
                 image_data = base64.b64decode(image_base64)
-                file = discord.File(io.BytesIO(image_data), filename=f"partial_image_{idx}.png")
+                file = discord.File(io.BytesIO(image_data), filename=f"generating_image.png")
                 
                 embed = discord.Embed(
                     title="🎨 Generating...", 
-                    description=f"**Partial Preview {idx+1}**\n{img_prompt[:100]}{'...' if len(img_prompt) > 100 else ''}", 
+                    description=f"**Step {idx+1}**\n{img_prompt[:100]}{'...' if len(img_prompt) > 100 else ''}", 
                     color=0x32a956
                 )
-                embed.set_image(url=f"attachment://partial_image_{idx}.png")
-                embed.set_footer(text=f"GPT-image-1 | Streaming | Partial {idx+1}")
+                embed.set_image(url=f"attachment://generating_image.png")
+                embed.set_footer(text=f"GPT-image-1 | Streaming | Step {idx+1}")
                 
-                if idx in sent_messages:
-                    # Edit existing message
-                    try:
-                        await sent_messages[idx].edit(embed=embed, attachments=[file])
-                    except discord.NotFound:
-                        # Message was deleted, send new one
-                        sent_messages[idx] = await interaction.followup.send(file=file, embed=embed)
+                if stream_message is None:
+                    # Send initial message
+                    stream_message = await interaction.followup.send(file=file, embed=embed)
+                    logger.info(f"Sent initial streaming message for partial {idx}")
                 else:
-                    # Send new message
-                    sent_messages[idx] = await interaction.followup.send(file=file, embed=embed)
+                    # Edit existing message with new partial
+                    try:
+                        await stream_message.edit(embed=embed, attachments=[file])
+                        logger.info(f"Updated streaming message with partial {idx}")
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                        logger.warning(f"Could not update streaming message with partial {idx}: {e}")
+                        # Fallback: send new message
+                        stream_message = await interaction.followup.send(file=file, embed=embed)
             
             elif event.type == "response.image_generation_call.completed":
-                # Get final image from the event's image data
-                if hasattr(event, 'image_url'):
-                    final_image_data = event.image_url
-                elif hasattr(event, 'b64_json'):
-                    final_image_data = event.b64_json
-                elif hasattr(event, 'output'):
-                    final_image_data = event.output
-                else:
-                    logger.error(f"Completed event missing image data. Available attributes: {dir(event)}")
-                    final_image_data = None
-                logger.info("Received final image")
+                # Debug the completed event structure
+                logger.info(f"Completed event type: {type(event)}")
+                logger.info(f"Completed event dict: {event.__dict__ if hasattr(event, '__dict__') else 'No __dict__'}")
+                
+                # Try to get the final image data from various possible locations
+                final_image_data = None
+                
+                # Check common attributes
+                for attr in ['image_url', 'b64_json', 'output', 'image', 'result', 'data', 'content', 'image_data']:
+                    if hasattr(event, attr):
+                        value = getattr(event, attr)
+                        logger.info(f"Found {attr}: {type(value)} - {str(value)[:100]}...")
+                        if value and isinstance(value, str) and len(value) > 100:  # Likely base64 data
+                            final_image_data = value
+                            break
+                
+                if not final_image_data:
+                    logger.error(f"Could not find image data in completed event. Event: {event}")
+                    
+                logger.info("Received final image" if final_image_data else "No final image found")
                 break
         
-        # Replace partial images with final result one by one
-        if final_image_data:
-            if final_image_data.startswith("data:image/"):
-                # Handle data URL format
-                image_data = base64.b64decode(final_image_data.split(",", 1)[1])
-            else:
-                # Assume it's already base64
-                image_data = base64.b64decode(final_image_data)
-            
-            file = discord.File(io.BytesIO(image_data), filename="generated_image.png")
-            
-            embed = discord.Embed(title="", description=img_prompt, color=0x32a956)
-            embed.set_image(url="attachment://generated_image.png")
-            
-            # Calculate timing and cost info
+        # Update the final message to show completion
+        if stream_message:
+            # Calculate timing and cost info for final footer
             footer_parts = ["GPT-image-1"]
             if img_quality == "high":
                 footer_parts.append("High Quality")
@@ -225,33 +225,40 @@ class ImageGen(commands.Cog):
                     footer_parts.append(f"{len(image_inputs)} images")
             
             footer_text = " | ".join(footer_parts)
-            embed.set_footer(text=footer_text)
             
-            # Replace partial images one by one with the final result
-            final_message = None
-            for idx, msg in sent_messages.items():
-                try:
-                    # Create a new file object for each message (Discord doesn't allow reusing file objects)
-                    new_file = discord.File(io.BytesIO(image_data), filename="generated_image.png")
-                    # Replace each partial message with the final image
-                    await msg.edit(embed=embed, attachments=[new_file])
-                    final_message = msg
-                    logger.info(f"Replaced partial image {idx} with final result")
-                    # Small delay between replacements for better UX
-                    await asyncio.sleep(0.5)
-                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
-                    logger.warning(f"Could not replace partial message {idx}: {e}")
-                    continue
-            
-            # If no messages were successfully replaced, send new final image
-            if not final_message:
-                await interaction.followup.send(file=file, embed=embed)
-            
-            # Return format expected by calling code
-            data_url = f"data:image/png;base64,{final_image_data}" if not final_image_data.startswith("data:") else final_image_data
-            return [data_url], {}
+            try:
+                # Get the current embed and update it to show completion
+                if stream_message.embeds:
+                    final_embed = stream_message.embeds[0]
+                    # Update title to show completion
+                    final_embed.title = "🎨 Generated"
+                    # Update description to remove "Step X" 
+                    final_embed.description = img_prompt[:100] + ('...' if len(img_prompt) > 100 else '')
+                    # Update footer to remove streaming indicators
+                    final_embed.set_footer(text=footer_text)
+                    
+                    # Use the latest partial image for the final version
+                    if partial_images:
+                        latest_idx = max(partial_images.keys())
+                        latest_image_data = base64.b64decode(partial_images[latest_idx])
+                        final_file = discord.File(io.BytesIO(latest_image_data), filename="generated_image.png")
+                        final_embed.set_image(url="attachment://generated_image.png")
+                        
+                        await stream_message.edit(embed=final_embed, attachments=[final_file])
+                        logger.info(f"Updated streaming message to show final completion")
+                    else:
+                        # Just update the embed without new attachment
+                        await stream_message.edit(embed=final_embed)
+                        logger.info(f"Updated streaming message embed to show completion")
+                        
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                logger.warning(f"Could not update final streaming message: {e}")
         
-        # Fallback if no final image received
+        # Return the latest partial image data
+        if partial_images:
+            latest_partial = partial_images[max(partial_images.keys())]
+            return [f"data:image/png;base64,{latest_partial}"], {}
+            
         return [], {}
 
     async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_inputs: list = None, is_edit: bool = False):
