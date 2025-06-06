@@ -87,7 +87,8 @@ class APIUtils(commands.Cog):
         use_fun: bool = False,
         api: str = "openai",
         use_emojis: bool = False,
-        emoji_channel: discord.TextChannel = None
+        emoji_channel: discord.TextChannel = None,
+        max_tokens: int = 8000
     ) -> tuple:
         if api == "openrouter":
             api_client = self.OPENROUTERCLIENT
@@ -155,6 +156,7 @@ class APIUtils(commands.Cog):
                 api_client.chat.completions.create,
                 model=model,
                 messages=messages_input,
+                max_tokens=max_tokens
             )
             
             if not response:

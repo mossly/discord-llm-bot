@@ -79,7 +79,7 @@ class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, reply_user=None):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, reply_user=None, max_tokens: int = 8000):
         config = MODEL_CONFIG[model_key]
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
@@ -133,7 +133,8 @@ class AICommands(commands.Cog):
                     reply_footer=footer,
                     api=api,
                     use_fun=fun,
-                    web_search=web_search
+                    web_search=web_search,
+                    max_tokens=max_tokens
                 )
             else:   
                 result, elapsed, footer_with_stats = await perform_chat_query(
@@ -148,9 +149,34 @@ class AICommands(commands.Cog):
                     reply_footer=footer,
                     api=api,
                     use_fun=fun,
-                    web_search=web_search
+                    web_search=web_search,
+                    max_tokens=max_tokens
                 )
             
+            # Check if result contains API error information
+            if result and "Error code: 402" in result:
+                error_embed = discord.Embed(
+                    title="API Quota Exceeded", 
+                    description="The AI service has insufficient credits. Please reduce max_tokens or try again later.",
+                    color=0xDC143C
+                )
+                error_embed.set_footer(text="Error: Insufficient API credits")
+                if ctx:
+                    return await ctx.reply(embed=error_embed)
+                else:
+                    return await interaction.followup.send(embed=error_embed)
+            elif result and "there was an error communicating with the AI service:" in result:
+                error_embed = discord.Embed(
+                    title="API Error", 
+                    description=result,
+                    color=0xDC143C
+                )
+                error_embed.set_footer(text="AI Service Error")
+                if ctx:
+                    return await ctx.reply(embed=error_embed)
+                else:
+                    return await interaction.followup.send(embed=error_embed)
+
             final_footer = footer_with_stats
                 
         except Exception as e:
@@ -186,7 +212,8 @@ class AICommands(commands.Cog):
         fun="Toggle fun mode",
         web_search="Toggle web search",
         prompt="Your query or instructions",
-        attachment="Optional attachment (image or text file)"
+        attachment="Optional attachment (image or text file)",
+        max_tokens="Maximum tokens for response (default: 8000)"
     )
     async def chat_slash(
         self, 
@@ -197,7 +224,8 @@ class AICommands(commands.Cog):
         prompt: str, 
         fun: bool = False,
         web_search: bool = False,
-        attachment: Optional[Attachment] = None
+        attachment: Optional[Attachment] = None,
+        max_tokens: Optional[int] = None
     ):
         await interaction.response.defer(thinking=True)
         attachments = [attachment] if attachment else []
@@ -216,7 +244,7 @@ class AICommands(commands.Cog):
             )
             model = "gpt-4o-mini"
         
-        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search)
+        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, max_tokens=max_tokens or 8000)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):

@@ -44,7 +44,8 @@ async def perform_chat_query(
     reply_footer: str = None,
     api: str = "openai",
     use_fun: bool = False,
-    web_search: bool = False
+    web_search: bool = False,
+    max_tokens: int = 8000
 ) -> (str, float, str):
     start_time = time.time()
     original_prompt = prompt
@@ -90,7 +91,8 @@ async def perform_chat_query(
                     api=api,
                     use_emojis=True if use_fun else False,
                     emoji_channel=channel,
-                    use_fun=use_fun
+                    use_fun=use_fun,
+                    max_tokens=max_tokens
                 )
                 break
         elapsed = round(time.time() - start_time, 2)
@@ -109,19 +111,26 @@ async def perform_chat_query(
             tokens_completion = stats.get('tokens_completion', 0)
             total_cost = stats.get('total_cost', 0)
             
+            logger.info(f"Generation stats received: prompt_tokens={tokens_prompt}, completion_tokens={tokens_completion}, total_cost={total_cost}")
+            
             prompt_tokens_str = f"{tokens_prompt / 1000:.1f}k" if tokens_prompt >= 1000 else str(tokens_prompt)
             tokens_completion_str = f"{tokens_completion / 1000:.1f}k" if tokens_completion >= 1000 else str(tokens_completion)
             
             footer_second_line.append(f"{prompt_tokens_str} input tokens")
             footer_second_line.append(f"{tokens_completion_str} output tokens")
             
-            if total_cost:
+            if total_cost is not None:
                 # Track usage in user quota system
                 if quota_manager.add_usage(user_id, total_cost):
                     logger.info(f"Tracked ${total_cost:.4f} usage for user {user_id}")
                 else:
                     logger.warning(f"Failed to track usage for user {user_id}")
-                footer_second_line.append(f"${total_cost:.2f}")
+                if total_cost > 0:
+                    footer_second_line.append(f"${total_cost:.4f}")
+                else:
+                    footer_second_line.append("$0.0000")
+        else:
+            logger.warning("No generation stats received from API")
         
         footer_second_line.append(f"{elapsed} seconds")
         
