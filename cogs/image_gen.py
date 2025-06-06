@@ -141,7 +141,6 @@ class ImageGen(commands.Cog):
         # Track partial images and the single message
         partial_images = {}
         stream_message = None
-        final_image_data = None
         
         # Process streaming events
         def process_stream():
@@ -185,27 +184,11 @@ class ImageGen(commands.Cog):
                         stream_message = await interaction.followup.send(file=file, embed=embed)
             
             elif event.type == "response.image_generation_call.completed":
-                # Debug the completed event structure
-                logger.info(f"Completed event type: {type(event)}")
-                logger.info(f"Completed event dict: {event.__dict__ if hasattr(event, '__dict__') else 'No __dict__'}")
-                
-                # Try to get the final image data from various possible locations
-                final_image_data = None
-                
-                # Check common attributes
-                for attr in ['image_url', 'b64_json', 'output', 'image', 'result', 'data', 'content', 'image_data']:
-                    if hasattr(event, attr):
-                        value = getattr(event, attr)
-                        logger.info(f"Found {attr}: {type(value)} - {str(value)[:100]}...")
-                        if value and isinstance(value, str) and len(value) > 100:  # Likely base64 data
-                            final_image_data = value
-                            break
-                
-                if not final_image_data:
-                    logger.error(f"Could not find image data in completed event. Event: {event}")
-                    
-                logger.info("Received final image" if final_image_data else "No final image found")
+                logger.info("Image generation completed - using latest partial image as final result")
                 break
+        
+        # Calculate cost for streaming (since no usage info is returned)
+        cost = self.calculate_image_cost("gpt-image-1", img_size, img_quality, is_edit)
         
         # Update the final message to show completion
         if stream_message:
@@ -224,7 +207,9 @@ class ImageGen(commands.Cog):
                 if len(image_inputs) > 1:
                     footer_parts.append(f"{len(image_inputs)} images")
             
-            footer_text = " | ".join(footer_parts)
+            footer_first_line = " | ".join(footer_parts)
+            cost_text = f"~${cost:.2f}"
+            footer_text = f"{footer_first_line}\n{cost_text}"
             
             try:
                 # Get the current embed and update it to show completion
@@ -254,12 +239,20 @@ class ImageGen(commands.Cog):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
                 logger.warning(f"Could not update final streaming message: {e}")
         
+        # Track usage in user quota system for streaming
+        user_id = str(interaction.user.id)
+        if cost > 0:
+            if quota_manager.add_usage(user_id, cost):
+                logger.info(f"Tracked ${cost:.4f} streaming image generation usage for user {user_id}")
+            else:
+                logger.warning(f"Failed to track streaming image generation usage for user {user_id}")
+        
         # Return the latest partial image data
         if partial_images:
             latest_partial = partial_images[max(partial_images.keys())]
-            return [f"data:image/png;base64,{latest_partial}"], {}
+            return [f"data:image/png;base64,{latest_partial}"], {"total_cost": cost}
             
-        return [], {}
+        return [], {"total_cost": cost}
 
     async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_inputs: list = None, is_edit: bool = False):
         # Handle backwards compatibility
