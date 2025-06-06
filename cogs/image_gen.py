@@ -21,6 +21,56 @@ class ImageGen(commands.Cog):
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY")
         )
+        
+    def calculate_image_cost(self, model: str, size: str, quality: str = "standard", is_edit: bool = False) -> float:
+        """Calculate the cost of image generation based on model and parameters"""
+        if model == "dall-e-3":
+            if quality == "hd":
+                return 0.08  # HD quality
+            else:
+                return 0.04  # Standard quality
+        elif model == "gpt-image-1":
+            # GPT-image-1 pricing is more complex, base cost for now
+            # This might need adjustment based on actual token usage
+            if is_edit:
+                return 0.08  # Edit operations tend to be more expensive
+            else:
+                return 0.06  # Generation with GPT-image-1
+        elif model == "dall-e-2":
+            if size == "1024x1024":
+                return 0.02
+            elif size == "512x512":
+                return 0.018
+            elif size == "256x256":
+                return 0.016
+        return 0.04  # Default fallback
+        
+    def extract_usage_info(self, response) -> dict:
+        """Extract usage/cost information from API response"""
+        usage_info = {}
+        
+        # Check for usage in main response
+        if hasattr(response, 'usage'):
+            usage = response.usage
+            logger.info(f"Found usage info: {usage}")
+            
+            # Extract common usage fields
+            if hasattr(usage, 'total_tokens'):
+                usage_info['total_tokens'] = usage.total_tokens
+            if hasattr(usage, 'prompt_tokens'):
+                usage_info['prompt_tokens'] = usage.prompt_tokens
+            if hasattr(usage, 'completion_tokens'):
+                usage_info['completion_tokens'] = usage.completion_tokens
+            if hasattr(usage, 'total_cost'):
+                usage_info['total_cost'] = usage.total_cost
+                
+        # Check for usage in data items
+        if hasattr(response, 'data') and response.data:
+            for data in response.data:
+                if hasattr(data, 'usage'):
+                    usage_info.update(vars(data.usage))
+                    
+        return usage_info
 
     async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_input: str = None, is_edit: bool = False):
         logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s', model: '%s', is_edit: %s",
@@ -82,9 +132,23 @@ class ImageGen(commands.Cog):
                     )
                 )
         
-        # Debug response structure
+        # Debug response structure and look for cost/usage info
         logger.info(f"Full response object: {response}")
         logger.info(f"Response type: {type(response)}")
+        logger.info(f"Response attributes: {dir(response)}")
+        
+        # Check for usage information
+        if hasattr(response, 'usage'):
+            logger.info(f"USAGE INFO FOUND: {response.usage}")
+            logger.info(f"Usage type: {type(response.usage)}")
+            logger.info(f"Usage attributes: {dir(response.usage)}")
+        else:
+            logger.info("No 'usage' attribute found in response")
+            
+        # Look for any cost-related attributes
+        cost_attrs = [attr for attr in dir(response) if 'cost' in attr.lower() or 'price' in attr.lower() or 'usage' in attr.lower() or 'token' in attr.lower()]
+        logger.info(f"Cost/usage related attributes: {cost_attrs}")
+        
         if hasattr(response, 'data'):
             logger.info(f"Response data: {response.data}")
             logger.info(f"Data type: {type(response.data)}")
@@ -93,6 +157,10 @@ class ImageGen(commands.Cog):
                     logger.info(f"Data item {i}: {data}")
                     logger.info(f"Data item {i} type: {type(data)}")
                     logger.info(f"Data item {i} attributes: {dir(data)}")
+                    
+                    # Check data items for usage info
+                    if hasattr(data, 'usage'):
+                        logger.info(f"Data item {i} usage: {data.usage}")
 
         # Handle different response formats
         image_urls = []
@@ -110,7 +178,12 @@ class ImageGen(commands.Cog):
         if not image_urls:
             logger.error(f"No valid image URLs found in response: {response}")
             raise Exception("No image URLs returned from API")
-        return image_urls
+            
+        # Extract usage information
+        usage_info = self.extract_usage_info(response)
+        logger.info(f"Extracted usage info: {usage_info}")
+        
+        return image_urls, usage_info
 
     @app_commands.command(name="gen", description="Generate or edit an image using DALL·E 3 or GPT-image-1")
     @app_commands.describe(
@@ -170,15 +243,27 @@ class ImageGen(commands.Cog):
                 return
 
         try:
-            result_urls = await self.generate_image(prompt, quality, size, model, image_input, is_edit)
+            result_urls, usage_info = await self.generate_image(prompt, quality, size, model, image_input, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", prompt)
             await interaction.followup.send(f"Error generating image: {e}")
             return
 
         generation_time = round(time.time() - start_time, 2)
-        footer_text_parts.append(f"generated in {generation_time} seconds")
-        footer_text = " | ".join(footer_text_parts)
+        
+        # Use actual cost from API if available, otherwise calculate estimate
+        if usage_info and 'total_cost' in usage_info:
+            cost = usage_info['total_cost']
+            cost_source = "actual"
+        else:
+            cost = self.calculate_image_cost(model, size, quality, is_edit)
+            cost_source = "estimated"
+        
+        # Create footer with cost and timing
+        footer_first_line = " | ".join(footer_text_parts)
+        cost_text = f"${cost:.4f}" if cost_source == "actual" else f"~${cost:.2f}"
+        footer_second_line = f"{cost_text} | {generation_time} seconds"
+        footer_text = f"{footer_first_line}\n{footer_second_line}"
 
         for idx, url in enumerate(result_urls):
             try:
@@ -300,15 +385,27 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
             footer_text_parts.append(orientation_str)
             
         try:
-            result_urls = await self.image_cog.generate_image(self.prompt.value, "standard", size, model_str, image_input, is_edit)
+            result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, "standard", size, model_str, image_input, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", self.prompt.value)
             await interaction.followup.send(f"Error generating image: {e}")
             return
             
         generation_time = round(time.time() - start_time, 2)
-        footer_text_parts.append(f"generated in {generation_time} seconds")
-        footer_text = " | ".join(footer_text_parts)
+        
+        # Use actual cost from API if available, otherwise calculate estimate
+        if usage_info and 'total_cost' in usage_info:
+            cost = usage_info['total_cost']
+            cost_source = "actual"
+        else:
+            cost = self.image_cog.calculate_image_cost(model_str, size, "standard", is_edit)
+            cost_source = "estimated"
+        
+        # Create footer with cost and timing
+        footer_first_line = " | ".join(footer_text_parts)
+        cost_text = f"${cost:.4f}" if cost_source == "actual" else f"~${cost:.2f}"
+        footer_second_line = f"{cost_text} | {generation_time} seconds"
+        footer_text = f"{footer_first_line}\n{footer_second_line}"
         
         for idx, url in enumerate(result_urls):
             try:
