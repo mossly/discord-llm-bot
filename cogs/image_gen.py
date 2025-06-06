@@ -31,12 +31,12 @@ class ImageGen(commands.Cog):
             else:
                 return 0.04  # Standard quality
         elif model == "gpt-image-1":
-            # GPT-image-1 pricing is more complex, base cost for now
-            # This might need adjustment based on actual token usage
+            # GPT-image-1 pricing with quality considerations
+            base_cost = 0.20 if quality == "hd" else 0.06  # High quality costs more
             if is_edit:
-                return 0.08  # Edit operations tend to be more expensive
+                return base_cost * 1.3  # Edit operations tend to be more expensive
             else:
-                return 0.06  # Generation with GPT-image-1
+                return base_cost
         elif model == "dall-e-2":
             if size == "1024x1024":
                 return 0.02
@@ -223,7 +223,7 @@ class ImageGen(commands.Cog):
     @app_commands.describe(
         prompt="The prompt for the image",
         model="Choose the image generation model",
-        hd="Return image in HD quality (DALL-E 3 only)",
+        quality="Image quality level (high recommended for best results)",
         orientation="Choose the image orientation (Square, Landscape, or Portrait)",
         attachment="Optional input image",
         image_mode="How to use the attached image (only for GPT-image-1)"
@@ -233,7 +233,7 @@ class ImageGen(commands.Cog):
         interaction: discord.Interaction,
         prompt: str,
         model: Literal["dall-e-3", "gpt-image-1"] = "dall-e-3",
-        hd: bool = False,
+        quality: Literal["standard", "high"] = "high",
         orientation: Literal["Square", "Landscape", "Portrait"] = "Square",
         attachment: Optional[discord.Attachment] = None,
         image_mode: Literal["input", "edit"] = "input"
@@ -243,7 +243,8 @@ class ImageGen(commands.Cog):
         
         user_id = str(interaction.user.id)
 
-        quality = "hd" if hd and model == "dall-e-3" else "standard"
+        # Map quality parameter to API format
+        api_quality = "hd" if quality == "high" and model == "dall-e-3" else "standard"
         if orientation == "Landscape":
             size = "1792x1024"
         elif orientation == "Portrait":
@@ -252,8 +253,8 @@ class ImageGen(commands.Cog):
             size = "1024x1024"
 
         footer_text_parts = ["GPT-image-1" if model == "gpt-image-1" else "DALL·E 3"]
-        if hd and model == "dall-e-3":
-            footer_text_parts.append("HD")
+        if quality == "high":
+            footer_text_parts.append("High Quality")
         if orientation in ("Landscape", "Portrait"):
             footer_text_parts.append(orientation)
             
@@ -316,8 +317,9 @@ class ImageGen(commands.Cog):
         remaining_quota = quota_manager.get_remaining_quota(user_id)
         num_input_images = len(image_inputs)
         
-        # Estimate higher cost for multi-image operations
-        estimated_cost = 0.08 if num_input_images > 1 else 0.05
+        # Estimate cost based on quality and multi-image operations
+        base_cost = 0.20 if quality == "high" else 0.05
+        estimated_cost = base_cost * 1.5 if num_input_images > 1 else base_cost
         
         if remaining_quota == 0:
             await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
@@ -329,7 +331,7 @@ class ImageGen(commands.Cog):
             return
 
         try:
-            result_urls, usage_info = await self.generate_image(prompt, quality, size, model, image_inputs, is_edit)
+            result_urls, usage_info = await self.generate_image(prompt, api_quality, size, model, image_inputs, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", prompt)
             await interaction.followup.send(f"Error generating image: {e}")
@@ -342,7 +344,7 @@ class ImageGen(commands.Cog):
             cost = usage_info['total_cost']
             cost_source = "actual"
         else:
-            cost = self.calculate_image_cost(model, size, quality, is_edit)
+            cost = self.calculate_image_cost(model, size, api_quality, is_edit)
             cost_source = "estimated"
         
         # Track usage in user quota system
@@ -481,6 +483,14 @@ class ImageEditModal(discord.ui.Modal):
         required=False,
         max_length=20
     )
+    
+    quality = discord.ui.TextInput(
+        label='Quality (standard/high)',
+        placeholder='high',
+        default='high',
+        required=False,
+        max_length=10
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -497,8 +507,13 @@ class ImageEditModal(discord.ui.Modal):
         remaining_quota = quota_manager.get_remaining_quota(user_id)
         num_input_images = len(image_inputs)
         
-        # Estimate higher cost for multi-image operations
-        estimated_cost = 0.08 if num_input_images > 1 else 0.05
+        # Get quality setting
+        quality_str = self.quality.value.strip().lower() or "high"
+        quality_str = "high" if quality_str in ("high", "hd") else "standard"
+        
+        # Estimate cost based on quality and multi-image operations
+        base_cost = 0.20 if quality_str == "high" else 0.06
+        estimated_cost = base_cost * 1.5 if num_input_images > 1 else base_cost
         
         if remaining_quota == 0:
             await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
@@ -513,6 +528,9 @@ class ImageEditModal(discord.ui.Modal):
         orientation_str = self.orientation.value.strip() or "Square"
         image_mode_str = self.image_mode.value.strip().lower() or "input"
         
+        # Map quality to API format
+        api_quality = "hd" if quality_str == "high" and model_str == "dall-e-3" else "standard"
+        
         if orientation_str == "Landscape":
             size = "1792x1024"
         elif orientation_str == "Portrait":
@@ -523,13 +541,15 @@ class ImageEditModal(discord.ui.Modal):
         is_edit = (image_mode_str == "edit")
         mode_text = "Edit" if is_edit else "Input"
         footer_text_parts = ["GPT-image-1", mode_text]
+        if quality_str == "high":
+            footer_text_parts.append("High Quality")
         if orientation_str in ("Landscape", "Portrait"):
             footer_text_parts.append(orientation_str)
         if len(image_inputs) > 1:
             footer_text_parts.append(f"{len(image_inputs)} images")
             
         try:
-            result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, "standard", size, model_str, image_inputs, is_edit)
+            result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, api_quality, size, model_str, image_inputs, is_edit)
         except Exception as e:
             logger.exception("Error generating image for prompt: '%s'", self.prompt.value)
             await interaction.followup.send(f"Error generating image: {e}")
@@ -542,7 +562,7 @@ class ImageEditModal(discord.ui.Modal):
             cost = usage_info['total_cost']
             cost_source = "actual"
         else:
-            cost = self.image_cog.calculate_image_cost(model_str, size, "standard", is_edit)
+            cost = self.image_cog.calculate_image_cost(model_str, size, api_quality, is_edit)
             cost_source = "estimated"
         
         # Track usage in user quota system
