@@ -623,14 +623,6 @@ class ImageEditModal(discord.ui.Modal):
         max_length=1000
     )
     
-    model = discord.ui.TextInput(
-        label='Model (gpt-image-1)',
-        placeholder='gpt-image-1',
-        default='gpt-image-1',
-        required=False,
-        max_length=20
-    )
-    
     image_mode = discord.ui.TextInput(
         label='Image Mode (input/edit)',
         placeholder='input',
@@ -655,13 +647,6 @@ class ImageEditModal(discord.ui.Modal):
         max_length=10
     )
     
-    streaming = discord.ui.TextInput(
-        label='Streaming (true/false)',
-        placeholder='false',
-        default='false',
-        required=False,
-        max_length=5
-    )
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -695,14 +680,16 @@ class ImageEditModal(discord.ui.Modal):
             return
             
         start_time = time.time()
-        model_str = self.model.value.strip() or "gpt-image-1"
+        model_str = "gpt-image-1"
         orientation_str = self.orientation.value.strip() or "Square"
         image_mode_str = self.image_mode.value.strip().lower() or "input"
-        streaming_str = self.streaming.value.strip().lower() or "false"
-        use_streaming = streaming_str in ("true", "yes", "1", "on")
+        use_streaming = True
         
         # Map quality to API format
-        api_quality = "hd" if quality_str == "high" and model_str == "dall-e-3" else "standard"
+        if model_str == "gpt-image-1":
+            api_quality = "high" if quality_str == "high" else "medium"
+        else:
+            api_quality = "hd" if quality_str == "high" else "standard"
         
         # Different size support for different models
         if model_str == "gpt-image-1":
