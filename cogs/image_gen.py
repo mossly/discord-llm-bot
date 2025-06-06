@@ -10,6 +10,7 @@ import aiohttp
 import io
 import os
 import base64
+from user_quotas import quota_manager
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,17 @@ class ImageGen(commands.Cog):
     ):
         await interaction.response.defer()
         start_time = time.time()
+        
+        user_id = str(interaction.user.id)
+        
+        # Check user quota before generating image
+        remaining_quota = quota_manager.get_remaining_quota(user_id)
+        if remaining_quota == 0:
+            await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            return
+        elif remaining_quota != float('inf') and remaining_quota < 0.05:  # Less than 5 cents remaining
+            await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation typically costs $0.04-$0.08.")
+            return
 
         quality = "hd" if hd and model == "dall-e-3" else "standard"
         if orientation == "Landscape":
@@ -258,6 +270,13 @@ class ImageGen(commands.Cog):
         else:
             cost = self.calculate_image_cost(model, size, quality, is_edit)
             cost_source = "estimated"
+        
+        # Track usage in user quota system
+        if cost > 0:
+            if quota_manager.add_usage(user_id, cost):
+                logger.info(f"Tracked ${cost:.4f} image generation usage for user {user_id}")
+            else:
+                logger.warning(f"Failed to track image generation usage for user {user_id}")
         
         # Create footer with cost and timing
         footer_first_line = " | ".join(footer_text_parts)
@@ -360,6 +379,17 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer()
         
+        user_id = str(interaction.user.id)
+        
+        # Check user quota before generating image
+        remaining_quota = quota_manager.get_remaining_quota(user_id)
+        if remaining_quota == 0:
+            await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            return
+        elif remaining_quota != float('inf') and remaining_quota < 0.05:  # Less than 5 cents remaining
+            await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation typically costs $0.04-$0.08.")
+            return
+        
         # Extract image from original message
         image_input = await self.image_cog.extract_image_from_message(self.original_message)
         if not image_input:
@@ -400,6 +430,13 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
         else:
             cost = self.image_cog.calculate_image_cost(model_str, size, "standard", is_edit)
             cost_source = "estimated"
+        
+        # Track usage in user quota system
+        if cost > 0:
+            if quota_manager.add_usage(user_id, cost):
+                logger.info(f"Tracked ${cost:.4f} image generation usage for user {user_id}")
+            else:
+                logger.warning(f"Failed to track image generation usage for user {user_id}")
         
         # Create footer with cost and timing
         footer_first_line = " | ".join(footer_text_parts)

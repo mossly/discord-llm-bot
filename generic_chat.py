@@ -4,6 +4,7 @@ import openai
 import discord
 import aiohttp
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+from user_quotas import quota_manager
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ async def perform_chat_query(
     prompt: str,
     api_cog,
     channel: discord.TextChannel,
+    user_id: str,
     duck_cog=None,
     image_url: str = None,
     reference_message: str = None,
@@ -64,6 +66,13 @@ async def perform_chat_query(
     if ddg_summary:
         summary_text = ddg_summary[0] if isinstance(ddg_summary, tuple) else ddg_summary
         prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
+
+    # Check user quota before making API call
+    remaining_quota = quota_manager.get_remaining_quota(user_id)
+    if remaining_quota == 0:
+        return "❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.", 0, "Quota exceeded"
+    elif remaining_quota != float('inf') and remaining_quota < 0.01:  # Less than 1 cent remaining
+        return f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Please be mindful of usage.", 0, f"${remaining_quota:.4f} remaining"
 
     try:
         async for attempt in AsyncRetrying(
@@ -107,6 +116,11 @@ async def perform_chat_query(
             footer_second_line.append(f"{tokens_completion_str} output tokens")
             
             if total_cost:
+                # Track usage in user quota system
+                if quota_manager.add_usage(user_id, total_cost):
+                    logger.info(f"Tracked ${total_cost:.4f} usage for user {user_id}")
+                else:
+                    logger.warning(f"Failed to track usage for user {user_id}")
                 footer_second_line.append(f"${total_cost:.2f}")
         
         footer_second_line.append(f"{elapsed} seconds")

@@ -16,9 +16,11 @@ This is a Discord bot that integrates multiple LLM models through OpenRouter and
   - `ddg_search.py` - DuckDuckGo web search integration
   - `api_utils.py` - API utilities for OpenRouter and OpenAI
   - `fun_prompt.py` - Fun mode prompt management
+  - `quota_management.py` - User quota management and admin commands
 - **Utilities**: 
   - `generic_chat.py` - Core chat processing logic and attachment handling
   - `embed_utils.py` - Discord embed creation and splitting utilities
+  - `user_quotas.py` - User quota tracking and cost management system
 
 ## Key Components
 
@@ -56,6 +58,8 @@ python discordbot.py
 - `FUN_PROMPT` - Fun mode system prompt
 - `BOT_TAG` - Bot's mention tag
 - `DUCK_PROXY` (optional) - Proxy for DuckDuckGo searches
+- `BOT_ADMIN_IDS` (optional) - Comma-separated list of admin Discord user IDs
+- `BOT_UNLIMITED_USER_IDS` (optional) - Comma-separated list of Discord user IDs with unlimited quota
 
 ## Code Patterns
 
@@ -67,3 +71,43 @@ API calls use tenacity for retry logic. Discord interactions include proper erro
 
 ### Async Processing
 Heavy operations like API calls and file processing use async/await patterns to avoid blocking the Discord event loop.
+
+## User Quota System
+
+### Overview
+The bot implements a monthly usage quota system to track and limit API costs per user. All users are assigned a default $1.00/month quota, with unlimited access configurable via environment variables.
+
+### Quota Storage
+- User quotas and usage are stored in `user_quotas.json`
+- Data persists across bot restarts and updates
+- Monthly tracking using `YYYY-MM` format keys
+
+### Monthly Reset Behavior
+- **Automatic**: No scheduled tasks required
+- **Persistent**: Works across service interruptions, restarts, and updates
+- **Lazy Evaluation**: Resets happen when users interact in a new month
+- **Reliable**: Uses current date comparison, not timers
+
+### Admin Management
+Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`, and `/user-quota` commands.
+
+**Admin Authorization Methods:**
+1. **Environment Variable**: Set `BOT_ADMIN_IDS` with comma-separated Discord user IDs
+2. **File-based**: Create `admin_ids.txt` with one Discord user ID per line (supports `#` comments)
+
+**Unlimited Quota Users:**
+- Set `BOT_UNLIMITED_USER_IDS` environment variable with comma-separated Discord user IDs
+- These users have unlimited API usage with no monthly restrictions
+
+### Quota Commands
+- `/quota` - Users check their own usage and remaining quota
+- `/set-quota <user> <amount>` - [ADMIN] Set user's monthly quota
+- `/reset-usage <user>` - [ADMIN] Reset user's current month usage
+- `/quota-stats` - [ADMIN] View top users and overall statistics
+- `/user-quota <user>` - [ADMIN] Detailed quota information for specific user
+
+### Cost Tracking
+- **Pre-call Validation**: Checks quota before API calls
+- **Post-call Tracking**: Deducts actual costs from quotas
+- **Real-time Updates**: Immediate quota adjustments
+- **Comprehensive Coverage**: Text generation, image generation, and editing
