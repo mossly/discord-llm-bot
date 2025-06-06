@@ -82,8 +82,34 @@ class ImageGen(commands.Cog):
                     )
                 )
         
-        image_urls = [data.url for data in response.data]
+        # Debug response structure
+        logger.info(f"Full response object: {response}")
+        logger.info(f"Response type: {type(response)}")
+        if hasattr(response, 'data'):
+            logger.info(f"Response data: {response.data}")
+            logger.info(f"Data type: {type(response.data)}")
+            if response.data:
+                for i, data in enumerate(response.data):
+                    logger.info(f"Data item {i}: {data}")
+                    logger.info(f"Data item {i} type: {type(data)}")
+                    logger.info(f"Data item {i} attributes: {dir(data)}")
+
+        # Handle different response formats
+        image_urls = []
+        if hasattr(response, 'data') and response.data:
+            for data in response.data:
+                if hasattr(data, 'url') and data.url:
+                    image_urls.append(data.url)
+                elif hasattr(data, 'b64_json') and data.b64_json:
+                    # GPT-image-1 might return base64 instead of URL
+                    image_urls.append(f"data:image/png;base64,{data.b64_json}")
+                else:
+                    logger.warning(f"Unexpected data format in response: {data}")
+        
         logger.info("Generated image URL(s): %s", image_urls)
+        if not image_urls:
+            logger.error(f"No valid image URLs found in response: {response}")
+            raise Exception("No image URLs returned from API")
         return image_urls
 
     @app_commands.command(name="gen", description="Generate or edit an image using DALL·E 3 or GPT-image-1")
@@ -156,16 +182,22 @@ class ImageGen(commands.Cog):
 
         for idx, url in enumerate(result_urls):
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status != 200:
-                            logger.error("Failed to fetch image from URL: %s", url)
-                            await interaction.followup.send("Failed to retrieve image!")
-                            continue
-                        image_data = await resp.read()
+                if url.startswith("data:image/"):
+                    # Handle base64 data URLs
+                    base64_data = url.split(",", 1)[1]
+                    image_data = base64.b64decode(base64_data)
+                else:
+                    # Handle regular URLs
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url) as resp:
+                            if resp.status != 200:
+                                logger.error("Failed to fetch image from URL: %s", url)
+                                await interaction.followup.send("Failed to retrieve image!")
+                                continue
+                            image_data = await resp.read()
             except Exception as e:
-                logger.exception("Error downloading image from URL: %s", url)
-                await interaction.followup.send(f"Error downloading image: {e}")
+                logger.exception("Error processing image from URL: %s", url)
+                await interaction.followup.send(f"Error processing image: {e}")
                 continue
 
             file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
@@ -173,7 +205,7 @@ class ImageGen(commands.Cog):
             embed.set_image(url=f"attachment://generated_image_{idx}.png")
             embed.set_footer(text=footer_text)
             await interaction.followup.send(file=file, embed=embed)
-            logger.info("Sent generated image embed for URL: %s", url)
+            logger.info("Sent generated image embed for URL: %s", url[:50] + "..." if len(url) > 50 else url)
 
         logger.info("Image generation command completed in %s seconds", generation_time)
 
@@ -280,16 +312,22 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
         
         for idx, url in enumerate(result_urls):
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status != 200:
-                            logger.error("Failed to fetch image from URL: %s", url)
-                            await interaction.followup.send("Failed to retrieve image!")
-                            continue
-                        image_data = await resp.read()
+                if url.startswith("data:image/"):
+                    # Handle base64 data URLs
+                    base64_data = url.split(",", 1)[1]
+                    image_data = base64.b64decode(base64_data)
+                else:
+                    # Handle regular URLs
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url) as resp:
+                            if resp.status != 200:
+                                logger.error("Failed to fetch image from URL: %s", url)
+                                await interaction.followup.send("Failed to retrieve image!")
+                                continue
+                            image_data = await resp.read()
             except Exception as e:
-                logger.exception("Error downloading image from URL: %s", url)
-                await interaction.followup.send(f"Error downloading image: {e}")
+                logger.exception("Error processing image from URL: %s", url)
+                await interaction.followup.send(f"Error processing image: {e}")
                 continue
                 
             file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
@@ -297,7 +335,7 @@ class ImageEditModal(discord.ui.Modal, title='Generate with Image'):
             embed.set_image(url=f"attachment://generated_image_{idx}.png")
             embed.set_footer(text=footer_text)
             await interaction.followup.send(file=file, embed=embed)
-            logger.info("Sent generated image embed for URL: %s", url)
+            logger.info("Sent generated image embed for URL: %s", url[:50] + "..." if len(url) > 50 else url)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ImageGen(bot))
