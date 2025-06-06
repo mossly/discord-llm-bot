@@ -11,14 +11,14 @@
     "admin_only": "Restrict to admin users only"
   },
   
-  "example-model": {
-    "name": "Example Model by Provider",
-    "color": 3454294,
-    "default_footer": "Example Model",
-    "api_model": "provider/model-name",
-    "supports_images": false,
-    "api": "openrouter",
-    "enabled": false,
+  "gpt-4o-mini": {
+    "name": "GPT-4o-mini",
+    "color": 65408,
+    "default_footer": "GPT-4o-mini",
+    "api_model": "gpt-4o-mini",
+    "supports_images": true,
+    "api": "openai",
+    "enabled": true,
     "admin_only": false
   }
 }

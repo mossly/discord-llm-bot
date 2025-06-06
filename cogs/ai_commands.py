@@ -332,29 +332,34 @@ class ModelSelectionView(discord.ui.View):
         if hasattr(self, '_bot_ref') and self._bot_ref:
             model_management = self._bot_ref.get_cog("ModelManagement")
         
+        # Get available models dict instead of just keys
+        available_models_dict = {}
+        if hasattr(self, '_bot_ref') and self._bot_ref:
+            ai_commands = self._bot_ref.get_cog("AICommands")
+            if ai_commands:
+                model_management = ai_commands.bot.get_cog("ModelManagement")
+                if model_management:
+                    available_models_dict = model_management.get_available_models(self.user_id or 0)
+        
         # Add image-supporting models first if we have an image
         if self.has_image:
-            for model_key in available_models:
-                if model_management and model_key in model_management.models_config:
-                    model_config = model_management.models_config[model_key]
-                    if model_config.get("supports_images", False):
-                        options.append(discord.SelectOption(
-                            label=model_config.get("name", model_key),
-                            value=model_key,
-                            description=f"Supports images | {model_config.get('name', model_key)}",
-                            default=self.selected_model == model_key
-                        ))
-        else:
-            # Add all available models if no image
-            for model_key in available_models:
-                if model_management and model_key in model_management.models_config:
-                    model_config = model_management.models_config[model_key]
+            for model_key, model_config in available_models_dict.items():
+                if model_config.get("supports_images", False):
                     options.append(discord.SelectOption(
                         label=model_config.get("name", model_key),
                         value=model_key,
-                        description=model_config.get("name", model_key),
+                        description=f"Supports images | {model_config.get('name', model_key)}",
                         default=self.selected_model == model_key
                     ))
+        else:
+            # Add all available models if no image
+            for model_key, model_config in available_models_dict.items():
+                options.append(discord.SelectOption(
+                    label=model_config.get("name", model_key),
+                    value=model_key,
+                    description=model_config.get("name", model_key),
+                    default=self.selected_model == model_key
+                ))
         
         if not options:
             options.append(discord.SelectOption(
