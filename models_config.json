@@ -1,17 +1,5 @@
 {
-  "_comment": "Models configuration template - add your models here",
-  "_field_descriptions": {
-    "name": "Display name shown to users",
-    "color": "Embed color (decimal format)",
-    "default_footer": "Footer text for responses",
-    "api_model": "Model identifier for the API",
-    "supports_images": "Whether model can process images",
-    "api": "API provider (openrouter, openai)",
-    "enabled": "Whether model is available",
-    "admin_only": "Restrict to admin users only"
-  },
-  
-  "gpt-4o-mini": {
+    "gpt-4o-mini": {
     "name": "GPT-4o-mini",
     "color": 65408,
     "default_footer": "GPT-4o-mini",
