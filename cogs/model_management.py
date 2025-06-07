@@ -129,7 +129,7 @@ class ModelManagement(commands.Cog):
     async def manage_models(
         self, 
         interaction: discord.Interaction, 
-        action: Literal["list", "available", "add", "edit", "remove", "enable", "disable", "info", "reload"],
+        action: Literal["list", "available", "add", "edit", "remove", "enable", "disable", "info", "reload", "reset-to-default"],
         model: Optional[str] = None,
         admin_only: Optional[bool] = None,
         display_name: Optional[str] = None,
@@ -180,6 +180,8 @@ class ModelManagement(commands.Cog):
             await self._model_info(interaction, model)
         elif action == "reload":
             await self._reload_models(interaction)
+        elif action == "reset-to-default":
+            await self._reset_to_default(interaction)
     
     async def _list_models(self, interaction: discord.Interaction):
         """List all models with their status"""
@@ -487,6 +489,43 @@ class ModelManagement(commands.Cog):
             color=0x32a956
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    async def _reset_to_default(self, interaction: discord.Interaction):
+        """Reset models configuration to default"""
+        # Check if default file exists
+        if not os.path.exists(self.models_config_default_file):
+            await interaction.response.send_message("❌ Default configuration file not found.", ephemeral=True)
+            return
+        
+        try:
+            # Copy default to local config, overwriting existing
+            import shutil
+            shutil.copy2(self.models_config_default_file, self.models_config_file)
+            logger.info(f"Reset models configuration from {self.models_config_default_file}")
+            
+            # Reload the configuration
+            self.models_config = self._load_models_config()
+            
+            # Update runtime MODEL_CONFIG in ai_commands
+            from .ai_commands import MODEL_CONFIG
+            MODEL_CONFIG.clear()
+            MODEL_CONFIG.update(self.models_config)
+            
+            embed = discord.Embed(
+                title="🔄 Models Reset to Default",
+                description="Models configuration has been reset to default values. All custom models and settings have been removed.",
+                color=0xFF6B35  # Orange to indicate data was reset
+            )
+            embed.add_field(
+                name="⚠️ Note",
+                value="This action removed all custom model configurations. Use `/models list` to see the current models.",
+                inline=False
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Failed to reset models configuration: {e}")
+            await interaction.response.send_message(f"❌ Failed to reset configuration: {e}", ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ModelManagement(bot))
