@@ -91,8 +91,8 @@ class ImageGen(commands.Cog):
         # Quality
         if quality in ("high", "hd"):
             footer_parts.append("High Quality")
-        elif quality in ("standard", "medium"):
-            footer_parts.append("Standard Quality")
+        elif quality in ("standard", "medium", "low"):
+            footer_parts.append("Low Quality")
         
         # Orientation
         if size == "1536x1024" or size == "1792x1024":
@@ -464,7 +464,7 @@ class ImageGen(commands.Cog):
     @app_commands.describe(
         prompt="The prompt for the image",
         model="Choose the image generation model",
-        quality="Image quality level (high recommended for best results)",
+        quality="Image quality level",
         orientation="Choose the image orientation (Square, Landscape, or Portrait)",
         attachment="Optional input image",
         image_mode="How to use the attached image (only for GPT-image-1)",
@@ -475,7 +475,7 @@ class ImageGen(commands.Cog):
         interaction: discord.Interaction,
         prompt: str,
         model: Literal["dall-e-3", "gpt-image-1"] = "dall-e-3",
-        quality: Literal["standard", "high"] = "high",
+        quality: Literal["low", "high"] = "high",
         orientation: Literal["Square", "Landscape", "Portrait"] = "Square",
         attachment: Optional[discord.Attachment] = None,
         image_mode: Literal["input", "edit"] = "input",
@@ -488,8 +488,10 @@ class ImageGen(commands.Cog):
 
         # Map quality parameter to API format
         if model == "gpt-image-1":
+            # Two-tier mapping: low → medium, high → high
             api_quality = "high" if quality == "high" else "medium"
         else:
+            # Two-tier mapping: low → standard, high → hd
             api_quality = "hd" if quality == "high" else "standard"
         
         # Different size support for different models
@@ -567,7 +569,7 @@ class ImageGen(commands.Cog):
         num_input_images = len(image_inputs)
         
         # Estimate cost based on quality and multi-image operations
-        base_cost = 0.20 if quality == "high" else 0.05
+        base_cost = 0.20 if quality == "high" else 0.06
         estimated_cost = base_cost * 1.5 if num_input_images > 1 else base_cost
         
         if remaining_quota == 0:
@@ -741,7 +743,7 @@ class ImageEditModal(discord.ui.Modal):
     )
     
     quality = discord.ui.TextInput(
-        label='Quality (standard/high)',
+        label='Quality (low/high)',
         placeholder='high',
         default='high',
         required=False,
@@ -766,7 +768,9 @@ class ImageEditModal(discord.ui.Modal):
         
         # Get quality setting
         quality_str = self.quality.value.strip().lower() or "high"
-        quality_str = "high" if quality_str in ("high", "hd") else "high"
+        # Validate quality options - two-tier system
+        if quality_str not in ("low", "high"):
+            quality_str = "high"  # Default to high if invalid
         
         # Estimate cost based on quality and multi-image operations
         base_cost = 0.20 if quality_str == "high" else 0.06
@@ -782,14 +786,16 @@ class ImageEditModal(discord.ui.Modal):
             
         start_time = time.time()
         model_str = "gpt-image-1"
-        orientation_str = self.orientation.value.strip() or "Square"
+        orientation_str = self.orientation.value.strip().title() or "Square"
         image_mode_str = self.image_mode.value.strip().lower() or "input"
         use_streaming = True
         
         # Map quality to API format
         if model_str == "gpt-image-1":
+            # Two-tier mapping: low → medium, high → high
             api_quality = "high" if quality_str == "high" else "medium"
         else:
+            # Two-tier mapping: low → standard, high → hd
             api_quality = "hd" if quality_str == "high" else "standard"
         
         # Different size support for different models

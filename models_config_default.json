@@ -1,11 +1,71 @@
 {
-    "gpt-4o-mini": {
+  "gpt-4o-mini": {
     "name": "GPT-4o-mini",
     "color": 65408,
     "default_footer": "GPT-4o-mini",
     "api_model": "gpt-4o-mini",
     "supports_images": true,
     "api": "openai",
+    "enabled": true,
+    "admin_only": false
+  },
+  "o4-mini": {
+    "name": "o4-mini",
+    "color": 65408,
+    "default_footer": "o4-mini",
+    "api_model": "openai/o4-mini",
+    "supports_images": false,
+    "api": "openrouter",
+    "enabled": true,
+    "admin_only": false
+  },
+  "claude-sonnet-4": {
+    "name": "Claude 3.7 Sonnet",
+    "color": 14283054,
+    "default_footer": "Claude 3.7 Sonnet",
+    "api_model": "anthropic/claude-sonnet-4",
+    "supports_images": true,
+    "api": "openrouter",
+    "enabled": true,
+    "admin_only": false
+  },
+  "deepseek-r1-0528": {
+    "name": "DeepSeek R1",
+    "color": 1146986,
+    "default_footer": "DeepSeek R1",
+    "api_model": "deepseek/deepseek-r1-0528",
+    "supports_images": false,
+    "api": "openrouter",
+    "enabled": true,
+    "admin_only": false
+  },
+  "gemini-2.5-pro-preview": {
+    "name": "Gemini 2.5 Pro Preview",
+    "color": 4437377,
+    "default_footer": "Gemini 2.5 Pro Preview",
+    "api_model": "google/gemini-2.5-pro-preview",
+    "supports_images": true,
+    "api": "openrouter",
+    "enabled": true,
+    "admin_only": false
+  },
+  "gemini-2.5-flash-preview": {
+    "name": "Gemini 2.5 Flash Preview",
+    "color": 4437377,
+    "default_footer": "Gemini 2.5 Flash Preview",
+    "api_model": "google/gemini-2.5-flash-preview-05-20",
+    "supports_images": true,
+    "api": "openrouter",
+    "enabled": true,
+    "admin_only": false
+  },
+  "grok-3-beta": {
+    "name": "Grok 3 Beta",
+    "color": 9699539,
+    "default_footer": "Grok 3 Beta",
+    "api_model": "x-ai/grok-3-beta",
+    "supports_images": true,
+    "api": "openrouter",
     "enabled": true,
     "admin_only": false
   }
