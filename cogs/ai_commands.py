@@ -5,40 +5,111 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
-import json
 import os
 
 logger = logging.getLogger(__name__)
+
+# Model type definition
+ModelChoices = Literal[
+    "gpt-4o-mini",
+    "o4-mini", 
+    "claude-sonnet-4",
+    "deepseek-r1-0528",
+    "gemini-2.5-pro-preview",
+    "gemini-2.5-flash-preview",
+    "grok-3-beta"
+]
+
+# Hardcoded models configuration
+MODELS_CONFIG = {
+    "gpt-4o-mini": {
+        "name": "GPT-4o-mini",
+        "default_footer": "GPT-4o-mini",
+        "api_model": "gpt-4o-mini",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openai",
+        "enabled": True,
+        "admin_only": False
+    },
+    "o4-mini": {
+        "name": "o4-mini",
+        "default_footer": "o4-mini", 
+        "api_model": "openai/o4-mini",
+        "supports_images": False,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "claude-sonnet-4": {
+        "name": "Claude Sonnet 4",
+        "default_footer": "Claude Sonnet 4",
+        "api_model": "anthropic/claude-sonnet-4",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "deepseek-r1-0528": {
+        "name": "DeepSeek R1",
+        "default_footer": "DeepSeek R1",
+        "api_model": "deepseek/deepseek-r1-0528",
+        "supports_images": False,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "gemini-2.5-pro-preview": {
+        "name": "Gemini 2.5 Pro",
+        "default_footer": "Gemini 2.5 Pro",
+        "api_model": "google/gemini-2.5-pro-preview:thinking",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "gemini-2.5-flash-preview": {
+        "name": "Gemini 2.5 Flash",
+        "default_footer": "Gemini 2.5 Flash",
+        "api_model": "google/gemini-2.5-flash-preview-05-20:thinking",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "grok-3-beta": {
+        "name": "Grok 3",
+        "default_footer": "Grok 3",
+        "api_model": "x-ai/grok-3-beta",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    }
+}
 
 
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.models_config = self._load_models_config()
-        logger.info(f"Loaded {len(self.models_config)} models from models_config.json")
-    
-    def _load_models_config(self) -> dict:
-        """Load models configuration from JSON file"""
-        try:
-            with open('models_config.json', 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.error("models_config.json not found")
-            return {}
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing models_config.json: {e}")
-            return {}
+        logger.info(f"Loaded {len(MODELS_CONFIG)} hardcoded models")
     
     def _get_model_config(self, model_key: str) -> dict:
         """Get configuration for a specific model"""
-        return self.models_config.get(model_key, {})
+        return MODELS_CONFIG.get(model_key, {})
     
     def _get_available_models(self, user_id: int) -> dict:
         """Get available models for a user"""
         available = {}
         is_admin = self._is_admin(user_id)
         
-        for key, config in self.models_config.items():
+        for key, config in MODELS_CONFIG.items():
             if config.get('enabled', False):
                 if not config.get('admin_only', False) or is_admin:
                     available[key] = config
@@ -245,7 +316,7 @@ class AICommands(commands.Cog):
     @app_commands.command(name="chat", description="Chat with an AI model")
     @app_commands.describe(
         prompt="Your query or instructions",
-        model="Model to use for the response (type model name)",
+        model="Model to use for the response",
         fun="Toggle fun mode",
         web_search="Force web search (requires tool_calling)",
         tool_calling="Enable AI to use tools like web search and content retrieval",
@@ -256,7 +327,7 @@ class AICommands(commands.Cog):
         self, 
         interaction: Interaction, 
         prompt: str,
-        model: str = "google/gemini-2.5-flash-preview-05-20:thinking", 
+        model: ModelChoices = "gemini-2.5-flash-preview", 
         fun: bool = False,
         web_search: bool = False,
         tool_calling: bool = True,
@@ -279,7 +350,7 @@ class AICommands(commands.Cog):
                 f"and {model_config.get('name', model)} doesn't support image processing.",
                 ephemeral=True
             )
-            model = "google/gemini-2.5-flash-preview-05-20:thinking"
+            model = "gemini-2.5-flash-preview"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
 
@@ -345,7 +416,7 @@ class ModelSelectionView(discord.ui.View):
         self.original_message = original_message
         self.additional_text = additional_text
         self.user_id = user_id
-        self.selected_model = "google/gemini-2.5-flash-preview-05-20:thinking"
+        self.selected_model = "gemini-2.5-flash-preview"
         self.fun = False
         self.web_search = False
         self.tool_calling = True
@@ -362,6 +433,9 @@ class ModelSelectionView(discord.ui.View):
             ai_commands = self._bot_ref.get_cog("AICommands")
             if ai_commands:
                 available_models_dict = ai_commands._get_available_models(self.user_id or 0)
+        else:
+            # Fallback to all enabled models if no bot reference
+            available_models_dict = {k: v for k, v in MODELS_CONFIG.items() if v.get('enabled', False)}
         
         # Add image-supporting models first if we have an image
         if self.has_image:
