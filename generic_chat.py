@@ -137,8 +137,6 @@ async def perform_chat_query(
     ddg_summary = None
     if duck_cog and web_search:
         try:
-            if interaction:
-                await interaction.followup.send("🔍 **Searching the web...**", ephemeral=True)
             search_query = await duck_cog.extract_search_query(original_prompt)
             if search_query:
                 ddg_summary = await duck_cog.perform_ddg_search(search_query)
@@ -162,9 +160,6 @@ async def perform_chat_query(
         return f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Please be mindful of usage.", 0, f"${remaining_quota:.4f} remaining"
 
     try:
-        if interaction:
-            await interaction.followup.send("🧠 **Generating AI response...**", ephemeral=True)
-            
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
             wait=wait_exponential(min=1, max=10),
@@ -405,13 +400,6 @@ async def perform_chat_query_with_tools(
     
     for iteration in range(max_iterations):
         try:
-            # Send status update for each iteration
-            if interaction:
-                if iteration == 0:
-                    await interaction.followup.send("🤖 **Analyzing your request...**", ephemeral=True)
-                else:
-                    await interaction.followup.send(f"🔄 **Processing tools (step {iteration + 1})...**", ephemeral=True)
-            
             # Determine tool choice
             if iteration == 0 and force_tools:
                 tool_choice = "required"
@@ -481,10 +469,6 @@ async def perform_chat_query_with_tools(
                 # Continue to next iteration
                 continue
             else:
-                # No tool calls, we have the final response
-                if interaction:
-                    await interaction.followup.send("📝 **Writing final response...**", ephemeral=True)
-                
                 elapsed = round(time.time() - start_time, 2)
                 
                 # Add tool usage to totals
