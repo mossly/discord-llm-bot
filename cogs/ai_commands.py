@@ -144,7 +144,7 @@ class AICommands(commands.Cog):
         
         return False
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, deep_research: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
         if ctx:
             user_id = str(ctx.author.id)
@@ -222,8 +222,12 @@ class AICommands(commands.Cog):
             # Use tool-enabled query if tools are supported and enabled
             if supports_tools and tool_calling and tool_cog:
                 
-                # Convert web_search flag to force_tools for backward compatibility
-                force_tools = web_search
+                # Convert web_search or deep_research flag to force_tools for backward compatibility
+                force_tools = web_search or deep_research
+                
+                # If deep_research is enabled, prepend instruction to use deep research tool
+                if deep_research:
+                    cleaned_prompt = "Use the deep_research tool to comprehensively investigate: " + cleaned_prompt
                 
                 result, elapsed, footer_with_stats = await perform_chat_query_with_tools(
                     prompt=cleaned_prompt,
@@ -241,7 +245,8 @@ class AICommands(commands.Cog):
                     use_tools=tool_calling,
                     force_tools=force_tools,
                     max_tokens=max_tokens,
-                    interaction=interaction
+                    interaction=interaction,
+                    deep_research=deep_research
                 )
             else:
                 # Fall back to standard query
@@ -322,6 +327,7 @@ class AICommands(commands.Cog):
         model="Model to use for the response",
         fun="Toggle fun mode",
         web_search="Force web search (requires tool_calling)",
+        deep_research="Force deep research mode",
         tool_calling="Enable AI to use tools like web search and content retrieval",
         attachment="Optional attachment (image or text file)",
         max_tokens="Maximum tokens for response (default: 8000)"
@@ -333,6 +339,7 @@ class AICommands(commands.Cog):
         model: ModelChoices = "gemini-2.5-flash-preview", 
         fun: bool = False,
         web_search: bool = False,
+        deep_research: bool = False,
         tool_calling: bool = True,
         attachment: Optional[Attachment] = None,
         max_tokens: Optional[int] = None
@@ -355,7 +362,7 @@ class AICommands(commands.Cog):
             )
             model = "gemini-2.5-flash-preview"
         
-        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
+        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, deep_research=deep_research, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -422,6 +429,7 @@ class ModelSelectionView(discord.ui.View):
         self.selected_model = "gemini-2.5-flash-preview"
         self.fun = False
         self.web_search = False
+        self.deep_research = False
         self.tool_calling = True
         
         self._create_dropdown()
@@ -499,6 +507,14 @@ class ModelSelectionView(discord.ui.View):
         web_search_button.callback = self.toggle_web_search
         self.add_item(web_search_button)
         
+        deep_research_button = discord.ui.Button(
+            label=f"Deep Research: {'ON' if self.deep_research else 'OFF'}", 
+            style=discord.ButtonStyle.secondary, 
+            custom_id="toggle_deep_research"
+        )
+        deep_research_button.callback = self.toggle_deep_research
+        self.add_item(deep_research_button)
+        
         submit_button = discord.ui.Button(
             label="Submit",
             style=discord.ButtonStyle.primary,
@@ -533,9 +549,10 @@ class ModelSelectionView(discord.ui.View):
     
     async def toggle_tools(self, interaction: discord.Interaction):
         self.tool_calling = not self.tool_calling
-        # If tools are disabled, also disable web search
+        # If tools are disabled, also disable web search and deep research
         if not self.tool_calling:
             self.web_search = False
+            self.deep_research = False
         self.clear_items()
         self._create_dropdown()
         self._create_buttons()
@@ -545,6 +562,16 @@ class ModelSelectionView(discord.ui.View):
         self.web_search = not self.web_search
         # If web search is enabled, ensure tools are also enabled
         if self.web_search:
+            self.tool_calling = True
+        self.clear_items()
+        self._create_dropdown()
+        self._create_buttons()
+        await interaction.response.edit_message(view=self)
+    
+    async def toggle_deep_research(self, interaction: discord.Interaction):
+        self.deep_research = not self.deep_research
+        # If deep research is enabled, ensure tools are also enabled
+        if self.deep_research:
             self.tool_calling = True
         self.clear_items()
         self._create_dropdown()
@@ -581,6 +608,7 @@ class ModelSelectionView(discord.ui.View):
                 reply_msg=self.original_message,
                 fun=self.fun,
                 web_search=self.web_search,
+                deep_research=self.deep_research,
                 tool_calling=self.tool_calling,
                 reply_user=interaction.user
             )
