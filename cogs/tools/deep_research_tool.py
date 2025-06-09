@@ -542,7 +542,9 @@ class DeepResearchTool(BaseTool):
     
     async def _extract_key_content_with_mini(self, raw_content: str, title: str, url: str, query: str) -> Dict[str, Any]:
         """Use GPT-4o-mini to extract key content for context management"""
-        if not self.openrouter_api_key:
+        # Get the API utils instance from the bot
+        api_utils = self.bot.get_cog('APIUtils') if self.bot else None
+        if not api_utils:
             # Fallback to simple extraction
             return {
                 "extracted_content": raw_content[:1000],
@@ -551,12 +553,6 @@ class DeepResearchTool(BaseTool):
             }
         
         try:
-            import openai
-            
-            client = openai.OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=self.openrouter_api_key
-            )
             
             extraction_prompt = f"""Extract key information from this content for research on: "{query}"
 
@@ -579,23 +575,23 @@ Focus on:
 - Quotes and authoritative statements
 - Unique insights not commonly known"""
 
-            response = client.chat.completions.create(
-                model="openai/gpt-4.1-nano",
+            # Use the established API pattern
+            content, stats = await api_utils.send_request(
+                model="openai/gpt-4o-mini",
                 messages=[{"role": "user", "content": extraction_prompt}],
-                max_tokens=600,
-                temperature=0.1
+                api="openrouter",
+                max_tokens=600
             )
             
-            # Track API usage
-            if hasattr(response, 'usage') and response.usage:
-                input_tokens = response.usage.prompt_tokens
-                output_tokens = response.usage.completion_tokens
-                # Get actual cost from API response
-                cost = getattr(response.usage, 'total_cost', 0.0)
+            # Track API usage if stats available
+            if stats:
+                input_tokens = stats.get('input_tokens', 0)
+                output_tokens = stats.get('output_tokens', 0)
+                cost = stats.get('total_cost', 0.0)
                 self.add_session_usage(input_tokens, output_tokens, cost)
             
             # Parse JSON response
-            extracted_data = json.loads(response.choices[0].message.content)
+            extracted_data = json.loads(content)
             
             return {
                 "extracted_content": extracted_data.get("extracted_content", "")[:2000],  # Limit size
