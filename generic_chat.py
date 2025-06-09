@@ -465,13 +465,6 @@ async def perform_chat_query_with_tools(
                     "tool_calls": tool_calls
                 })
                 
-                # Send status update for tool execution
-                if interaction:
-                    tool_names = [tc.get("function", {}).get("name", "tool") for tc in tool_calls]
-                    if len(tool_names) == 1:
-                        await interaction.followup.send(f"🛠️ **Using {tool_names[0]}...**", ephemeral=True)
-                    else:
-                        await interaction.followup.send(f"🛠️ **Using {len(tool_names)} tools...**", ephemeral=True)
                 
                 # Execute tools
                 tool_results = await tool_cog.process_tool_calls(

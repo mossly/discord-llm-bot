@@ -221,9 +221,6 @@ class AICommands(commands.Cog):
         try:
             # Use tool-enabled query if tools are supported and enabled
             if supports_tools and tool_calling and tool_cog:
-                # Send status update for tool-enabled processing
-                if interaction:
-                    await interaction.followup.send("🔧 **Activating AI tools...**", ephemeral=True)
                 
                 # Convert web_search flag to force_tools for backward compatibility
                 force_tools = web_search
