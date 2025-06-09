@@ -559,12 +559,12 @@ class DeepResearchTool(BaseTool):
 Source: {title}
 URL: {url}
 
-Content (first 3000 chars):
-{raw_content[:3000]}
+Content (first 8000 chars):
+{raw_content[:8000]}
 
 Respond with JSON:
 {{
-  "extracted_content": "relevant content summary (max 500 words)",
+  "extracted_content": "relevant content summary (max 1000 words)",
   "key_insights": ["insight 1", "insight 2", "insight 3"],
   "relevance_score": 0.8
 }}
@@ -594,7 +594,7 @@ Focus on:
             extracted_data = json.loads(content)
             
             return {
-                "extracted_content": extracted_data.get("extracted_content", "")[:2000],  # Limit size
+                "extracted_content": extracted_data.get("extracted_content", "")[:8000],  # Limit size
                 "key_insights": extracted_data.get("key_insights", [])[:5],
                 "relevance_score": min(1.0, max(0.0, extracted_data.get("relevance_score", 0.5)))
             }
@@ -692,12 +692,21 @@ WHEN CALLING finish_query:
 - Be thorough but concise
 - Focus on most relevant and authoritative information
 
+RESPONSE LENGTH:
+Keep your responses under 4000 characters when possible. For reference, 4000 characters is roughly equivalent to:
+- 2-3 pages of a standard paperback novel
+- A detailed newspaper article 
+- About 600-800 words of typical writing
+- 15-20 average Discord messages
+
 WRITING STYLE:
 - Clear, direct language
 - Use active voice, avoid adverbs
 - British spelling
 - Express calm confidence
 - No em dashes (—)
+
+This ensures optimal readability while maintaining comprehensive coverage of the topic.
 
 CITATION FORMAT:
 - Inline citations: [1], [2], [3]
