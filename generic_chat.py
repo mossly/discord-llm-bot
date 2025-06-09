@@ -11,7 +11,32 @@ from user_quotas import quota_manager
 
 logger = logging.getLogger(__name__)
 
-def build_standardized_footer(model_name: str, input_tokens: int = 0, output_tokens: int = 0, cost: float = 0, elapsed_time: float = 0) -> str:
+def extract_footnotes(content: str) -> tuple[str, str]:
+    """Extract footnotes from content and return (cleaned_content, footnotes)"""
+    import re
+    
+    # Look for footnotes at the end of the message
+    # Patterns: "References:", "Sources:", "Footnotes:", or lines starting with [1], 1., etc.
+    footnote_patterns = [
+        r'\n\n(References?:.*?)$',
+        r'\n\n(Sources?:.*?)$', 
+        r'\n\n(Footnotes?:.*?)$',
+        r'\n\n(\[[0-9]+\].*?)$',
+        r'\n\n([0-9]+\..*?)$'
+    ]
+    
+    for pattern in footnote_patterns:
+        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+        if match:
+            footnotes = match.group(1).strip()
+            # Remove the footnotes from the main content
+            cleaned_content = content[:match.start()] + content[match.end():]
+            return cleaned_content.strip(), footnotes
+    
+    # No footnotes found
+    return content, ""
+
+def build_standardized_footer(model_name: str, input_tokens: int = 0, output_tokens: int = 0, cost: float = 0, elapsed_time: float = 0, footnotes: str = "") -> str:
     """Build standardized footer for AI responses"""
     # First line: Clean model name only
     first_line = model_name
@@ -53,6 +78,16 @@ def build_standardized_footer(model_name: str, input_tokens: int = 0, output_tok
         usage_parts.append(f"{elapsed_time} seconds")
     
     second_line = " | ".join(usage_parts)
+    
+    # Add footnotes if provided (utilize extra footer space)
+    if footnotes:
+        # Ensure we stay within Discord's 2048 character footer limit
+        available_space = 2048 - len(first_line) - len(second_line) - 10  # Buffer for newlines
+        if available_space > 50:  # Only add if we have reasonable space
+            truncated_footnotes = footnotes[:available_space]
+            if len(footnotes) > available_space:
+                truncated_footnotes = truncated_footnotes.rsplit(' ', 1)[0] + "..."
+            return f"{first_line}\n{second_line}\n{truncated_footnotes}"
     
     return f"{first_line}\n{second_line}"
 
@@ -208,16 +243,20 @@ async def perform_chat_query(
         else:
             logger.warning("No generation stats received from API")
         
+        # Extract footnotes from response and clean content
+        cleaned_content, footnotes = extract_footnotes(result)
+        
         # Build standardized footer
         footer = build_standardized_footer(
             model_name=reply_footer,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=total_cost,
-            elapsed_time=elapsed
+            elapsed_time=elapsed,
+            footnotes=footnotes
         )
         
-        return result, elapsed, footer
+        return cleaned_content, elapsed, footer
             
     except Exception as e:
         logger.exception("Error in perform_chat_query: %s", e)
@@ -440,18 +479,23 @@ async def perform_chat_query_with_tools(
                 if tool_usage["cost"] > 0:
                     quota_manager.add_usage(user_id, tool_usage["cost"])
                 
+                # Extract footnotes from response and clean content
+                final_content = assistant_content or "I couldn't generate a response."
+                cleaned_content, footnotes = extract_footnotes(final_content)
+                
                 footer = build_standardized_footer(
                     model_name=reply_footer,
                     input_tokens=final_input_tokens,
                     output_tokens=final_output_tokens,
                     cost=final_cost,
-                    elapsed_time=elapsed
+                    elapsed_time=elapsed,
+                    footnotes=footnotes
                 )
                 
                 # Clean up session
                 tool_cog.end_session(session_id)
                 
-                return assistant_content or "I couldn't generate a response.", elapsed, footer
+                return cleaned_content, elapsed, footer
                 
         except Exception as e:
             logger.exception(f"Error in tool calling iteration {iteration}: {e}")
@@ -529,19 +573,23 @@ async def perform_chat_query_with_tools(
         if tool_usage["cost"] > 0:
             quota_manager.add_usage(user_id, tool_usage["cost"])
         
+        # Extract footnotes from response and clean content
+        raw_content = final_response.get("content", "I couldn't generate a response.")
+        cleaned_content, footnotes = extract_footnotes(raw_content)
+        
         footer = build_standardized_footer(
             model_name=reply_footer,
             input_tokens=final_input_tokens,
             output_tokens=final_output_tokens,
             cost=final_cost,
-            elapsed_time=elapsed
+            elapsed_time=elapsed,
+            footnotes=footnotes
         )
         
         # Clean up session
         tool_cog.end_session(session_id)
         
-        final_content = final_response.get("content", "I couldn't generate a response.")
-        return final_content, elapsed, footer
+        return cleaned_content, elapsed, footer
         
     except Exception as e:
         logger.exception(f"Error in final response generation: {e}")
