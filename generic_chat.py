@@ -279,6 +279,7 @@ async def perform_chat_query_with_tools(
     use_fun: bool = False,
     use_tools: bool = True,
     force_tools: bool = False,
+    deep_research: bool = False,
     max_tokens: int = 8000,
     max_iterations: int = 10,
     interaction=None
