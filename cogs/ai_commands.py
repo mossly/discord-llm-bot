@@ -65,7 +65,7 @@ MODELS_CONFIG = {
     "gemini-2.5-pro-preview": {
         "name": "Gemini 2.5 Pro",
         "default_footer": "Gemini 2.5 Pro",
-        "api_model": "google/gemini-2.5-pro-preview:thinking",
+        "api_model": "google/gemini-2.5-pro-preview",
         "supports_images": True,
         "supports_tools": True,
         "api": "openrouter",
