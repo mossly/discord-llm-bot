@@ -128,7 +128,8 @@ async def perform_chat_query(
     api: str = "openai",
     use_fun: bool = False,
     web_search: bool = False,
-    max_tokens: int = 8000
+    max_tokens: int = 8000,
+    interaction=None
 ) -> tuple[str, float, str]:
     start_time = time.time()
     original_prompt = prompt
@@ -136,6 +137,8 @@ async def perform_chat_query(
     ddg_summary = None
     if duck_cog and web_search:
         try:
+            if interaction:
+                await interaction.followup.send("🔍 **Searching the web...**", ephemeral=True)
             search_query = await duck_cog.extract_search_query(original_prompt)
             if search_query:
                 ddg_summary = await duck_cog.perform_ddg_search(search_query)
@@ -159,6 +162,9 @@ async def perform_chat_query(
         return f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Please be mindful of usage.", 0, f"${remaining_quota:.4f} remaining"
 
     try:
+        if interaction:
+            await interaction.followup.send("🧠 **Generating AI response...**", ephemeral=True)
+            
         async for attempt in AsyncRetrying(
             retry=retry_if_exception_type((openai.APIError, openai.APIConnectionError, openai.RateLimitError)),
             wait=wait_exponential(min=1, max=10),
@@ -279,7 +285,8 @@ async def perform_chat_query_with_tools(
     use_tools: bool = True,
     force_tools: bool = False,
     max_tokens: int = 8000,
-    max_iterations: int = 10
+    max_iterations: int = 10,
+    interaction=None
 ) -> tuple[str, float, str]:
     """Enhanced chat query with tool calling support"""
     start_time = time.time()
@@ -398,6 +405,13 @@ async def perform_chat_query_with_tools(
     
     for iteration in range(max_iterations):
         try:
+            # Send status update for each iteration
+            if interaction:
+                if iteration == 0:
+                    await interaction.followup.send("🤖 **Analyzing your request...**", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"🔄 **Processing tools (step {iteration + 1})...**", ephemeral=True)
+            
             # Determine tool choice
             if iteration == 0 and force_tools:
                 tool_choice = "required"
@@ -451,6 +465,14 @@ async def perform_chat_query_with_tools(
                     "tool_calls": tool_calls
                 })
                 
+                # Send status update for tool execution
+                if interaction:
+                    tool_names = [tc.get("function", {}).get("name", "tool") for tc in tool_calls]
+                    if len(tool_names) == 1:
+                        await interaction.followup.send(f"🛠️ **Using {tool_names[0]}...**", ephemeral=True)
+                    else:
+                        await interaction.followup.send(f"🛠️ **Using {len(tool_names)} tools...**", ephemeral=True)
+                
                 # Execute tools
                 tool_results = await tool_cog.process_tool_calls(
                     tool_calls,
@@ -467,6 +489,9 @@ async def perform_chat_query_with_tools(
                 continue
             else:
                 # No tool calls, we have the final response
+                if interaction:
+                    await interaction.followup.send("📝 **Writing final response...**", ephemeral=True)
+                
                 elapsed = round(time.time() - start_time, 2)
                 
                 # Add tool usage to totals
