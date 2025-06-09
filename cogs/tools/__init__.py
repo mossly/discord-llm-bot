@@ -20,6 +20,13 @@ except ImportError:
     CONTENT_TOOL_AVAILABLE = False
     ContentRetrievalTool = None
 
+try:
+    from .deep_research_tool import DeepResearchTool
+    DEEP_RESEARCH_AVAILABLE = True
+except ImportError:
+    DEEP_RESEARCH_AVAILABLE = False
+    DeepResearchTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -27,3 +34,6 @@ if WEB_SEARCH_AVAILABLE:
 
 if CONTENT_TOOL_AVAILABLE:
     __all__.append('ContentRetrievalTool')
+
+if DEEP_RESEARCH_AVAILABLE:
+    __all__.append('DeepResearchTool')

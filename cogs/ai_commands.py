@@ -5,36 +5,73 @@ from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
 from embed_utils import send_embed
+import json
+import os
 
 logger = logging.getLogger(__name__)
-
-# Backward compatibility for deployed versions that might still reference MODEL_CONFIG
-MODEL_CONFIG = {}
 
 
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self._cached_model_choices = {}  # Cache pre-built choices per user type
+        self.models_config = self._load_models_config()
+        logger.info(f"Loaded {len(self.models_config)} models from models_config.json")
+    
+    def _load_models_config(self) -> dict:
+        """Load models configuration from JSON file"""
+        try:
+            with open('models_config.json', 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            logger.error("models_config.json not found")
+            return {}
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing models_config.json: {e}")
+            return {}
     
     def _get_model_config(self, model_key: str) -> dict:
-        """Get configuration for a specific model (cached)"""
-        model_management = self.bot.get_cog("ModelManagement")
-        if model_management:
-            config = model_management.get_model_config(model_key)
-            return config or {}
-        return {}
+        """Get configuration for a specific model"""
+        return self.models_config.get(model_key, {})
     
     def _get_available_models(self, user_id: int) -> dict:
-        """Get available models with full configs for a user (cached)"""
-        model_management = self.bot.get_cog("ModelManagement")
-        if model_management:
-            return model_management.get_available_models(user_id)
-        return {}
+        """Get available models for a user"""
+        available = {}
+        is_admin = self._is_admin(user_id)
+        
+        for key, config in self.models_config.items():
+            if config.get('enabled', False):
+                if not config.get('admin_only', False) or is_admin:
+                    available[key] = config
+        
+        return available
     
-    def invalidate_model_choice_cache(self):
-        """Clear the model choice cache when models are updated"""
-        self._cached_model_choices.clear()
+    def _is_admin(self, user_id: int) -> bool:
+        """Check if user is an admin"""
+        # Check environment variable for admin IDs
+        admin_ids_str = os.getenv("BOT_ADMIN_IDS", "")
+        if admin_ids_str:
+            try:
+                admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
+                if user_id in admin_ids:
+                    return True
+            except ValueError:
+                pass
+        
+        # Check admin_ids.txt file
+        try:
+            with open("admin_ids.txt", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        try:
+                            if int(line) == user_id:
+                                return True
+                        except ValueError:
+                            continue
+        except FileNotFoundError:
+            pass
+        
+        return False
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
@@ -204,42 +241,6 @@ class AICommands(commands.Cog):
         else:
             await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
-    def _build_model_choices_for_user(self, user_id: int) -> list[app_commands.Choice[str]]:
-        """Pre-build all model choices for a user"""
-        available_models = self._get_available_models(user_id)
-        choices = []
-        
-        for model_key, config in available_models.items():
-            name = config.get("name", model_key)
-            choices.append(app_commands.Choice(name=f"{name} ({model_key})", value=model_key))
-        
-        return choices
-    
-    async def model_autocomplete(self, interaction: Interaction, current: str) -> list[app_commands.Choice[str]]:
-        """Autocomplete function for model parameter (highly optimized)"""
-        # Determine cache key based on user permissions
-        model_management = self.bot.get_cog("ModelManagement")
-        is_admin = model_management and model_management.is_admin(interaction.user.id)
-        cache_key = "admin" if is_admin else "user"
-        
-        # Get or build cached choices
-        if cache_key not in self._cached_model_choices:
-            self._cached_model_choices[cache_key] = self._build_model_choices_for_user(interaction.user.id)
-        
-        all_choices = self._cached_model_choices[cache_key]
-        
-        # If no search term, return all choices
-        if not current:
-            return all_choices[:25]
-        
-        # Filter pre-built choices
-        current_lower = current.lower()
-        filtered = [
-            choice for choice in all_choices
-            if current_lower in choice.name.lower() or current_lower in choice.value.lower()
-        ]
-        
-        return filtered[:25]  # Discord limits to 25 choices
     
     @app_commands.command(name="chat", description="Chat with an AI model")
     @app_commands.describe(
@@ -251,12 +252,11 @@ class AICommands(commands.Cog):
         attachment="Optional attachment (image or text file)",
         max_tokens="Maximum tokens for response (default: 8000)"
     )
-    @app_commands.autocomplete(model=model_autocomplete)
     async def chat_slash(
         self, 
         interaction: Interaction, 
         prompt: str,
-        model: str = "gemini-2.5-flash-preview", 
+        model: str = "google/gemini-2.5-flash-preview-05-20:thinking", 
         fun: bool = False,
         web_search: bool = False,
         tool_calling: bool = True,
@@ -279,7 +279,7 @@ class AICommands(commands.Cog):
                 f"and {model_config.get('name', model)} doesn't support image processing.",
                 ephemeral=True
             )
-            model = "gemini-2.5-flash-preview"
+            model = "google/gemini-2.5-flash-preview-05-20:thinking"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
 
@@ -345,7 +345,7 @@ class ModelSelectionView(discord.ui.View):
         self.original_message = original_message
         self.additional_text = additional_text
         self.user_id = user_id
-        self.selected_model = "gemini-2.5-flash-preview"
+        self.selected_model = "google/gemini-2.5-flash-preview-05-20:thinking"
         self.fun = False
         self.web_search = False
         self.tool_calling = True
@@ -356,12 +356,12 @@ class ModelSelectionView(discord.ui.View):
     def _create_dropdown(self):
         options = []
         
-        # Get available models for this user (cached)
+        # Get available models for this user
         available_models_dict = {}
         if hasattr(self, '_bot_ref') and self._bot_ref:
-            model_management = self._bot_ref.get_cog("ModelManagement")
-            if model_management:
-                available_models_dict = model_management.get_available_models(self.user_id or 0)
+            ai_commands = self._bot_ref.get_cog("AICommands")
+            if ai_commands:
+                available_models_dict = ai_commands._get_available_models(self.user_id or 0)
         
         # Add image-supporting models first if we have an image
         if self.has_image:
@@ -435,9 +435,9 @@ class ModelSelectionView(discord.ui.View):
         
         # Check if selected model supports images when image is present
         if self.has_image and hasattr(self, '_bot_ref') and self._bot_ref:
-            model_management = self._bot_ref.get_cog("ModelManagement")
-            if model_management:
-                model_config = model_management.get_model_config(self.selected_model)
+            ai_commands = self._bot_ref.get_cog("AICommands")
+            if ai_commands:
+                model_config = ai_commands._get_model_config(self.selected_model)
                 if model_config and not model_config.get("supports_images", False):
                     await interaction.response.send_message(
                         f"Warning: {model_config.get('name', self.selected_model)} doesn't support images. Please select a model that supports image processing.",

@@ -22,11 +22,8 @@ async def on_ready():
     await bot.tree.sync()
 
 async def load_cogs():
-    # Skip utility modules that are not cogs
-    skip_files = {"model_cache.py"}
-    
     for filename in os.listdir("./cogs"):
-        if filename.endswith(".py") and filename not in skip_files:
+        if filename.endswith(".py") and not filename.startswith("__"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
             logging.info(f"Loaded cog: {filename}")
 
