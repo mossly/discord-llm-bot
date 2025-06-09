@@ -244,10 +244,6 @@ class AICommands(commands.Cog):
                     interaction=interaction
                 )
             else:
-                # Send status update for standard processing
-                if interaction:
-                    await interaction.followup.send("🧠 **Processing your request...**", ephemeral=True)
-                
                 # Fall back to standard query
                 result, elapsed, footer_with_stats = await perform_chat_query(
                     prompt=cleaned_prompt,
