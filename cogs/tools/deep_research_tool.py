@@ -28,8 +28,8 @@ class DeepResearchTool(BaseTool):
         self.content_tool = ContentRetrievalTool()
         
         # Research parameters
-        self.min_iterations = 3
-        self.max_iterations = 6
+        self.min_iterations = 5
+        self.max_iterations = 25
         self.max_sources_per_iteration = 5
     
     @property
@@ -51,8 +51,8 @@ class DeepResearchTool(BaseTool):
                 },
                 "min_iterations": {
                     "type": "integer",
-                    "description": "Minimum number of research iterations (default: 3, max: 6)",
-                    "default": 3
+                    "description": "Minimum number of research iterations (default: 5, max: 25)",
+                    "default": 5
                 },
                 "focus_areas": {
                     "type": "array",
@@ -438,6 +438,14 @@ Each key insight should be a comprehensive paragraph that includes specific deta
                 max_tokens=800,
                 temperature=0.1
             )
+            
+            # Track API usage for cost accounting
+            if hasattr(response, 'usage') and response.usage:
+                input_tokens = response.usage.prompt_tokens
+                output_tokens = response.usage.completion_tokens
+                # GPT-4.1-nano pricing: roughly $0.0001/1K input, $0.0002/1K output tokens
+                cost = (input_tokens * 0.0001 / 1000) + (output_tokens * 0.0002 / 1000)
+                self.add_session_usage(input_tokens, output_tokens, cost)
             
             # Parse the JSON response
             import json

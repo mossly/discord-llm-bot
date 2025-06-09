@@ -15,6 +15,11 @@ class BaseTool(ABC):
     def __init__(self):
         self._usage_count = 0
         self._error_count = 0
+        self._session_stats = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost": 0.0
+        }
     
     @property
     @abstractmethod
@@ -43,6 +48,25 @@ class BaseTool(ABC):
     def error_count(self) -> int:
         """Number of errors encountered"""
         return self._error_count
+    
+    @property
+    def session_stats(self) -> Dict[str, Any]:
+        """Get current session usage statistics"""
+        return self._session_stats.copy()
+    
+    def reset_session_stats(self):
+        """Reset session statistics"""
+        self._session_stats = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost": 0.0
+        }
+    
+    def add_session_usage(self, input_tokens: int = 0, output_tokens: int = 0, cost: float = 0.0):
+        """Add usage to session statistics"""
+        self._session_stats["input_tokens"] += input_tokens
+        self._session_stats["output_tokens"] += output_tokens
+        self._session_stats["cost"] += cost
     
     async def __call__(self, **kwargs) -> Dict[str, Any]:
         """Call the tool with error handling and logging"""
