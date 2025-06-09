@@ -267,7 +267,7 @@ class DeepResearchTool(BaseTool):
                         conversation_history.append(assistant_msg)
                         reminder_msg = {
                             "role": "user",
-                            "content": f"You must use research tools to gather information. You need {min_actions} research actions total, but you've only completed {tool_action_count}. Please search for relevant information."
+                            "content": f"You must use research tools to gather information. You need {min_actions} research actions total, but you've only completed {tool_action_count}. Progress: searches={stats['search_actions']}, content_extracted={stats['urls_scraped']} URLs. Please search for relevant information."
                         }
                         conversation_history.append(reminder_msg)
                         continue
@@ -303,7 +303,7 @@ class DeepResearchTool(BaseTool):
                         num_results = arguments.get("num_results", self.search_results_per_query)
                         
                         if search_query in searched_queries:
-                            tool_result = {"error": f"Duplicate search: '{search_query}' already performed"}
+                            tool_result = {"error": f"Duplicate search: '{search_query}' already performed. Previous searches: {list(searched_queries)[:5]}"}
                         else:
                             tool_result = await self._execute_search(search_query, num_results, relevance_scorer, sources)
                             searched_queries.add(search_query)
@@ -317,7 +317,7 @@ class DeepResearchTool(BaseTool):
                         # Filter out already scraped URLs
                         new_urls = [url for url in urls if url not in scraped_urls]
                         if not new_urls:
-                            tool_result = {"error": "All URLs have already been scraped"}
+                            tool_result = {"error": f"All URLs have already been scraped. Total scraped: {len(scraped_urls)}"}
                         else:
                             tool_result = await self._execute_content_extraction(new_urls, query)
                             for url in new_urls:
@@ -616,6 +616,10 @@ Focus on:
         seen_urls = set()
         
         for msg in conversation_history:
+            # Defensive check - ensure msg is a dict and has 'role' key
+            if not isinstance(msg, dict) or "role" not in msg:
+                continue
+                
             if msg["role"] == "tool":
                 try:
                     result = json.loads(msg["content"])
@@ -676,7 +680,9 @@ RESEARCH STRATEGY:
 - Select high-quality, authoritative sources for content extraction
 - Build upon previous findings - avoid duplicate searches
 - Look for gaps in knowledge and search to fill them
-- Prioritize recent and authoritative information{focus_text}
+- Prioritize recent and authoritative information
+- Be efficient: aim to complete research in {min_actions}-{min_actions+4} actions
+- Don't repeat searches or extract from already-scraped URLs{focus_text}
 
 WHEN CALLING finish_query:
 - Provide comprehensive, well-structured markdown response
