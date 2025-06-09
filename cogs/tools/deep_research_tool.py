@@ -451,11 +451,26 @@ class DeepResearchTool(BaseTool):
             temperature=0.1
         )
         
+        message = response.choices[0].message
+        
+        # Convert tool calls to dictionary format (consistent with main bot)
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append({
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments
+                    }
+                })
+        
         return {
             "choices": [{
                 "message": {
-                    "content": response.choices[0].message.content,
-                    "tool_calls": response.choices[0].message.tool_calls
+                    "content": message.content,
+                    "tool_calls": tool_calls
                 }
             }],
             "usage": {
