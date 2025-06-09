@@ -715,42 +715,9 @@ PROCEED STRATEGICALLY - each search should build on previous findings."""
         if not research_data:
             return "Deep research completed but no research data available."
         
-        # Start with the final answer if available
+        # Return only the final answer - let the normal flow handle footer/statistics
         final_answer = research_data.get("final_answer", "")
         if final_answer:
-            formatted = final_answer
+            return final_answer
         else:
-            formatted = f"Deep research completed for: {research_data.get('query', 'Unknown query')}"
-        
-        # Add research statistics
-        summary = research_data.get("research_summary", {})
-        if summary:
-            formatted += "\n\n---\n\n### Research Statistics\n"
-            formatted += f"- Searches performed: {summary.get('search_actions', 0)}\n"
-            formatted += f"- Pages analyzed: {summary.get('urls_scraped', 0)}\n"
-            if summary.get('total_cost', 0) > 0:
-                formatted += f"- Research cost: ${summary.get('total_cost', 0):.4f}\n"
-            formatted += f"- Tokens used: {summary.get('total_tokens', 0):,}\n"
-        
-        # Add activity breakdown
-        activity_summary = research_data.get("activity_summary", {})
-        if activity_summary.get('total_activities', 0) > 0:
-            formatted += "\n### Activity Breakdown\n"
-            for activity_type, count in activity_summary.get('by_type', {}).items():
-                if count > 0:
-                    formatted += f"- {activity_type.title()}: {count}\n"
-        
-        # Add source quality information if available
-        sources = research_data.get("sources", [])
-        if sources:
-            high_relevance = len([s for s in sources if s.get('relevance', 0) >= 0.7])
-            medium_relevance = len([s for s in sources if 0.5 <= s.get('relevance', 0) < 0.7])
-            low_relevance = len([s for s in sources if s.get('relevance', 0) < 0.5])
-            
-            if high_relevance + medium_relevance + low_relevance > 0:
-                formatted += "\n### Source Quality\n"
-                formatted += f"- High relevance (≥0.7): {high_relevance}\n"
-                formatted += f"- Medium relevance (0.5-0.7): {medium_relevance}\n"
-                formatted += f"- Low relevance (<0.5): {low_relevance}\n"
-        
-        return formatted
+            return f"Deep research completed for: {research_data.get('query', 'Unknown query')}"
