@@ -6,3 +6,5 @@ duckduckgo_search
 tenacity
 pillow
 pytz
+beautifulsoup4
+html2text

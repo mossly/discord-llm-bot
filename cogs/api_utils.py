@@ -88,7 +88,9 @@ class APIUtils(commands.Cog):
         api: str = "openai",
         use_emojis: bool = False,
         emoji_channel: discord.TextChannel = None,
-        max_tokens: int = 8000
+        max_tokens: int = 8000,
+        tools: list = None,
+        tool_choice: str = "auto"
     ) -> tuple:
         if api == "openrouter":
             api_client = self.OPENROUTERCLIENT
@@ -152,11 +154,21 @@ class APIUtils(commands.Cog):
         generation_stats = {}
         
         try:
+            # Build request parameters
+            request_params = {
+                "model": model,
+                "messages": messages_input,
+                "max_tokens": max_tokens
+            }
+            
+            # Add tools if provided
+            if tools:
+                request_params["tools"] = tools
+                request_params["tool_choice"] = tool_choice
+            
             response = await asyncio.to_thread(
                 api_client.chat.completions.create,
-                model=model,
-                messages=messages_input,
-                max_tokens=max_tokens
+                **request_params
             )
             
             if not response:
@@ -175,14 +187,33 @@ class APIUtils(commands.Cog):
                 logger.error("API response missing content in message: %s", response.choices[0].message)
                 return "I'm sorry, the response content was missing. Please try again.", {}
             
-            content = response.choices[0].message.content
+            message = response.choices[0].message
+            content = message.content
+            
+            # Check for tool calls
+            tool_calls = None
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                tool_calls = []
+                for tc in message.tool_calls:
+                    tool_calls.append({
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    })
             
             if api == "openrouter" and hasattr(response, 'id'):
                 generation_id = response.id
                 logger.info(f"OpenRouter generation ID: {generation_id}")
                 generation_stats = await self.fetch_generation_stats(generation_id)
-                
-            return content, generation_stats
+            
+            # Return content, stats, and tool_calls if any
+            if tool_calls:
+                return content, generation_stats, tool_calls
+            else:
+                return content, generation_stats
         except openai.APIStatusError as e:
             # Re-raise 402 errors to be handled by the caller
             if e.status_code == 402:
@@ -193,6 +224,77 @@ class APIUtils(commands.Cog):
         except Exception as e:
             logger.exception("Error in API request: %s", e)
             return f"I'm sorry, there was an error communicating with the AI service: {str(e)}", {}
+    
+    async def send_request_with_tools(
+        self,
+        model: str,
+        messages: list,
+        tools: list = None,
+        tool_choice: str = "auto",
+        api: str = "openai",
+        max_tokens: int = 8000
+    ) -> dict:
+        """Send request with tool support, returning structured response"""
+        if api == "openrouter":
+            api_client = self.OPENROUTERCLIENT
+        else:
+            api_client = self.OAICLIENT
+        
+        try:
+            request_params = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens
+            }
+            
+            if tools:
+                request_params["tools"] = tools
+                request_params["tool_choice"] = tool_choice
+            
+            response = await asyncio.to_thread(
+                api_client.chat.completions.create,
+                **request_params
+            )
+            
+            if not response or not hasattr(response, 'choices') or not response.choices:
+                return {"error": "Invalid API response"}
+            
+            message = response.choices[0].message
+            
+            result = {
+                "content": message.content,
+                "tool_calls": []
+            }
+            
+            # Extract tool calls
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                for tc in message.tool_calls:
+                    result["tool_calls"].append({
+                        "id": tc.id,
+                        "type": tc.type,
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    })
+            
+            # Get usage stats for OpenRouter
+            if api == "openrouter" and hasattr(response, 'id'):
+                stats = await self.fetch_generation_stats(response.id)
+                result["stats"] = stats
+            elif hasattr(response, 'usage'):
+                # Standard OpenAI usage format
+                result["stats"] = {
+                    "tokens_prompt": response.usage.prompt_tokens,
+                    "tokens_completion": response.usage.completion_tokens,
+                    "tokens_total": response.usage.total_tokens
+                }
+            
+            return result
+            
+        except Exception as e:
+            logger.exception(f"Error in tool request: {e}")
+            return {"error": str(e)}
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(APIUtils(bot))

@@ -1,0 +1,160 @@
+"""
+Tool calling cog for managing tool execution in chat
+"""
+
+import discord
+from discord.ext import commands
+import logging
+import json
+from typing import List, Dict, Any, Optional
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool
+
+logger = logging.getLogger(__name__)
+
+
+class ToolCalling(commands.Cog):
+    """Cog for managing tool calling functionality"""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.registry = ToolRegistry()
+        self._initialize_tools()
+    
+    def _initialize_tools(self):
+        """Initialize default tools"""
+        # Web search tool
+        web_search = WebSearchTool(use_ddg=True)
+        self.registry.register(web_search, enabled=True)
+        
+        # Content retrieval tool
+        content_tool = ContentRetrievalTool()
+        self.registry.register(content_tool, enabled=True)
+        
+        logger.info(f"Initialized {len(self.registry.list_tools())} tools")
+    
+    def get_registry(self) -> ToolRegistry:
+        """Get the tool registry"""
+        return self.registry
+    
+    async def process_tool_calls(
+        self,
+        tool_calls: List[Dict[str, Any]],
+        user_id: str,
+        channel: discord.TextChannel
+    ) -> List[Dict[str, Any]]:
+        """Process a list of tool calls and return results"""
+        results = []
+        
+        for tool_call in tool_calls:
+            tool_name = tool_call.get("function", {}).get("name")
+            tool_id = tool_call.get("id")
+            
+            if not tool_name:
+                results.append({
+                    "tool_call_id": tool_id,
+                    "error": "No tool name provided"
+                })
+                continue
+            
+            # Parse arguments
+            try:
+                arguments = tool_call.get("function", {}).get("arguments", "{}")
+                if isinstance(arguments, str):
+                    arguments = json.loads(arguments)
+            except json.JSONDecodeError as e:
+                results.append({
+                    "tool_call_id": tool_id,
+                    "error": f"Invalid arguments JSON: {e}"
+                })
+                continue
+            
+            # Execute tool
+            logger.info(f"Executing tool '{tool_name}' for user {user_id}")
+            result = await self.registry.execute_tool(tool_name, **arguments)
+            
+            # Format result
+            results.append({
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                "result": result
+            })
+            
+            # Log to channel if in debug mode
+            if hasattr(self.bot, 'debug_mode') and self.bot.debug_mode:
+                embed = discord.Embed(
+                    title=f"Tool Executed: {tool_name}",
+                    description=f"Arguments: {json.dumps(arguments, indent=2)}",
+                    color=0x00FF00 if result.get("success") else 0xFF0000
+                )
+                await channel.send(embed=embed)
+        
+        return results
+    
+    def format_tool_results_for_llm(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Format tool results for LLM consumption"""
+        formatted_results = []
+        
+        for result in results:
+            tool_name = result.get("tool_name")
+            tool_result = result.get("result", {})
+            
+            # Get the tool to format its own results
+            tool = self.registry.get(tool_name)
+            if tool and hasattr(tool, 'format_results_for_llm'):
+                content = tool.format_results_for_llm(tool_result)
+            else:
+                # Default formatting
+                if tool_result.get("success"):
+                    content = json.dumps(tool_result, indent=2)
+                else:
+                    content = f"Tool error: {tool_result.get('error', 'Unknown error')}"
+            
+            formatted_results.append({
+                "role": "tool",
+                "tool_call_id": result.get("tool_call_id"),
+                "content": content
+            })
+        
+        return formatted_results
+    
+    @commands.command(name="tools")
+    @commands.is_owner()
+    async def list_tools(self, ctx: commands.Context):
+        """List all available tools and their status"""
+        stats = self.registry.get_stats()
+        
+        embed = discord.Embed(
+            title="Available Tools",
+            description="Tool usage statistics",
+            color=0x00FF00
+        )
+        
+        for tool_name, tool_stats in stats.items():
+            status = "✅ Enabled" if tool_stats["enabled"] else "❌ Disabled"
+            embed.add_field(
+                name=tool_name,
+                value=f"{status}\nUsed: {tool_stats['usage_count']}\nErrors: {tool_stats['error_count']}",
+                inline=True
+            )
+        
+        await ctx.send(embed=embed)
+    
+    @commands.command(name="toggle_tool")
+    @commands.is_owner()
+    async def toggle_tool(self, ctx: commands.Context, tool_name: str):
+        """Enable or disable a tool"""
+        if self.registry.is_enabled(tool_name):
+            success = self.registry.disable(tool_name)
+            action = "disabled"
+        else:
+            success = self.registry.enable(tool_name)
+            action = "enabled"
+        
+        if success:
+            await ctx.send(f"Tool '{tool_name}' has been {action}.")
+        else:
+            await ctx.send(f"Tool '{tool_name}' not found.")
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ToolCalling(bot))
