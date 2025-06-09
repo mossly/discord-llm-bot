@@ -45,17 +45,47 @@ class DuckDuckGo(commands.Cog):
         if not query.strip():
             logger.info("Blank query provided. Skipping DDG search.")
             return ""
-        def _ddg_search(q):
-            try:
-                proxy = os.getenv("DUCK_PROXY")
-                duck = DDGS(proxy=proxy) if proxy else DDGS()
-                results = duck.text(q.strip('"').strip(), max_results=10)
-                logger.info("DDG search results retrieved for query '%s': %s", q, results)
-                return results
-            except Exception as e:
-                logger.exception("Error during DDG search: %s", e)
-                return None
-        results = await asyncio.to_thread(_ddg_search, query)
+        async def _ddg_search_with_retry(q):
+            max_retries = 3
+            base_delay = 1.0
+            
+            for attempt in range(max_retries):
+                def _ddg_search():
+                    try:
+                        proxy = os.getenv("DUCK_PROXY")
+                        duck = DDGS(proxy=proxy) if proxy else DDGS()
+                        results = duck.text(q.strip('"').strip(), max_results=10)
+                        return results
+                    except Exception as e:
+                        raise e
+                
+                try:
+                    results = await asyncio.to_thread(_ddg_search)
+                    logger.info("DDG search results retrieved for query '%s': %s", q, results)
+                    return results
+                    
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    
+                    # Check for rate limiting indicators
+                    if any(indicator in error_msg for indicator in ['ratelimit', 'rate limit', '202', 'backoff']):
+                        if attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)  # Exponential backoff
+                            logger.warning(f"DDG rate limit detected (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {e}")
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            logger.error(f"DDG rate limited after {max_retries} attempts: {e}")
+                            return None
+                    
+                    # Other errors - don't retry
+                    else:
+                        logger.exception("Error during DDG search: %s", e)
+                        return None
+            
+            return None
+            
+        results = await _ddg_search_with_retry(query)
         if not results:
             logger.info("No results returned from DDG for query: %s", query)
             return ""

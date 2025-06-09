@@ -64,21 +64,67 @@ class WebSearchTool(BaseTool):
             }
     
     async def _search_ddg(self, query: str, max_results: int) -> Dict[str, Any]:
-        """Search using DuckDuckGo"""
-        def _ddg_search():
+        """Search using DuckDuckGo with rate limit handling"""
+        max_retries = 3
+        base_delay = 1.0
+        
+        for attempt in range(max_retries):
+            def _ddg_search():
+                try:
+                    ddgs = DDGS(proxy=self.proxy) if self.proxy else DDGS()
+                    results = list(ddgs.text(query.strip('"').strip(), max_results=max_results))
+                    return results
+                except Exception as e:
+                    # Let the outer handler deal with the exception
+                    raise e
+            
             try:
-                ddgs = DDGS(proxy=self.proxy) if self.proxy else DDGS()
-                results = list(ddgs.text(query.strip('"').strip(), max_results=max_results))
-                return results
+                results = await asyncio.to_thread(_ddg_search)
+                if results is not None:
+                    break
+                    
             except Exception as e:
-                logger.error(f"DuckDuckGo search error: {e}")
-                return None
-        
-        results = await asyncio.to_thread(_ddg_search)
-        
-        if results is None:
+                error_msg = str(e).lower()
+                
+                # Check for rate limiting indicators
+                if any(indicator in error_msg for indicator in ['ratelimit', 'rate limit', '202', 'backoff']):
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                        logger.warning(f"DDG rate limit detected (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {e}")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        logger.error(f"DDG rate limited after {max_retries} attempts: {e}")
+                        return {
+                            "error": f"Search rate limited after {max_retries} attempts. Please try again later.",
+                            "success": False
+                        }
+                
+                # Check for timeout/connection issues
+                elif any(indicator in error_msg for indicator in ['timeout', 'connection', 'network']):
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (attempt + 1)  # Linear backoff for timeouts: 1s, 2s, 3s
+                        logger.warning(f"DDG connection issue (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {e}")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        logger.error(f"DDG connection failed after {max_retries} attempts: {e}")
+                        return {
+                            "error": f"Search connection failed after {max_retries} attempts. Please try again later.",
+                            "success": False
+                        }
+                
+                # Other errors - don't retry
+                else:
+                    logger.error(f"DuckDuckGo search error: {e}")
+                    return {
+                        "error": f"Search failed: {str(e)}",
+                        "success": False
+                    }
+        else:
+            # Should not reach here, but safety net
             return {
-                "error": "Search failed",
+                "error": "Search failed after retries",
                 "success": False
             }
         
