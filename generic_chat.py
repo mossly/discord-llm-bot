@@ -5,6 +5,7 @@ import discord
 import aiohttp
 import re
 import json
+import uuid
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from user_quotas import quota_manager
 
@@ -291,8 +292,13 @@ async def perform_chat_query_with_tools(
     tool_registry = tool_cog.get_registry()
     available_tools = tool_registry.get_all_schemas(enabled_only=True)
     
+    # Generate session ID for tool usage tracking
+    session_id = str(uuid.uuid4())
+    tool_cog.start_session(session_id)
+    
     if not available_tools:
         logger.warning("No tools available, falling back to standard query")
+        tool_cog.end_session(session_id)  # Clean up session
         return await perform_chat_query(
             prompt=prompt,
             api_cog=api_cog,
@@ -410,7 +416,8 @@ async def perform_chat_query_with_tools(
                 tool_results = await tool_cog.process_tool_calls(
                     tool_calls,
                     user_id,
-                    channel
+                    channel,
+                    session_id
                 )
                 
                 # Add tool results to conversation
@@ -423,13 +430,26 @@ async def perform_chat_query_with_tools(
                 # No tool calls, we have the final response
                 elapsed = round(time.time() - start_time, 2)
                 
+                # Add tool usage to totals
+                tool_usage = tool_cog.get_session_usage_totals(session_id)
+                final_input_tokens = total_input_tokens + tool_usage["input_tokens"]
+                final_output_tokens = total_output_tokens + tool_usage["output_tokens"]
+                final_cost = total_cost + tool_usage["cost"]
+                
+                # Add tool costs to user quota
+                if tool_usage["cost"] > 0:
+                    quota_manager.add_usage(user_id, tool_usage["cost"])
+                
                 footer = build_standardized_footer(
                     model_name=reply_footer,
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    cost=total_cost,
+                    input_tokens=final_input_tokens,
+                    output_tokens=final_output_tokens,
+                    cost=final_cost,
                     elapsed_time=elapsed
                 )
+                
+                # Clean up session
+                tool_cog.end_session(session_id)
                 
                 return assistant_content or "I couldn't generate a response.", elapsed, footer
                 
@@ -438,6 +458,7 @@ async def perform_chat_query_with_tools(
             # Try to continue or fall back
             if iteration == 0:
                 # First iteration failed, fall back to standard query
+                tool_cog.end_session(session_id)  # Clean up session
                 return await perform_chat_query(
                     prompt=prompt,
                     api_cog=api_cog,
@@ -497,24 +518,54 @@ async def perform_chat_query_with_tools(
                 quota_manager.add_usage(user_id, iteration_cost)
         
         elapsed = round(time.time() - start_time, 2)
+        
+        # Add tool usage to totals
+        tool_usage = tool_cog.get_session_usage_totals(session_id)
+        final_input_tokens = total_input_tokens + tool_usage["input_tokens"]
+        final_output_tokens = total_output_tokens + tool_usage["output_tokens"]
+        final_cost = total_cost + tool_usage["cost"]
+        
+        # Add tool costs to user quota
+        if tool_usage["cost"] > 0:
+            quota_manager.add_usage(user_id, tool_usage["cost"])
+        
         footer = build_standardized_footer(
             model_name=reply_footer,
-            input_tokens=total_input_tokens,
-            output_tokens=total_output_tokens,
-            cost=total_cost,
+            input_tokens=final_input_tokens,
+            output_tokens=final_output_tokens,
+            cost=final_cost,
             elapsed_time=elapsed
         )
+        
+        # Clean up session
+        tool_cog.end_session(session_id)
         
         final_content = final_response.get("content", "I couldn't generate a response.")
         return final_content, elapsed, footer
         
     except Exception as e:
         logger.exception(f"Error in final response generation: {e}")
+        
+        # Add tool usage to totals even in error case
+        tool_usage = tool_cog.get_session_usage_totals(session_id) if tool_cog else {"input_tokens": 0, "output_tokens": 0, "cost": 0.0}
+        final_input_tokens = total_input_tokens + tool_usage["input_tokens"]
+        final_output_tokens = total_output_tokens + tool_usage["output_tokens"]
+        final_cost = total_cost + tool_usage["cost"]
+        
+        # Add tool costs to user quota
+        if tool_usage["cost"] > 0:
+            quota_manager.add_usage(user_id, tool_usage["cost"])
+        
         footer = build_standardized_footer(
             model_name=reply_footer,
-            input_tokens=total_input_tokens,
-            output_tokens=total_output_tokens,
-            cost=total_cost,
+            input_tokens=final_input_tokens,
+            output_tokens=final_output_tokens,
+            cost=final_cost,
             elapsed_time=elapsed
         )
+        
+        # Clean up session
+        if tool_cog:
+            tool_cog.end_session(session_id)
+        
         return "Error generating final response after tool iterations.", elapsed, footer

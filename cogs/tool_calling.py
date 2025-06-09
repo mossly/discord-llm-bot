@@ -44,7 +44,8 @@ class ToolCalling(commands.Cog):
         self,
         tool_calls: List[Dict[str, Any]],
         user_id: str,
-        channel: discord.TextChannel
+        channel: discord.TextChannel,
+        session_id: str = None
     ) -> List[Dict[str, Any]]:
         """Process a list of tool calls and return results"""
         results = []
@@ -74,7 +75,7 @@ class ToolCalling(commands.Cog):
             
             # Execute tool
             logger.info(f"Executing tool '{tool_name}' for user {user_id}")
-            result = await self.registry.execute_tool(tool_name, **arguments)
+            result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             
             # Format result
             results.append({
@@ -120,6 +121,22 @@ class ToolCalling(commands.Cog):
             })
         
         return formatted_results
+    
+    def start_session(self, session_id: str) -> None:
+        """Start a new tool usage session"""
+        self.registry.start_session(session_id)
+    
+    def end_session(self, session_id: str) -> None:
+        """End a tool usage session"""
+        self.registry.end_session(session_id)
+    
+    def get_session_stats(self, session_id: str) -> Dict[str, Any]:
+        """Get tool usage statistics for a session"""
+        return self.registry.get_session_stats(session_id)
+    
+    def get_session_usage_totals(self, session_id: str) -> Dict[str, Any]:
+        """Get aggregated usage statistics from all tools in the session"""
+        return self.registry.get_session_usage_totals(session_id)
     
     @commands.command(name="tools")
     @commands.is_owner()
