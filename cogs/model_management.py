@@ -5,115 +5,38 @@ from typing import Literal, Optional
 import logging
 import json
 import os
+from .model_cache import get_model_cache, initialize_model_cache
 
 logger = logging.getLogger(__name__)
 
 class ModelManagement(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Load admin IDs from environment variable and file
-        self.admin_ids = self._load_admin_ids()
-        # Load model configuration
-        # Ensure /data directory exists
-        os.makedirs("/data", exist_ok=True)
-        self.models_config_file = "/data/models_config.json"
-        self.models_config_default_file = "models_config_default.json"  # Keep default in repo
-        self.models_config = self._load_models_config()
+        # Initialize the high-performance model cache
+        self.cache = initialize_model_cache()
+        logger.info("ModelManagement initialized with high-performance caching")
     
-    def _load_admin_ids(self) -> set:
-        """Load admin IDs from environment variable or file"""
-        admin_ids = set()
-        
-        # Try environment variable first (comma-separated list)
-        env_admins = os.getenv('BOT_ADMIN_IDS', '')
-        if env_admins:
-            try:
-                admin_ids.update(int(uid.strip()) for uid in env_admins.split(',') if uid.strip())
-                logger.info(f"Loaded {len(admin_ids)} admin users from BOT_ADMIN_IDS environment variable")
-            except ValueError:
-                logger.warning("Invalid admin IDs in BOT_ADMIN_IDS environment variable")
-        
-        # Try loading from admin_ids.txt file
-        try:
-            if os.path.exists('/data/admin_ids.txt'):
-                with open('/data/admin_ids.txt', 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#'):
-                            try:
-                                admin_ids.add(int(line))
-                            except ValueError:
-                                logger.warning(f"Invalid admin ID in admin_ids.txt: {line}")
-                logger.info(f"Loaded additional admin users from admin_ids.txt")
-        except IOError:
-            logger.warning("Could not read admin_ids.txt file")
-        
-        if admin_ids:
-            logger.info(f"Total admin users configured: {len(admin_ids)}")
-        else:
-            logger.warning("No admin users configured! Set BOT_ADMIN_IDS environment variable or create admin_ids.txt")
-        
-        return admin_ids
-    
-    def _load_models_config(self) -> dict:
-        """Load models configuration from file, with fallback to default"""
-        # First try to load local config file
-        if os.path.exists(self.models_config_file):
-            try:
-                with open(self.models_config_file, 'r') as f:
-                    config = json.load(f)
-                    logger.info(f"Loaded models configuration from {self.models_config_file}")
-                    return config
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Could not load models config: {e}")
-        
-        # If local config doesn't exist, try to copy from default
-        if os.path.exists(self.models_config_default_file):
-            try:
-                # Copy default to local config
-                import shutil
-                shutil.copy2(self.models_config_default_file, self.models_config_file)
-                logger.info(f"Copied default configuration from {self.models_config_default_file} to {self.models_config_file}")
-                
-                # Load the newly copied config
-                with open(self.models_config_file, 'r') as f:
-                    config = json.load(f)
-                    logger.info(f"Loaded models configuration from copied file")
-                    return config
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Could not copy/load default models config: {e}")
-        
-        # Return empty config if no files exist
-        logger.info("No models configuration files found. Starting with empty configuration.")
-        return {}
+    @property
+    def models_config(self) -> dict:
+        """Get models configuration from cache"""
+        return self.cache._models_config
     
     def _save_models_config(self):
-        """Save models configuration to file"""
-        try:
-            with open(self.models_config_file, 'w') as f:
-                json.dump(self.models_config, f, indent=2)
-                logger.info(f"Saved models configuration to {self.models_config_file}")
-        except IOError as e:
-            logger.error(f"Could not save models config: {e}")
+        """Save models configuration (handled by cache)"""
+        # This is now handled automatically by the cache
+        pass
     
     def is_admin(self, user_id: int) -> bool:
-        """Check if user is an admin"""
-        return user_id in self.admin_ids
+        """Check if user is an admin (cached)"""
+        return self.cache.is_admin(user_id)
     
     def get_available_models(self, user_id: int = None) -> dict:
-        """Get models available to a user"""
-        available = {}
-        is_user_admin = user_id and self.is_admin(user_id)
-        
-        for model_key, config in self.models_config.items():
-            # Skip comment fields that are strings instead of dicts
-            if not isinstance(config, dict):
-                continue
-            if config.get("enabled", True):
-                if not config.get("admin_only", False) or is_user_admin:
-                    available[model_key] = config
-        
-        return available
+        """Get models available to a user (highly optimized with cache)"""
+        return self.cache.get_available_models(user_id)
+    
+    def get_model_config(self, model_key: str) -> dict:
+        """Get configuration for a specific model (cached)"""
+        return self.cache.get_model_config(model_key)
     
     @app_commands.command(name="models", description="Manage AI models (admin) or list available models (users)")
     @app_commands.describe(
@@ -282,25 +205,14 @@ class ModelManagement(commands.Cog):
             "default_footer": footer_text,
             "api_model": api_model,
             "supports_images": supports_images,
+            "supports_tools": True,  # Default to supporting tools
             "api": api_provider,
             "enabled": True,
             "admin_only": admin_only
         }
         
-        # Add to configuration
-        self.models_config[model_key] = new_model_config
-        self._save_models_config()
-        
-        # Also update the default models config in ai_commands for runtime use
-        from .ai_commands import MODEL_CONFIG
-        MODEL_CONFIG[model_key] = {
-            "name": display_name,
-            "color": 0x32a956,
-            "default_footer": footer_text,
-            "api_model": api_model,
-            "supports_images": supports_images,
-            "api": api_provider
-        }
+        # Add to cache (automatically saves to file)
+        self.cache.update_model_config(model_key, new_model_config)
         
         access_text = "admin-only" if admin_only else "public"
         embed = discord.Embed(
@@ -356,20 +268,8 @@ class ModelManagement(commands.Cog):
             await interaction.response.send_message("❌ No changes specified. Provide at least one parameter to edit.", ephemeral=True)
             return
         
-        # Save updated configuration
-        self.models_config[model_key] = current_config
-        self._save_models_config()
-        
-        # Also update runtime MODEL_CONFIG if it exists
-        from .ai_commands import MODEL_CONFIG
-        if model_key in MODEL_CONFIG:
-            MODEL_CONFIG[model_key].update({
-                "name": current_config.get("name"),
-                "default_footer": current_config.get("default_footer"),
-                "api_model": current_config.get("api_model"),
-                "supports_images": current_config.get("supports_images"),
-                "api": current_config.get("api")
-            })
+        # Save updated configuration to cache
+        self.cache.update_model_config(model_key, current_config)
         
         embed = discord.Embed(
             title="✅ Model Updated",
@@ -395,14 +295,8 @@ class ModelManagement(commands.Cog):
         model_config = self.models_config[model_key]
         model_name = model_config.get("name", model_key)
         
-        # Remove from configuration
-        del self.models_config[model_key]
-        self._save_models_config()
-        
-        # Also remove from runtime MODEL_CONFIG if it exists
-        from .ai_commands import MODEL_CONFIG
-        if model_key in MODEL_CONFIG:
-            del MODEL_CONFIG[model_key]
+        # Remove from cache (automatically saves to file)
+        self.cache.remove_model_config(model_key)
         
         embed = discord.Embed(
             title="🗑️ Model Removed",
@@ -428,9 +322,13 @@ class ModelManagement(commands.Cog):
             )
             return
         
-        self.models_config[model_key]["enabled"] = True
-        self.models_config[model_key]["admin_only"] = admin_only
-        self._save_models_config()
+        # Get current config and update it
+        current_config = self.cache.get_model_config(model_key)
+        if current_config:
+            current_config = current_config.copy()
+            current_config["enabled"] = True
+            current_config["admin_only"] = admin_only
+            self.cache.update_model_config(model_key, current_config)
         
         access_text = "admin-only" if admin_only else "public"
         embed = discord.Embed(
@@ -446,8 +344,12 @@ class ModelManagement(commands.Cog):
             await interaction.response.send_message(f"❌ Model {model_key} not found in configuration.", ephemeral=True)
             return
         
-        self.models_config[model_key]["enabled"] = False
-        self._save_models_config()
+        # Get current config and update it
+        current_config = self.cache.get_model_config(model_key)
+        if current_config:
+            current_config = current_config.copy()
+            current_config["enabled"] = False
+            self.cache.update_model_config(model_key, current_config)
         
         embed = discord.Embed(
             title="❌ Model Disabled",
@@ -481,7 +383,7 @@ class ModelManagement(commands.Cog):
     
     async def _reload_models(self, interaction: discord.Interaction):
         """Reload models configuration from file"""
-        self.models_config = self._load_models_config()
+        self.cache.reload_cache()
         
         embed = discord.Embed(
             title="🔄 Models Reloaded",
@@ -493,23 +395,21 @@ class ModelManagement(commands.Cog):
     async def _reset_to_default(self, interaction: discord.Interaction):
         """Reset models configuration to default"""
         # Check if default file exists
-        if not os.path.exists(self.models_config_default_file):
+        models_config_default_file = "models_config_default.json"
+        if not os.path.exists(models_config_default_file):
             await interaction.response.send_message("❌ Default configuration file not found.", ephemeral=True)
             return
         
         try:
-            # Copy default to local config, overwriting existing
+            # Copy default to data directory, overwriting existing
             import shutil
-            shutil.copy2(self.models_config_default_file, self.models_config_file)
-            logger.info(f"Reset models configuration from {self.models_config_default_file}")
+            os.makedirs("/data", exist_ok=True)
+            models_config_file = "/data/models_config.json"
+            shutil.copy2(models_config_default_file, models_config_file)
+            logger.info(f"Reset models configuration from {models_config_default_file}")
             
-            # Reload the configuration
-            self.models_config = self._load_models_config()
-            
-            # Update runtime MODEL_CONFIG in ai_commands
-            from .ai_commands import MODEL_CONFIG
-            MODEL_CONFIG.clear()
-            MODEL_CONFIG.update(self.models_config)
+            # Reload the cache
+            self.cache.reload_cache()
             
             embed = discord.Embed(
                 title="🔄 Models Reset to Default",
@@ -526,6 +426,33 @@ class ModelManagement(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to reset models configuration: {e}")
             await interaction.response.send_message(f"❌ Failed to reset configuration: {e}", ephemeral=True)
+    
+    @app_commands.command(name="cache-stats", description="Show model cache performance statistics (admin only)")
+    async def cache_stats(self, interaction: discord.Interaction):
+        """Show cache performance statistics"""
+        if not self.is_admin(interaction.user.id):
+            await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            return
+        
+        stats = self.cache.get_cache_stats()
+        
+        embed = discord.Embed(
+            title="📊 Model Cache Statistics",
+            color=0x32a956
+        )
+        
+        embed.add_field(name="Models Loaded", value=stats["models_count"], inline=True)
+        embed.add_field(name="Admin Users", value=stats["admin_count"], inline=True)
+        embed.add_field(name="Cache Version", value=stats["cache_version"], inline=True)
+        
+        embed.add_field(name="Cache Hits", value=stats["cache_hits"], inline=True)
+        embed.add_field(name="Cache Misses", value=stats["cache_misses"], inline=True)
+        embed.add_field(name="Hit Rate", value=f"{stats['hit_rate_percent']}%", inline=True)
+        
+        uptime_hours = stats["uptime_seconds"] / 3600
+        embed.add_field(name="Cache Uptime", value=f"{uptime_hours:.2f} hours", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ModelManagement(bot))

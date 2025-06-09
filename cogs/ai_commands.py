@@ -14,23 +14,20 @@ class AICommands(commands.Cog):
         self.bot = bot
     
     def _get_model_config(self, model_key: str) -> dict:
-        """Get configuration for a specific model"""
+        """Get configuration for a specific model (cached)"""
         model_management = self.bot.get_cog("ModelManagement")
-        if model_management and model_key in model_management.models_config:
-            return model_management.models_config[model_key]
-        else:
-            # No fallback - models must be configured in models_config.json
-            return {}
+        if model_management:
+            config = model_management.get_model_config(model_key)
+            return config or {}
+        return {}
     
     def _get_available_models(self, user_id: int) -> list:
-        """Get list of available model keys for a user"""
+        """Get list of available model keys for a user (cached)"""
         model_management = self.bot.get_cog("ModelManagement")
         if model_management:
             available_models = model_management.get_available_models(user_id)
             return list(available_models.keys())
-        else:
-            # No fallback - return empty list if model management is not available
-            return []
+        return []
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
@@ -329,31 +326,12 @@ class ModelSelectionView(discord.ui.View):
     def _create_dropdown(self):
         options = []
         
-        # Get available models for this user
-        # We need to get the bot instance to access the AICommands cog
-        if hasattr(self, '_bot_ref') and self._bot_ref:
-            ai_commands = self._bot_ref.get_cog("AICommands")
-            if ai_commands:
-                available_models = ai_commands._get_available_models(self.user_id or 0)
-            else:
-                available_models = []
-        else:
-            # No bot reference available - no models available
-            available_models = []
-        
-        # Get model configurations from the model management system
-        model_management = None
-        if hasattr(self, '_bot_ref') and self._bot_ref:
-            model_management = self._bot_ref.get_cog("ModelManagement")
-        
-        # Get available models dict instead of just keys
+        # Get available models for this user (cached)
         available_models_dict = {}
         if hasattr(self, '_bot_ref') and self._bot_ref:
-            ai_commands = self._bot_ref.get_cog("AICommands")
-            if ai_commands:
-                model_management = ai_commands.bot.get_cog("ModelManagement")
-                if model_management:
-                    available_models_dict = model_management.get_available_models(self.user_id or 0)
+            model_management = self._bot_ref.get_cog("ModelManagement")
+            if model_management:
+                available_models_dict = model_management.get_available_models(self.user_id or 0)
         
         # Add image-supporting models first if we have an image
         if self.has_image:
