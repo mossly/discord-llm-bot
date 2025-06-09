@@ -8,6 +8,9 @@ from embed_utils import send_embed
 
 logger = logging.getLogger(__name__)
 
+# Backward compatibility for deployed versions that might still reference MODEL_CONFIG
+MODEL_CONFIG = {}
+
 
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
