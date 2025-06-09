@@ -181,7 +181,7 @@ class AICommands(commands.Cog):
             else:
                 return await interaction.followup.send(embed=error_embed)
             
-        embed = discord.Embed(title="", description=result, color=config["color"])
+        embed = discord.Embed(title="", description=result, color=0x32a956)
         embed.set_footer(text=final_footer)
         
         attribution_text = None
