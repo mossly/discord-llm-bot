@@ -578,7 +578,7 @@ Focus on:
             # Use the established API pattern
             content, stats = await api_utils.send_request(
                 model="openai/gpt-4o-mini",
-                messages=[{"role": "user", "content": extraction_prompt}],
+                message_content=extraction_prompt,
                 api="openrouter",
                 max_tokens=600
             )
