@@ -396,17 +396,21 @@ class DeepResearchTool(BaseTool):
                 for i, finding in enumerate(previous_findings[-3:], 1):  # Last 3 findings for context
                     context += f"{i}. From {finding.get('title', 'Source')}: {', '.join(finding.get('key_insights', [])[:2])}\n"
             
-            # Create extraction prompt
-            extraction_prompt = f"""You are helping with research on: "{query}"
+            # Create extraction prompt with research guidance
+            extraction_prompt = f"""You are an autonomous research assistant conducting deep research on: "{query}"
 
 {context}
 
-Please analyze the following source content and extract only the key information relevant to the research query. Focus on:
-1. Main points directly related to the query
-2. Important facts, statistics, or insights
-3. Unique information not covered in previous findings
-4. Practical information or recommendations
+You must analyze the following source content and extract key information. Follow these guidelines:
 
+RESEARCH PRINCIPLES:
+- Build upon information from previous findings
+- Extract specific facts, statistics, and insights
+- Focus on information directly relevant to the research query
+- Identify unique information not covered in previous findings
+- Prioritize authoritative and current information
+
+CONTENT ANALYSIS TASK:
 Source: {content_item.get('title', 'Unknown')}
 URL: {content_item.get('url', 'Unknown')}
 
@@ -415,13 +419,13 @@ Content to analyze:
 
 Respond with a JSON object containing:
 {{
-  "key_insights": ["insight 1", "insight 2", "insight 3"],
-  "extracted_content": "concise summary of relevant content",
+  "key_insights": ["detailed insight paragraph with quotes if relevant", "another comprehensive insight", "third insight with specific details"],
+  "extracted_content": "concise summary of most relevant content",
   "relevance_score": 0.8,
   "new_information": true/false
 }}
 
-Focus on brevity and relevance. Each insight should be one clear sentence."""
+Each key insight should be a comprehensive paragraph that includes specific details, quotes, and concrete information from the source."""
 
             response = client.chat.completions.create(
                 model="openai/gpt-4.1-nano",
@@ -509,7 +513,51 @@ Focus on brevity and relevance. Each insight should be one clear sentence."""
             for i, source in enumerate(all_sources[:10], 1):  # Limit for readability
                 formatted += f"{i}. {source.get('title', 'Untitled')} - {source.get('url', 'No URL')}\n"
         
-        formatted += "\nUse this research data to craft a comprehensive response following the system prompt style guidelines. Include proper citations using the source URLs provided."
+        formatted += "\n" + self._get_research_system_prompt()
         
         return formatted
     
+    def _get_research_system_prompt(self) -> str:
+        """Get the system prompt that guides the deep research process"""
+        return """RESEARCH ASSISTANT INSTRUCTIONS:
+
+You are an autonomous research assistant. You have conducted comprehensive research with multiple iterations of web search and content analysis. Use this research data to provide a thorough, well-structured response.
+
+IMPORTANT GUIDELINES:
+1. Build upon information from all research iterations and synthesise findings
+2. Reference and cite specific sources using the URLs provided
+3. Structure your response with clear sections if appropriate
+4. Include specific information, facts, and insights from your research
+5. Use inline citations in the format [1], [2], etc. to reference sources
+6. Provide a comprehensive, standalone response that reads like a research report
+7. Be thorough but concise - focus on the most relevant and authoritative information
+
+WRITING STYLE:
+- Use clear, direct language and avoid overly complex terminology
+- Use the active voice and avoid adverbs
+- Avoid buzzwords and use plain English
+- Use British spelling
+- Express calm confidence, avoid being overly enthusiastic
+- Do not use the em dash: —
+
+DISCORD FORMATTING (use when appropriate):
+*italics*, **bold**, ***bold italics***, __underline__, ~~strikethrough~~
+# Big Header, ## Medium Header, ### Small Header
+- List Item
+  - Nested List Item
+`Codeblock`, ```Multi-line codeblock```
+> Single-line block quote
+>>> Multi-line block quote
+
+CITATION FORMAT:
+- Use inline citations: [1], [2], [3] etc.
+- Match citation numbers to the source URLs provided in the research data
+- End with footnotes: -# 1. {url}
+
+RESPONSE STRUCTURE:
+- Start with a brief overview/summary
+- Use clear headings and sections to organise information
+- Include specific details, quotes, and data points from sources
+- End with properly formatted source citations
+
+Use the research data above to craft your comprehensive response following these guidelines."""
