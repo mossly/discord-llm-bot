@@ -454,14 +454,67 @@ async def perform_chat_query_with_tools(
                     max_tokens=max_tokens
                 )
     
-    # Max iterations reached
+    # Max iterations reached - send message to model to generate final output
     elapsed = round(time.time() - start_time, 2)
-    footer = build_standardized_footer(
-        model_name=reply_footer,
-        input_tokens=total_input_tokens,
-        output_tokens=total_output_tokens,
-        cost=total_cost,
-        elapsed_time=elapsed
-    )
     
-    return "Maximum tool iterations reached. Please try a simpler query.", elapsed, footer
+    # Add system message instructing the model to provide final output
+    conversation_history.append({
+        "role": "system",
+        "content": "Maximum tool iterations reached. Please provide your final response based on the information gathered so far. Do not attempt to use any more tools."
+    })
+    
+    # Make final API call without tools
+    try:
+        final_response = await api_cog.send_request_with_tools(
+            model=model,
+            messages=conversation_history,
+            tools=None,  # No tools for final response
+            tool_choice="none",
+            api=api,
+            max_tokens=max_tokens
+        )
+        
+        if "error" in final_response:
+            logger.error(f"Final API error: {final_response['error']}")
+            return f"Error: {final_response['error']}", elapsed, "API Error"
+        
+        # Track final usage
+        if final_response.get("stats"):
+            stats = final_response["stats"]
+            input_tokens = stats.get("tokens_prompt", 0)
+            output_tokens = stats.get("tokens_completion", 0)
+            
+            if "total_cost" in stats:
+                iteration_cost = stats["total_cost"]
+            else:
+                iteration_cost = (input_tokens * 0.00001 + output_tokens * 0.00003)
+            
+            total_input_tokens += input_tokens
+            total_output_tokens += output_tokens
+            total_cost += iteration_cost
+            
+            if iteration_cost > 0:
+                quota_manager.add_usage(user_id, iteration_cost)
+        
+        elapsed = round(time.time() - start_time, 2)
+        footer = build_standardized_footer(
+            model_name=reply_footer,
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            cost=total_cost,
+            elapsed_time=elapsed
+        )
+        
+        final_content = final_response.get("content", "I couldn't generate a response.")
+        return final_content, elapsed, footer
+        
+    except Exception as e:
+        logger.exception(f"Error in final response generation: {e}")
+        footer = build_standardized_footer(
+            model_name=reply_footer,
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            cost=total_cost,
+            elapsed_time=elapsed
+        )
+        return "Error generating final response after tool iterations.", elapsed, footer
