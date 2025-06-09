@@ -10,7 +10,11 @@
       "Bash(git commit:*)",
       "Bash(grep:*)",
       "Bash(git push:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }
