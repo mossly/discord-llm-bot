@@ -460,7 +460,8 @@ async def perform_chat_query_with_tools(
                     tool_calls,
                     user_id,
                     channel,
-                    session_id
+                    session_id,
+                    model
                 )
                 
                 # Add tool results to conversation

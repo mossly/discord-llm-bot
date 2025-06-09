@@ -45,7 +45,8 @@ class ToolCalling(commands.Cog):
         tool_calls: List[Dict[str, Any]],
         user_id: str,
         channel: discord.TextChannel,
-        session_id: str = None
+        session_id: str = None,
+        model: str = None
     ) -> List[Dict[str, Any]]:
         """Process a list of tool calls and return results"""
         results = []
@@ -75,6 +76,11 @@ class ToolCalling(commands.Cog):
             
             # Execute tool
             logger.info(f"Executing tool '{tool_name}' for user {user_id}")
+            
+            # Pass model parameter for deep_research tool
+            if tool_name == "deep_research" and model:
+                arguments["model"] = model
+            
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             
             # Format result

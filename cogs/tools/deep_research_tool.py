@@ -4,7 +4,6 @@ Deep research tool implementation using LLM orchestration with tool calling
 
 import os
 import json
-import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from .base_tool import BaseTool
@@ -185,20 +184,31 @@ class DeepResearchTool(BaseTool):
                     "items": {"type": "string"},
                     "description": "Optional list of specific focus areas to investigate",
                     "default": []
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model to use for research orchestration (default: anthropic/claude-sonnet-4)",
+                    "default": "anthropic/claude-sonnet-4"
                 }
             },
             "required": ["query"]
         }
     
-    async def execute(self, query: str, min_actions: int = 6, focus_areas: List[str] = None) -> Dict[str, Any]:
-        """Execute deep research using LLM orchestration"""
+    async def execute(self, query: str, min_actions: int = 6, focus_areas: List[str] = None, model: str = "anthropic/claude-sonnet-4") -> Dict[str, Any]:
+        """Execute deep research using LLM orchestration
+        
+        Args:
+            query: The research topic or question
+            min_actions: Minimum number of research actions (3-12)
+            focus_areas: Optional list of specific focus areas
+            model: Model to use for orchestration (defaults to Claude Sonnet 4)
+                   Note: Content extraction always uses gpt-4.1-nano for efficiency
+        """
         min_actions = max(3, min(min_actions, 12))
         focus_areas = focus_areas or []
+        self.orchestrator_model = model
         
         logger.info(f"Starting LLM-orchestrated deep research for: {query}")
-        
-        # Initialize research session
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Initialize tracking
         searched_queries = set()
@@ -239,7 +249,7 @@ class DeepResearchTool(BaseTool):
                 activity_tracker.add_activity('reasoning', f"LLM iteration {action_count}")
                 
                 # Get LLM response with tool calling
-                response = await self._call_orchestrator_llm(conversation_history)
+                response = await self._call_orchestrator_llm(conversation_history, model)
                 assistant_msg = response["choices"][0]["message"]
                 
                 # Track costs
@@ -338,7 +348,7 @@ class DeepResearchTool(BaseTool):
             }
             conversation_history.append(force_finish_msg)
             
-            final_response = await self._call_orchestrator_llm(conversation_history)
+            final_response = await self._call_orchestrator_llm(conversation_history, model)
             final_msg = final_response["choices"][0]["message"]
             final_answer = final_msg.get("content", "Research completed at maximum actions limit.")
             
@@ -360,7 +370,7 @@ class DeepResearchTool(BaseTool):
                 "query": query
             }
     
-    async def _call_orchestrator_llm(self, messages: List[Dict]) -> Dict[str, Any]:
+    async def _call_orchestrator_llm(self, messages: List[Dict], model: str = "anthropic/claude-sonnet-4") -> Dict[str, Any]:
         """Call the orchestrator LLM with tool calling capabilities"""
         if not self.openrouter_api_key:
             raise ValueError("OpenRouter API key required for LLM orchestration")
@@ -433,7 +443,7 @@ class DeepResearchTool(BaseTool):
         ]
         
         response = client.chat.completions.create(
-            model="openai/gpt-4o-mini",
+            model=model,
             messages=messages,
             tools=tools,
             tool_choice="auto",
@@ -571,7 +581,7 @@ Focus on:
 - Unique insights not commonly known"""
 
             response = client.chat.completions.create(
-                model="openai/gpt-4o-mini",
+                model="openai/gpt-4.1-nano",
                 messages=[{"role": "user", "content": extraction_prompt}],
                 max_tokens=600,
                 temperature=0.1
@@ -581,7 +591,8 @@ Focus on:
             if hasattr(response, 'usage') and response.usage:
                 input_tokens = response.usage.prompt_tokens
                 output_tokens = response.usage.completion_tokens
-                cost = (input_tokens * 0.00015 / 1000) + (output_tokens * 0.0006 / 1000)  # 4o-mini pricing
+                # Get actual cost from API response
+                cost = getattr(response.usage, 'total_cost', 0.0)
                 self.add_session_usage(input_tokens, output_tokens, cost)
             
             # Parse JSON response
