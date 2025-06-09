@@ -16,6 +16,12 @@ class ModelManagement(commands.Cog):
         self.cache = initialize_model_cache()
         logger.info("ModelManagement initialized with high-performance caching")
     
+    def _invalidate_ai_command_cache(self):
+        """Notify AI commands to clear their choice cache"""
+        ai_commands = self.bot.get_cog("AICommands")
+        if ai_commands and hasattr(ai_commands, 'invalidate_model_choice_cache'):
+            ai_commands.invalidate_model_choice_cache()
+    
     @property
     def models_config(self) -> dict:
         """Get models configuration from cache"""
@@ -212,6 +218,7 @@ class ModelManagement(commands.Cog):
         
         # Add to cache (automatically saves to file)
         self.cache.update_model_config(model_key, new_model_config)
+        self._invalidate_ai_command_cache()
         
         access_text = "admin-only" if admin_only else "public"
         embed = discord.Embed(
@@ -269,6 +276,7 @@ class ModelManagement(commands.Cog):
         
         # Save updated configuration to cache
         self.cache.update_model_config(model_key, current_config)
+        self._invalidate_ai_command_cache()
         
         embed = discord.Embed(
             title="✅ Model Updated",
@@ -296,6 +304,7 @@ class ModelManagement(commands.Cog):
         
         # Remove from cache (automatically saves to file)
         self.cache.remove_model_config(model_key)
+        self._invalidate_ai_command_cache()
         
         embed = discord.Embed(
             title="🗑️ Model Removed",
@@ -328,6 +337,7 @@ class ModelManagement(commands.Cog):
             current_config["enabled"] = True
             current_config["admin_only"] = admin_only
             self.cache.update_model_config(model_key, current_config)
+            self._invalidate_ai_command_cache()
         
         access_text = "admin-only" if admin_only else "public"
         embed = discord.Embed(
@@ -349,6 +359,7 @@ class ModelManagement(commands.Cog):
             current_config = current_config.copy()
             current_config["enabled"] = False
             self.cache.update_model_config(model_key, current_config)
+            self._invalidate_ai_command_cache()
         
         embed = discord.Embed(
             title="❌ Model Disabled",
@@ -383,6 +394,7 @@ class ModelManagement(commands.Cog):
     async def _reload_models(self, interaction: discord.Interaction):
         """Reload models configuration from file"""
         self.cache.reload_cache()
+        self._invalidate_ai_command_cache()
         
         embed = discord.Embed(
             title="🔄 Models Reloaded",
@@ -409,6 +421,7 @@ class ModelManagement(commands.Cog):
             
             # Reload the cache
             self.cache.reload_cache()
+            self._invalidate_ai_command_cache()
             
             embed = discord.Embed(
                 title="🔄 Models Reset to Default",

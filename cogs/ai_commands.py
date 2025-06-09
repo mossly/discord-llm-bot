@@ -15,6 +15,7 @@ MODEL_CONFIG = {}
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._cached_model_choices = {}  # Cache pre-built choices per user type
     
     def _get_model_config(self, model_key: str) -> dict:
         """Get configuration for a specific model (cached)"""
@@ -30,6 +31,10 @@ class AICommands(commands.Cog):
         if model_management:
             return model_management.get_available_models(user_id)
         return {}
+    
+    def invalidate_model_choice_cache(self):
+        """Clear the model choice cache when models are updated"""
+        self._cached_model_choices.clear()
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
@@ -199,19 +204,42 @@ class AICommands(commands.Cog):
         else:
             await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
-    async def model_autocomplete(self, interaction: Interaction, current: str) -> list[app_commands.Choice[str]]:
-        """Autocomplete function for model parameter (optimized)"""
-        available_models = self._get_available_models(interaction.user.id)
+    def _build_model_choices_for_user(self, user_id: int) -> list[app_commands.Choice[str]]:
+        """Pre-build all model choices for a user"""
+        available_models = self._get_available_models(user_id)
         choices = []
         
         for model_key, config in available_models.items():
             name = config.get("name", model_key)
-            # Search in both model key and display name
-            if (current.lower() in model_key.lower() or 
-                current.lower() in name.lower()):
-                choices.append(app_commands.Choice(name=f"{name} ({model_key})", value=model_key))
-                
-        return choices[:25]  # Discord limits to 25 choices
+            choices.append(app_commands.Choice(name=f"{name} ({model_key})", value=model_key))
+        
+        return choices
+    
+    async def model_autocomplete(self, interaction: Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """Autocomplete function for model parameter (highly optimized)"""
+        # Determine cache key based on user permissions
+        model_management = self.bot.get_cog("ModelManagement")
+        is_admin = model_management and model_management.is_admin(interaction.user.id)
+        cache_key = "admin" if is_admin else "user"
+        
+        # Get or build cached choices
+        if cache_key not in self._cached_model_choices:
+            self._cached_model_choices[cache_key] = self._build_model_choices_for_user(interaction.user.id)
+        
+        all_choices = self._cached_model_choices[cache_key]
+        
+        # If no search term, return all choices
+        if not current:
+            return all_choices[:25]
+        
+        # Filter pre-built choices
+        current_lower = current.lower()
+        filtered = [
+            choice for choice in all_choices
+            if current_lower in choice.name.lower() or current_lower in choice.value.lower()
+        ]
+        
+        return filtered[:25]  # Discord limits to 25 choices
     
     @app_commands.command(name="chat", description="Chat with an AI model")
     @app_commands.describe(
