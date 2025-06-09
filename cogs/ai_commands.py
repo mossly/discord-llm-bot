@@ -24,13 +24,12 @@ class AICommands(commands.Cog):
             return config or {}
         return {}
     
-    def _get_available_models(self, user_id: int) -> list:
-        """Get list of available model keys for a user (cached)"""
+    def _get_available_models(self, user_id: int) -> dict:
+        """Get available models with full configs for a user (cached)"""
         model_management = self.bot.get_cog("ModelManagement")
         if model_management:
-            available_models = model_management.get_available_models(user_id)
-            return list(available_models.keys())
-        return []
+            return model_management.get_available_models(user_id)
+        return {}
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
@@ -61,7 +60,7 @@ class AICommands(commands.Cog):
                 await interaction.followup.send(embed=error_embed)
             return
         
-        config = self._get_model_config(model_key)
+        config = available_models[model_key]  # Use already fetched config
         if not config:
             error_embed = discord.Embed(
                 title="Model Configuration Error",
@@ -82,7 +81,7 @@ class AICommands(commands.Cog):
         if image_url and not config.get("supports_images", False):
             error_embed = discord.Embed(
                 title="ERROR",
-                description="Image attachments only supported with GPT-4o-mini",
+                description=f"Image attachments are not supported by {config.get('name', model_key)}. Please use a model that supports images.",
                 color=0xDC143C
             )
             if ctx:
@@ -201,26 +200,24 @@ class AICommands(commands.Cog):
             await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
     async def model_autocomplete(self, interaction: Interaction, current: str) -> list[app_commands.Choice[str]]:
-        """Autocomplete function for model parameter"""
+        """Autocomplete function for model parameter (optimized)"""
         available_models = self._get_available_models(interaction.user.id)
         choices = []
         
-        for model_key in available_models:
+        for model_key, config in available_models.items():
             if current.lower() in model_key.lower():
-                config = self._get_model_config(model_key)
-                if config:
-                    name = config.get("name", model_key)
-                    choices.append(app_commands.Choice(name=f"{model_key} - {name}", value=model_key))
+                name = config.get("name", model_key)
+                choices.append(app_commands.Choice(name=f"{model_key} - {name}", value=model_key))
                 
         return choices[:25]  # Discord limits to 25 choices
     
     @app_commands.command(name="chat", description="Chat with an AI model")
     @app_commands.describe(
+        prompt="Your query or instructions",
         model="Model to use for the response (type model name)",
         fun="Toggle fun mode",
         web_search="Force web search (requires tool_calling)",
         tool_calling="Enable AI to use tools like web search and content retrieval",
-        prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)",
         max_tokens="Maximum tokens for response (default: 8000)"
     )
@@ -228,8 +225,8 @@ class AICommands(commands.Cog):
     async def chat_slash(
         self, 
         interaction: Interaction, 
-        model: str,
-        prompt: str, 
+        prompt: str,
+        model: str = "gemini-2.5-flash-preview", 
         fun: bool = False,
         web_search: bool = False,
         tool_calling: bool = True,
@@ -248,11 +245,11 @@ class AICommands(commands.Cog):
         model_config = self._get_model_config(model)
         if has_image and model_config and not model_config.get("supports_images", False):
             await interaction.followup.send(
-                f"⚠️ Automatically switched to GPT-4o-mini because you attached an image " 
+                f"⚠️ Automatically switched to Gemini 2.5 Flash because you attached an image " 
                 f"and {model_config.get('name', model)} doesn't support image processing.",
                 ephemeral=True
             )
-            model = "gpt-4o-mini"
+            model = "gemini-2.5-flash-preview"
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
 
@@ -318,7 +315,7 @@ class ModelSelectionView(discord.ui.View):
         self.original_message = original_message
         self.additional_text = additional_text
         self.user_id = user_id
-        self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
+        self.selected_model = "gemini-2.5-flash-preview"
         self.fun = False
         self.web_search = False
         self.tool_calling = True
@@ -406,13 +403,19 @@ class ModelSelectionView(discord.ui.View):
     async def on_model_select(self, interaction: discord.Interaction):
         self.selected_model = self.model_select.values[0]
         
-        if self.has_image and self.selected_model != "gpt-4o-mini":
-            await interaction.response.send_message(
-                "Warning: Only GPT-4o-mini can process images. Using other models will ignore the image.",
-                ephemeral=True
-            )
-        else:
-            await interaction.response.defer()
+        # Check if selected model supports images when image is present
+        if self.has_image and hasattr(self, '_bot_ref') and self._bot_ref:
+            model_management = self._bot_ref.get_cog("ModelManagement")
+            if model_management:
+                model_config = model_management.get_model_config(self.selected_model)
+                if model_config and not model_config.get("supports_images", False):
+                    await interaction.response.send_message(
+                        f"Warning: {model_config.get('name', self.selected_model)} doesn't support images. Please select a model that supports image processing.",
+                        ephemeral=True
+                    )
+                    return
+        
+        await interaction.response.defer()
     
     async def toggle_fun(self, interaction: discord.Interaction):
         self.fun = not self.fun
