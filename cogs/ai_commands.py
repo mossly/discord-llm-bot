@@ -32,7 +32,7 @@ class AICommands(commands.Cog):
             # No fallback - return empty list if model management is not available
             return []
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, reply_user=None, max_tokens: int = 8000):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
         # Get user ID for quota tracking and model availability check
         if ctx:
             user_id = str(ctx.author.id)
@@ -77,6 +77,7 @@ class AICommands(commands.Cog):
         channel = ctx.channel if ctx else interaction.channel
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
+        tool_cog = self.bot.get_cog("ToolCalling")
         
         if image_url and not config.get("supports_images", False):
             error_embed = discord.Embed(
@@ -91,7 +92,7 @@ class AICommands(commands.Cog):
             return
 
         if not image_url:
-            from generic_chat import process_attachments, perform_chat_query
+            from generic_chat import process_attachments, perform_chat_query, perform_chat_query_with_tools
             final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
         else:
             final_prompt = prompt
@@ -101,12 +102,20 @@ class AICommands(commands.Cog):
         model = config["api_model"]
         footer = config["default_footer"]
         api = config.get("api", "openai")
+        
+        # Check if model supports tools
+        supports_tools = config.get("supports_tools", True)  # Default to True for most models
             
         try:
-            if ctx:
-                result, elapsed, footer_with_stats = await perform_chat_query(
+            # Use tool-enabled query if tools are supported and enabled
+            if supports_tools and tool_calling and tool_cog:
+                # Convert web_search flag to force_tools for backward compatibility
+                force_tools = web_search
+                
+                result, elapsed, footer_with_stats = await perform_chat_query_with_tools(
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
+                    tool_cog=tool_cog,
                     channel=channel,
                     user_id=user_id,
                     duck_cog=duck_cog,
@@ -116,10 +125,12 @@ class AICommands(commands.Cog):
                     reply_footer=footer,
                     api=api,
                     use_fun=fun,
-                    web_search=web_search,
+                    use_tools=tool_calling,
+                    force_tools=force_tools,
                     max_tokens=max_tokens
                 )
-            else:   
+            else:
+                # Fall back to standard query
                 result, elapsed, footer_with_stats = await perform_chat_query(
                     prompt=cleaned_prompt,
                     api_cog=api_cog,
@@ -207,7 +218,8 @@ class AICommands(commands.Cog):
     @app_commands.describe(
         model="Model to use for the response (type model name)",
         fun="Toggle fun mode",
-        web_search="Toggle web search",
+        web_search="Force web search (requires tool_calling)",
+        tool_calling="Enable AI to use tools like web search and content retrieval",
         prompt="Your query or instructions",
         attachment="Optional attachment (image or text file)",
         max_tokens="Maximum tokens for response (default: 8000)"
@@ -220,6 +232,7 @@ class AICommands(commands.Cog):
         prompt: str, 
         fun: bool = False,
         web_search: bool = False,
+        tool_calling: bool = True,
         attachment: Optional[Attachment] = None,
         max_tokens: Optional[int] = None
     ):
@@ -241,7 +254,7 @@ class AICommands(commands.Cog):
             )
             model = "gpt-4o-mini"
         
-        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, max_tokens=max_tokens or 8000)
+        await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -308,6 +321,7 @@ class ModelSelectionView(discord.ui.View):
         self.selected_model = "gpt-4o-mini" if has_image else "gpt-o3-mini"
         self.fun = False
         self.web_search = False
+        self.tool_calling = True
         
         self._create_dropdown()
         self._create_buttons()
@@ -384,8 +398,16 @@ class ModelSelectionView(discord.ui.View):
         fun_button.callback = self.toggle_fun
         self.add_item(fun_button)
         
+        tool_button = discord.ui.Button(
+            label=f"Tools: {'ON' if self.tool_calling else 'OFF'}", 
+            style=discord.ButtonStyle.secondary, 
+            custom_id="toggle_tools"
+        )
+        tool_button.callback = self.toggle_tools
+        self.add_item(tool_button)
+        
         web_search_button = discord.ui.Button(
-            label=f"Web Search: {'ON' if self.web_search else 'OFF'}", 
+            label=f"Force Search: {'ON' if self.web_search else 'OFF'}", 
             style=discord.ButtonStyle.secondary, 
             custom_id="toggle_web_search"
         )
@@ -418,8 +440,21 @@ class ModelSelectionView(discord.ui.View):
         self._create_buttons()
         await interaction.response.edit_message(view=self)
     
+    async def toggle_tools(self, interaction: discord.Interaction):
+        self.tool_calling = not self.tool_calling
+        # If tools are disabled, also disable web search
+        if not self.tool_calling:
+            self.web_search = False
+        self.clear_items()
+        self._create_dropdown()
+        self._create_buttons()
+        await interaction.response.edit_message(view=self)
+    
     async def toggle_web_search(self, interaction: discord.Interaction):
         self.web_search = not self.web_search
+        # If web search is enabled, ensure tools are also enabled
+        if self.web_search:
+            self.tool_calling = True
         self.clear_items()
         self._create_dropdown()
         self._create_buttons()
@@ -455,6 +490,7 @@ class ModelSelectionView(discord.ui.View):
                 reply_msg=self.original_message,
                 fun=self.fun,
                 web_search=self.web_search,
+                tool_calling=self.tool_calling,
                 reply_user=interaction.user
             )
             

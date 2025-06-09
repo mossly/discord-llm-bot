@@ -4,6 +4,7 @@ import openai
 import discord
 import aiohttp
 import re
+import json
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from user_quotas import quota_manager
 
@@ -92,7 +93,7 @@ async def perform_chat_query(
     use_fun: bool = False,
     web_search: bool = False,
     max_tokens: int = 8000
-) -> (str, float, str):
+) -> tuple[str, float, str]:
     start_time = time.time()
     original_prompt = prompt
     
@@ -220,3 +221,247 @@ async def perform_chat_query(
     except Exception as e:
         logger.exception("Error in perform_chat_query: %s", e)
         raise
+
+
+async def perform_chat_query_with_tools(
+    prompt: str,
+    api_cog,
+    tool_cog,
+    channel: discord.TextChannel,
+    user_id: str,
+    duck_cog=None,
+    image_url: str = None,
+    reference_message: str = None,
+    model: str = None,
+    reply_footer: str = None,
+    api: str = "openai",
+    use_fun: bool = False,
+    use_tools: bool = True,
+    force_tools: bool = False,
+    max_tokens: int = 8000,
+    max_iterations: int = 10
+) -> tuple[str, float, str]:
+    """Enhanced chat query with tool calling support"""
+    start_time = time.time()
+    
+    # Check user quota before starting
+    remaining_quota = quota_manager.get_remaining_quota(user_id)
+    if remaining_quota == 0:
+        return "❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.", 0, "Quota exceeded"
+    elif remaining_quota != float('inf') and remaining_quota < 0.01:
+        return f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Please be mindful of usage.", 0, f"${remaining_quota:.4f} remaining"
+    
+    # If tools are disabled, use the standard flow
+    if not use_tools:
+        return await perform_chat_query(
+            prompt=prompt,
+            api_cog=api_cog,
+            channel=channel,
+            user_id=user_id,
+            duck_cog=duck_cog,
+            image_url=image_url,
+            reference_message=reference_message,
+            model=model,
+            reply_footer=reply_footer,
+            api=api,
+            use_fun=use_fun,
+            web_search=False,  # Handled by tools now
+            max_tokens=max_tokens
+        )
+    
+    # Get tool registry
+    if not tool_cog:
+        logger.warning("Tool cog not available, falling back to standard query")
+        return await perform_chat_query(
+            prompt=prompt,
+            api_cog=api_cog,
+            channel=channel,
+            user_id=user_id,
+            duck_cog=duck_cog,
+            image_url=image_url,
+            reference_message=reference_message,
+            model=model,
+            reply_footer=reply_footer,
+            api=api,
+            use_fun=use_fun,
+            web_search=False,
+            max_tokens=max_tokens
+        )
+    
+    tool_registry = tool_cog.get_registry()
+    available_tools = tool_registry.get_all_schemas(enabled_only=True)
+    
+    if not available_tools:
+        logger.warning("No tools available, falling back to standard query")
+        return await perform_chat_query(
+            prompt=prompt,
+            api_cog=api_cog,
+            channel=channel,
+            user_id=user_id,
+            duck_cog=duck_cog,
+            image_url=image_url,
+            reference_message=reference_message,
+            model=model,
+            reply_footer=reply_footer,
+            api=api,
+            use_fun=use_fun,
+            web_search=False,
+            max_tokens=max_tokens
+        )
+    
+    # Build initial conversation
+    system_prompt = api_cog.FUN_SYSTEM_PROMPT if use_fun else api_cog.SYSTEM_PROMPT
+    conversation_history = [
+        {"role": "system", "content": system_prompt}
+    ]
+    
+    if reference_message:
+        conversation_history.append({"role": "user", "content": reference_message})
+    
+    # Add the user's message
+    if image_url:
+        content_list = [{"type": "text", "text": prompt}]
+        # Add image handling similar to send_request
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(image_url) as response:
+                    if response.status == 200:
+                        image_bytes = await response.read()
+                        mime_type = 'image/jpeg'  # Default
+                        if image_url.lower().endswith('.png'):
+                            mime_type = 'image/png'
+                        elif image_url.lower().endswith('.webp'):
+                            mime_type = 'image/webp'
+                        
+                        import base64
+                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                        content_list.append({
+                            "type": "image_url", 
+                            "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}
+                        })
+            conversation_history.append({"role": "user", "content": content_list})
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            conversation_history.append({"role": "user", "content": prompt})
+    else:
+        conversation_history.append({"role": "user", "content": prompt})
+    
+    # Tool calling loop
+    total_cost = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
+    
+    for iteration in range(max_iterations):
+        try:
+            # Determine tool choice
+            if iteration == 0 and force_tools:
+                tool_choice = "required"
+            else:
+                tool_choice = "auto"
+            
+            # Make API call with tools
+            response = await api_cog.send_request_with_tools(
+                model=model,
+                messages=conversation_history,
+                tools=available_tools,
+                tool_choice=tool_choice,
+                api=api,
+                max_tokens=max_tokens
+            )
+            
+            if "error" in response:
+                logger.error(f"API error: {response['error']}")
+                return f"Error: {response['error']}", 0, "API Error"
+            
+            # Track usage
+            if response.get("stats"):
+                stats = response["stats"]
+                input_tokens = stats.get("tokens_prompt", 0)
+                output_tokens = stats.get("tokens_completion", 0)
+                
+                # Calculate cost
+                if "total_cost" in stats:
+                    iteration_cost = stats["total_cost"]
+                else:
+                    # Estimate cost based on tokens
+                    iteration_cost = (input_tokens * 0.00001 + output_tokens * 0.00003)  # Example pricing
+                
+                total_input_tokens += input_tokens
+                total_output_tokens += output_tokens
+                total_cost += iteration_cost
+                
+                # Track usage
+                if iteration_cost > 0:
+                    quota_manager.add_usage(user_id, iteration_cost)
+            
+            # Add assistant message to history
+            assistant_content = response.get("content")
+            tool_calls = response.get("tool_calls", [])
+            
+            if tool_calls:
+                # Add assistant message with tool calls
+                conversation_history.append({
+                    "role": "assistant",
+                    "content": assistant_content,
+                    "tool_calls": tool_calls
+                })
+                
+                # Execute tools
+                tool_results = await tool_cog.process_tool_calls(
+                    tool_calls,
+                    user_id,
+                    channel
+                )
+                
+                # Add tool results to conversation
+                formatted_results = tool_cog.format_tool_results_for_llm(tool_results)
+                conversation_history.extend(formatted_results)
+                
+                # Continue to next iteration
+                continue
+            else:
+                # No tool calls, we have the final response
+                elapsed = round(time.time() - start_time, 2)
+                
+                footer = build_standardized_footer(
+                    model_name=reply_footer,
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    cost=total_cost,
+                    elapsed_time=elapsed
+                )
+                
+                return assistant_content or "I couldn't generate a response.", elapsed, footer
+                
+        except Exception as e:
+            logger.exception(f"Error in tool calling iteration {iteration}: {e}")
+            # Try to continue or fall back
+            if iteration == 0:
+                # First iteration failed, fall back to standard query
+                return await perform_chat_query(
+                    prompt=prompt,
+                    api_cog=api_cog,
+                    channel=channel,
+                    user_id=user_id,
+                    duck_cog=duck_cog,
+                    image_url=image_url,
+                    reference_message=reference_message,
+                    model=model,
+                    reply_footer=reply_footer,
+                    api=api,
+                    use_fun=use_fun,
+                    web_search=False,
+                    max_tokens=max_tokens
+                )
+    
+    # Max iterations reached
+    elapsed = round(time.time() - start_time, 2)
+    footer = build_standardized_footer(
+        model_name=reply_footer,
+        input_tokens=total_input_tokens,
+        output_tokens=total_output_tokens,
+        cost=total_cost,
+        elapsed_time=elapsed
+    )
+    
+    return "Maximum tool iterations reached. Please try a simpler query.", elapsed, footer
