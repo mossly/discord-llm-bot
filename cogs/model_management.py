@@ -201,7 +201,6 @@ class ModelManagement(commands.Cog):
         # Create new model configuration
         new_model_config = {
             "name": display_name,
-            "color": 0x32a956,  # Default green color
             "default_footer": footer_text,
             "api_model": api_model,
             "supports_images": supports_images,
