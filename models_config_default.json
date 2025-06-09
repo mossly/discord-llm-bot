@@ -22,9 +22,9 @@
     "admin_only": false
   },
   "claude-sonnet-4": {
-    "name": "Claude 3.7 Sonnet",
+    "name": "Claude Sonnet 4",
     "color": 14283054,
-    "default_footer": "Claude 3.7 Sonnet",
+    "default_footer": "Claude Sonnet 4",
     "api_model": "anthropic/claude-sonnet-4",
     "supports_images": true,
     "supports_tools": true,
@@ -44,7 +44,7 @@
     "admin_only": false
   },
   "gemini-2.5-pro-preview": {
-    "name": "Gemini 2.5 Pro Preview",
+    "name": "Gemini 2.5 Pro",
     "color": 4437377,
     "default_footer": "Gemini 2.5 Pro Preview",
     "api_model": "google/gemini-2.5-pro-preview",
@@ -55,7 +55,7 @@
     "admin_only": false
   },
   "gemini-2.5-flash-preview": {
-    "name": "Gemini 2.5 Flash Preview",
+    "name": "Gemini 2.5 Flash",
     "color": 4437377,
     "default_footer": "Gemini 2.5 Flash Preview",
     "api_model": "google/gemini-2.5-flash-preview-05-20",
@@ -66,9 +66,9 @@
     "admin_only": false
   },
   "grok-3-beta": {
-    "name": "Grok 3 Beta",
+    "name": "Grok 3",
     "color": 9699539,
-    "default_footer": "Grok 3 Beta",
+    "default_footer": "Grok 3",
     "api_model": "x-ai/grok-3-beta",
     "supports_images": true,
     "supports_tools": true,
