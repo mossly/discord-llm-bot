@@ -31,7 +31,7 @@ class ToolCalling(commands.Cog):
         self.registry.register(content_tool, enabled=True)
         
         # Deep research tool
-        deep_research = DeepResearchTool()
+        deep_research = DeepResearchTool(bot=self.bot)
         self.registry.register(deep_research, enabled=True)
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")

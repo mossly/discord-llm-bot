@@ -143,10 +143,10 @@ class ActivityTracker:
 class DeepResearchTool(BaseTool):
     """Tool for conducting deep iterative research using LLM orchestration"""
     
-    def __init__(self, exa_api_key: Optional[str] = None, openrouter_api_key: Optional[str] = None):
+    def __init__(self, exa_api_key: Optional[str] = None, bot=None):
         super().__init__()
         self.exa_api_key = exa_api_key or os.getenv("EXA_API_KEY")
-        self.openrouter_api_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY")
+        self.bot = bot
         
         # Initialize sub-tools
         self.search_tool = WebSearchTool(use_ddg=True, exa_api_key=exa_api_key)
@@ -372,15 +372,10 @@ class DeepResearchTool(BaseTool):
     
     async def _call_orchestrator_llm(self, messages: List[Dict], model: str = "anthropic/claude-sonnet-4") -> Dict[str, Any]:
         """Call the orchestrator LLM with tool calling capabilities"""
-        if not self.openrouter_api_key:
-            raise ValueError("OpenRouter API key required for LLM orchestration")
-        
-        import openai
-        
-        client = openai.OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=self.openrouter_api_key
-        )
+        # Get the API utils instance from the bot
+        api_utils = self.bot.get_cog('APIUtils')
+        if not api_utils:
+            raise ValueError("APIUtils cog not found")
         
         tools = [
             {
@@ -442,40 +437,29 @@ class DeepResearchTool(BaseTool):
             }
         ]
         
-        response = client.chat.completions.create(
+        # Use the established API pattern from api_utils
+        response = await api_utils.send_request_with_tools(
             model=model,
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            max_tokens=2000,
-            temperature=0.1
+            api="openrouter",
+            max_tokens=2000
         )
         
-        message = response.choices[0].message
-        
-        # Convert tool calls to dictionary format (consistent with main bot)
-        tool_calls = []
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            for tc in message.tool_calls:
-                tool_calls.append({
-                    "id": tc.id,
-                    "type": tc.type,
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments
-                    }
-                })
+        if "error" in response:
+            raise ValueError(f"API error: {response['error']}")
         
         return {
             "choices": [{
                 "message": {
-                    "content": message.content,
-                    "tool_calls": tool_calls
+                    "content": response.get("content"),
+                    "tool_calls": response.get("tool_calls", [])
                 }
             }],
             "usage": {
-                "total_tokens": response.usage.total_tokens if response.usage else 0,
-                "total_cost": getattr(response.usage, 'total_cost', 0.0) if response.usage else 0.0
+                "total_tokens": 0,  # API utils doesn't return usage stats in this format
+                "total_cost": 0.0
             }
         }
     
