@@ -41,8 +41,8 @@
   },
   "gemini-2.5-pro-preview": {
     "name": "Gemini 2.5 Pro",
-    "default_footer": "Gemini 2.5 Pro Preview",
-    "api_model": "google/gemini-2.5-pro-preview",
+    "default_footer": "Gemini 2.5 Pro",
+    "api_model": "google/gemini-2.5-pro-preview:thinking",
     "supports_images": true,
     "supports_tools": true,
     "api": "openrouter",
@@ -51,8 +51,8 @@
   },
   "gemini-2.5-flash-preview": {
     "name": "Gemini 2.5 Flash",
-    "default_footer": "Gemini 2.5 Flash Preview",
-    "api_model": "google/gemini-2.5-flash-preview-05-20",
+    "default_footer": "Gemini 2.5 Flash",
+    "api_model": "google/gemini-2.5-flash-preview-05-20:thinking",
     "supports_images": true,
     "supports_tools": true,
     "api": "openrouter",

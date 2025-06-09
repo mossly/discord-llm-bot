@@ -7,7 +7,7 @@ from discord.ext import commands
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,10 @@ class ToolCalling(commands.Cog):
         # Content retrieval tool
         content_tool = ContentRetrievalTool()
         self.registry.register(content_tool, enabled=True)
+        
+        # Deep research tool
+        deep_research = DeepResearchTool()
+        self.registry.register(deep_research, enabled=True)
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
     
