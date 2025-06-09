@@ -19,9 +19,17 @@ class APIUtils(commands.Cog):
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY")
         )
-        self.SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
+        # Load system prompts and prepend current datetime for LLM reference
+        import datetime
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        datetime_prefix = f"Current date and time: {current_time}\n\n"
+        
+        base_system_prompt = os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
+        base_fun_prompt = os.getenv("FUN_PROMPT", "Write an amusing and sarcastic!")
+        
+        self.SYSTEM_PROMPT = datetime_prefix + base_system_prompt
         self.BOT_TAG = os.getenv("BOT_TAG", "")
-        self.FUN_SYSTEM_PROMPT = os.getenv("FUN_PROMPT", "Write an amusing and sarcastic!")
+        self.FUN_SYSTEM_PROMPT = datetime_prefix + base_fun_prompt
 
     async def get_guild_emoji_list(self, guild: discord.Guild) -> str:
         if not guild or not guild.emojis:

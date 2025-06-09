@@ -221,6 +221,10 @@ class AICommands(commands.Cog):
         try:
             # Use tool-enabled query if tools are supported and enabled
             if supports_tools and tool_calling and tool_cog:
+                # Send status update for tool-enabled processing
+                if interaction:
+                    await interaction.followup.send("🔧 **Activating AI tools...**", ephemeral=True)
+                
                 # Convert web_search flag to force_tools for backward compatibility
                 force_tools = web_search
                 
@@ -239,9 +243,14 @@ class AICommands(commands.Cog):
                     use_fun=fun,
                     use_tools=tool_calling,
                     force_tools=force_tools,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    interaction=interaction
                 )
             else:
+                # Send status update for standard processing
+                if interaction:
+                    await interaction.followup.send("🧠 **Processing your request...**", ephemeral=True)
+                
                 # Fall back to standard query
                 result, elapsed, footer_with_stats = await perform_chat_query(
                     prompt=cleaned_prompt,
@@ -256,7 +265,8 @@ class AICommands(commands.Cog):
                     api=api,
                     use_fun=fun,
                     web_search=web_search,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    interaction=interaction
                 )
             
             # Check if result contains API error information
