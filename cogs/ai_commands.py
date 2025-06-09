@@ -205,9 +205,11 @@ class AICommands(commands.Cog):
         choices = []
         
         for model_key, config in available_models.items():
-            if current.lower() in model_key.lower():
-                name = config.get("name", model_key)
-                choices.append(app_commands.Choice(name=f"{model_key} - {name}", value=model_key))
+            name = config.get("name", model_key)
+            # Search in both model key and display name
+            if (current.lower() in model_key.lower() or 
+                current.lower() in name.lower()):
+                choices.append(app_commands.Choice(name=f"{name} ({model_key})", value=model_key))
                 
         return choices[:25]  # Discord limits to 25 choices
     
