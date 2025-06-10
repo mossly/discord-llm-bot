@@ -98,7 +98,8 @@ class APIUtils(commands.Cog):
         emoji_channel: discord.TextChannel = None,
         max_tokens: int = 8000,
         tools: list = None,
-        tool_choice: str = "auto"
+        tool_choice: str = "auto",
+        response_format: dict = None
     ) -> tuple:
         if api == "openrouter":
             api_client = self.OPENROUTERCLIENT
@@ -173,6 +174,10 @@ class APIUtils(commands.Cog):
             if tools:
                 request_params["tools"] = tools
                 request_params["tool_choice"] = tool_choice
+            
+            # Add response format if provided
+            if response_format:
+                request_params["response_format"] = response_format
             
             response = await asyncio.to_thread(
                 api_client.chat.completions.create,
