@@ -567,18 +567,16 @@ URL: {url}
 Content (first 8000 chars):
 {raw_content[:8000]}
 
-Respond with JSON:
-{{
-  "extracted_content": "relevant content summary (max 1000 words)",
-  "key_insights": ["insight 1", "insight 2", "insight 3"],
-  "relevance_score": 0.8
-}}
-
 Focus on:
 - Facts, statistics, and specific details
 - Information directly relevant to the research query
 - Quotes and authoritative statements
-- Unique insights not commonly known"""
+- Unique insights not commonly known
+
+Provide:
+- extracted_content: relevant content summary (max 1000 words)
+- key_insights: list of 3 key insights
+- relevance_score: float between 0 and 1"""
 
             # Use the established API pattern
             # DO NOT CHANGE: Using Gemini 2.0 Flash for extraction
@@ -586,7 +584,36 @@ Focus on:
                 model="google/gemini-2.0-flash-001",
                 message_content=extraction_prompt,
                 api="openrouter",
-                max_tokens=600
+                max_tokens=600,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "content_extraction",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "extracted_content": {
+                                    "type": "string",
+                                    "description": "Relevant content summary (max 1000 words)"
+                                },
+                                "key_insights": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of key insights"
+                                },
+                                "relevance_score": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                    "description": "Relevance score between 0 and 1"
+                                }
+                            },
+                            "required": ["extracted_content", "key_insights", "relevance_score"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
             )
             
             # Track API usage if stats available
@@ -596,7 +623,7 @@ Focus on:
                 cost = stats.get('total_cost', 0.0)
                 self.add_session_usage(input_tokens, output_tokens, cost)
             
-            # Parse JSON response
+            # Parse JSON response - should be valid JSON with structured output
             extracted_data = json.loads(content)
             
             return {
@@ -606,7 +633,7 @@ Focus on:
             }
             
         except Exception as e:
-            logger.error(f"Content extraction with mini failed: {e}")
+            logger.error(f"Content extraction failed: {e}")
             return {
                 "extracted_content": raw_content[:1000],
                 "key_insights": [],
