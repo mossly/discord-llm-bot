@@ -15,7 +15,15 @@ def extract_footnotes(content: str) -> tuple[str, str]:
     """Extract footnotes from content and return (cleaned_content, footnotes)"""
     import re
     
-    # Look for footnotes at the end of the message
+    # First check for the explicit separator used by deep research
+    if '===FOOTNOTES===' in content:
+        parts = content.split('===FOOTNOTES===', 1)
+        if len(parts) == 2:
+            cleaned_content = parts[0].strip()
+            footnotes = parts[1].strip()
+            return cleaned_content, footnotes
+    
+    # Fallback to older patterns for backward compatibility
     # Patterns: "References:", "Sources:", "Footnotes:", or lines starting with [1], 1., etc.
     footnote_patterns = [
         r'\n\n(References?:.*?)$',

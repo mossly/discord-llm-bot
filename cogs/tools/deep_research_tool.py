@@ -255,8 +255,13 @@ class DeepResearchTool(BaseTool):
                 # Track costs
                 if "usage" in response:
                     usage = response["usage"]
-                    stats["total_cost"] += usage.get("total_cost", 0.0)
+                    cost = usage.get("total_cost", 0.0)
+                    stats["total_cost"] += cost
                     stats["total_tokens"] += usage.get("total_tokens", 0)
+                    # Register costs with session tracking for proper quota tracking
+                    input_tokens = usage.get("prompt_tokens", 0)
+                    output_tokens = usage.get("completion_tokens", 0)
+                    self.add_session_usage(input_tokens, output_tokens, cost)
                 
                 logger.info(f"LLM response received for iteration {action_count}")
                 
@@ -576,8 +581,9 @@ Focus on:
 - Unique insights not commonly known"""
 
             # Use the established API pattern
+            # DO NOT CHANGE: Using Gemini 2.0 Flash for extraction
             content, stats = await api_utils.send_request(
-                model="openai/gpt-4o-mini",
+                model="google/gemini-2.0-flash-001",
                 message_content=extraction_prompt,
                 api="openrouter",
                 max_tokens=600
@@ -687,7 +693,7 @@ RESEARCH STRATEGY:
 WHEN CALLING finish_query:
 - Provide comprehensive, well-structured markdown response
 - Include specific facts, statistics, and insights from research
-- Use inline citations [1], [2], etc. to reference sources
+- Use inline citations with superscript numbers ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ to reference sources
 - Structure with clear sections if appropriate
 - Be thorough but concise
 - Focus on most relevant and authoritative information
@@ -709,9 +715,10 @@ WRITING STYLE:
 This ensures optimal readability while maintaining comprehensive coverage of the topic.
 
 CITATION FORMAT:
-- Inline citations: [1], [2], [3]
-- End with horizontal line ~~‎ ‎ ‎~~
-- Footnotes: -# 1. [Title] (url)
+- Inline citations: Use superscript numbers ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹
+- CRITICAL: You MUST end your main content with exactly this separator: ===FOOTNOTES===
+- After the separator, list footnotes with matching superscripts: ¹ [Title](url) - masked link format
+- This separator is MANDATORY - the system depends on it to properly format your response
 
 PROCEED STRATEGICALLY - each search should build on previous findings."""
     
