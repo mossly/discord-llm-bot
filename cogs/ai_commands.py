@@ -21,6 +21,9 @@ ModelChoices = Literal[
 ]
 
 # Hardcoded models configuration
+# Note: api_model format depends on the API:
+#   - For OpenRouter API: use "provider/model" format (e.g., "anthropic/claude-3", "google/gemini-2.0")
+#   - For OpenAI API: use just the model name (e.g., "gpt-4o-mini", "o1-preview")
 MODELS_CONFIG = {
     "gpt-4o-mini": {
         "name": "GPT-4o-mini",
@@ -35,10 +38,10 @@ MODELS_CONFIG = {
     "o4-mini": {
         "name": "o4-mini",
         "default_footer": "o4-mini", 
-        "api_model": "openai/o4-mini",
+        "api_model": "o4-mini",
         "supports_images": False,
         "supports_tools": True,
-        "api": "openrouter",
+        "api": "openai",
         "enabled": True,
         "admin_only": False
     },
