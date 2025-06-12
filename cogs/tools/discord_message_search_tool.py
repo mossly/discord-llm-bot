@@ -468,6 +468,7 @@ class DiscordMessageSearchTool(BaseTool):
             logger.info(f"  Server: {server_id or 'Multiple'} | Channel: {channel_id or 'Multiple'}")
             logger.info(f"  Time range: {time_range or 'All time'} | Results: {len(results)}/{max_results}")
             logger.info(f"  Channels searched: {search_stats['channels_searched']} | Permission errors: {search_stats['permission_errors']}")
+            logger.info(f"  Searched channels: {', '.join(channels_searched[:10])}")  # Log first 10 channel names
             logger.info(f"  Search time: {round(elapsed_time, 2)}s")
             
             # Warn if high permission error rate
