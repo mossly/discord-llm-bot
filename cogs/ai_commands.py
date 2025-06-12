@@ -408,10 +408,10 @@ class AICommands(commands.Cog):
                 # Fallback to normal reply if thread creation fails
                 await send_embed(reply_msg.channel, embed, reply_to=reply_msg, content=attribution_text)
         elif reply_msg and isinstance(reply_msg.channel, discord.Thread):
-            # Already in a thread, just send the response there
+            # Already in a thread, send as a reply without attribution text
             logger.info(f"Sending response to thread: {reply_msg.channel.name if reply_msg.channel else 'None channel'}")
             if reply_msg.channel:
-                await send_embed(reply_msg.channel, embed, content=attribution_text)
+                await send_embed(reply_msg.channel, embed, reply_to=reply_msg)
             else:
                 logger.error("reply_msg.channel is None, cannot send response")
                 return
