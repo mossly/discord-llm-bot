@@ -242,10 +242,10 @@ class DiscordMessageSearchTool(BaseTool):
                 if messages_searched % 100 == 0:
                     await asyncio.sleep(self.rate_limit_delay)
                     
-        except discord.Forbidden:
-            logger.warning(f"No permission to read history in channel {channel.name}")
+        except discord.Forbidden as e:
+            logger.warning(f"Bot lacks permission to read history in channel '{channel.name}': {e}")
         except Exception as e:
-            logger.error(f"Error searching channel {channel.name}: {e}")
+            logger.error(f"Error searching channel '{channel.name}': {e}")
             
         return results
     
@@ -376,6 +376,7 @@ class DiscordMessageSearchTool(BaseTool):
                         perms = channel.permissions_for(member)
                         if not perms.read_messages:
                             search_stats["permission_errors"] += 1
+                            logger.debug(f"Skipping channel '{channel.name}' - user lacks read permission")
                             continue
                         
                     try:
@@ -390,6 +391,7 @@ class DiscordMessageSearchTool(BaseTool):
                         
                     except discord.Forbidden:
                         search_stats["permission_errors"] += 1
+                        logger.warning(f"Permission denied for channel '{channel.name}' in '{guild.name}'")
                     
                     # Rate limiting between channels
                     await asyncio.sleep(self.rate_limit_delay)
@@ -429,6 +431,7 @@ class DiscordMessageSearchTool(BaseTool):
                         if requesting_user_id and member:
                             perms = channel.permissions_for(member)
                             if not perms.read_messages:
+                                logger.debug(f"Skipping channel '{channel.name}' in '{guild.name}' - user lacks read permission")
                                 continue
                             
                         try:
@@ -443,6 +446,7 @@ class DiscordMessageSearchTool(BaseTool):
                             
                         except discord.Forbidden:
                             search_stats["permission_errors"] += 1
+                            logger.warning(f"Permission denied for channel '{channel.name}' in '{guild.name}'")
                         
                         # Rate limiting
                         await asyncio.sleep(self.rate_limit_delay)
@@ -463,8 +467,21 @@ class DiscordMessageSearchTool(BaseTool):
             logger.info(f"  Query: '{query}' | Author: {author_name or final_author_id or 'Any'}")
             logger.info(f"  Server: {server_id or 'Multiple'} | Channel: {channel_id or 'Multiple'}")
             logger.info(f"  Time range: {time_range or 'All time'} | Results: {len(results)}/{max_results}")
-            logger.info(f"  Channels searched: {search_stats['channels_searched']} | Errors: {search_stats['permission_errors']}")
+            logger.info(f"  Channels searched: {search_stats['channels_searched']} | Permission errors: {search_stats['permission_errors']}")
             logger.info(f"  Search time: {round(elapsed_time, 2)}s")
+            
+            # Warn if high permission error rate
+            if search_stats['channels_searched'] > 0:
+                error_rate = search_stats['permission_errors'] / (search_stats['channels_searched'] + search_stats['permission_errors'])
+                if error_rate > 0.5:
+                    logger.warning(f"High permission error rate ({error_rate:.0%}) - many channels inaccessible to user")
+            elif search_stats['permission_errors'] > 0:
+                logger.warning(f"All {search_stats['permission_errors']} channels were inaccessible - no channels could be searched")
+            
+            # Add warning to message if permission errors occurred
+            warning_suffix = ""
+            if search_stats['permission_errors'] > 0:
+                warning_suffix = f" (Note: {search_stats['permission_errors']} channels were inaccessible)"
             
             return {
                 "success": True,
@@ -484,7 +501,7 @@ class DiscordMessageSearchTool(BaseTool):
                     "time_range": time_range,
                     "cutoff_time": cutoff_time.isoformat() if cutoff_time else None
                 },
-                "message": f"Found {len(results)} message(s) {search_description} across {search_stats['channels_searched']} channel(s)"
+                "message": f"Found {len(results)} message(s) {search_description} across {search_stats['channels_searched']} channel(s){warning_suffix}"
             }
             
         except ValueError as e:
