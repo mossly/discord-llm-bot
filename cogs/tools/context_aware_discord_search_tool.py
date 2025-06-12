@@ -24,7 +24,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
     
     @property
     def description(self) -> str:
-        return "Search through Discord message history in the current server/channel context. Can search by content query, by user, or both. Automatically uses the current Discord server and channel as defaults, but can be overridden with specific server_id/channel_id parameters. Note: You can only search messages in servers and channels where you have access."
+        return "Search through Discord message history in the current server context. Can search by content query, by user, or both. By default searches the entire current server. Can be narrowed to specific channels using channel_id, or search different servers with server_id. Note: You can only search messages in servers and channels where you have access."
     
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -32,8 +32,8 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         base_params = super().parameters.copy()
         
         # Update descriptions to indicate context-aware behavior
-        base_params["properties"]["channel_id"]["description"] = "Specific channel ID to search in (optional). If not provided, searches the current channel context."
-        base_params["properties"]["server_id"]["description"] = "Specific server/guild ID to search in (optional). If not provided, searches the current server context."
+        base_params["properties"]["channel_id"]["description"] = "Specific channel ID to search in (optional). If not provided, searches all accessible channels in the current server."
+        base_params["properties"]["server_id"]["description"] = "Specific server/guild ID to search in (optional). If not provided, uses the current server context."
         
         return base_params
     
@@ -55,14 +55,20 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         effective_channel_id = channel_id
         effective_server_id = server_id
         
-        # If no specific channel/server provided, use current context
-        if not effective_channel_id and not effective_server_id and self.current_channel:
-            effective_channel_id = str(self.current_channel.id)
-            logger.info(f"Using current channel context: {self.current_channel.name} ({effective_channel_id})")
-        
+        # If no server specified, use current server context (search whole server by default)
         if not effective_server_id and self.current_guild:
             effective_server_id = str(self.current_guild.id)
             logger.info(f"Using current server context: {self.current_guild.name} ({effective_server_id})")
+        
+        # Only use channel context if explicitly requested or if no server context
+        # This allows searching the whole server by default while still allowing specific channel searches
+        if channel_id:
+            effective_channel_id = channel_id
+            logger.info(f"Using specified channel: {effective_channel_id}")
+        elif not effective_server_id and self.current_channel:
+            # Fallback: if somehow we have no server context, at least use channel
+            effective_channel_id = str(self.current_channel.id)
+            logger.info(f"Using current channel as fallback: {self.current_channel.name} ({effective_channel_id})")
         
         # Call the parent class execute method with the effective IDs and security context
         result = await super().execute(
