@@ -64,7 +64,8 @@ async def handle_thread_conversation(message):
                 if footer_text:
                     first_line = footer_text.split('\n')[0].strip()
                     # Try to detect model from footer
-                    for key, config in ai_commands.MODELS_CONFIG.items():
+                    from cogs.ai_commands import MODELS_CONFIG
+                    for key, config in MODELS_CONFIG.items():
                         if config.get("default_footer") == first_line or config.get("name") == first_line:
                             model_key = key
                             break

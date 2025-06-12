@@ -376,14 +376,14 @@ class AICommands(commands.Cog):
                 user_content = original_content[:200]
                 ai_content = result[:200]
                 
-                name_prompt = f"Generate a concise thread title (max 50 chars) for this conversation:\nUser: {user_content}\nAI: {ai_content}"
+                name_prompt = f"Generate a short, descriptive thread title (max 50 characters) based on this conversation topic. Return only the title, no explanation:\n\nUser message: {user_content}\nAI response: {ai_content}\n\nThread title:"
                 
                 api_cog = self.bot.get_cog("APIUtils")
                 if api_cog:
                     thread_name, _ = await api_cog.send_request(
                         model="openai/gpt-4.1-nano", 
                         message_content=name_prompt,
-                        api="openai",
+                        api="openrouter",
                         max_tokens=20
                     )
                     thread_name = thread_name.strip()[:50]  # Ensure 50 char limit
@@ -702,7 +702,8 @@ class ModelSelectionView(discord.ui.View):
         await interaction.response.edit_message(view=self)
     
     async def submit_button_callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(thinking=True, ephemeral=False)
+        # Defer with ephemeral response to avoid cluttering the channel
+        await interaction.response.defer(ephemeral=True)
         
         model_key = self.selected_model
         
