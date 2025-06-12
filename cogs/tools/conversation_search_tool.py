@@ -37,7 +37,7 @@ class ConversationSearchTool(BaseTool):
                 },
                 "user_id": {
                     "type": "string",
-                    "description": "User ID to search conversations for (required)"
+                    "description": "User ID to search conversations for (automatically provided from context)"
                 },
                 "limit": {
                     "type": "integer",
@@ -45,7 +45,7 @@ class ConversationSearchTool(BaseTool):
                     "default": 10
                 }
             },
-            "required": ["query", "user_id"]
+            "required": ["query"]
         }
     
     async def execute(self, query: str, user_id: str, limit: int = 10) -> Dict[str, Any]:

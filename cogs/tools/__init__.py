@@ -34,6 +34,13 @@ except ImportError:
     CONVERSATION_SEARCH_AVAILABLE = False
     ConversationSearchTool = None
 
+try:
+    from .discord_message_search_tool import DiscordMessageSearchTool
+    DISCORD_MESSAGE_SEARCH_AVAILABLE = True
+except ImportError:
+    DISCORD_MESSAGE_SEARCH_AVAILABLE = False
+    DiscordMessageSearchTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -47,3 +54,6 @@ if DEEP_RESEARCH_AVAILABLE:
 
 if CONVERSATION_SEARCH_AVAILABLE:
     __all__.append('ConversationSearchTool')
+
+if DISCORD_MESSAGE_SEARCH_AVAILABLE:
+    __all__.append('DiscordMessageSearchTool')

@@ -141,3 +141,34 @@ The bot automatically logs all conversations between users and AI models for LLM
 
 ### User Commands
 - `/stats` - View personal conversation statistics (total conversations, tokens, cost)
+
+## Discord Message Search System
+
+The bot provides real-time search capabilities through existing Discord message history:
+
+### LLM Tool Integration
+- **Tool Name**: `search_discord_messages`
+- **Purpose**: Search through Discord server message history in real-time without prior logging
+- **Parameters**: 
+  - `query` (required): Search term or phrase
+  - `channel_id` (optional): Specific channel to search
+  - `server_id` (optional): Specific server to search
+  - `limit` (optional): Max messages to search (default: 1000, max: 10000)
+  - `author_id` (optional): Search messages from specific user
+  - `time_range` (optional): Time range filter ('1h', '6h', '1d', '7d', '30d')
+  - `case_sensitive` (optional): Case-sensitive search (default: false)
+  - `exclude_bots` (optional): Exclude bot messages (default: true)
+  - `max_results` (optional): Max results to return (default: 20, max: 50)
+
+### Features
+- **Real-time Search**: Accesses current Discord message history via API
+- **Performance Optimized**: Rate limiting, chunked processing, result limits
+- **Flexible Filtering**: Time ranges, users, channels, case sensitivity
+- **Rich Results**: Message content, author info, timestamps, jump URLs
+- **Permission Aware**: Only searches accessible channels
+
+### Use Cases
+- Finding past discussions or decisions
+- Locating specific messages or announcements  
+- Gathering context from previous conversations
+- Research and reference lookup in server history
