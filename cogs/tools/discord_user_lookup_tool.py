@@ -155,10 +155,15 @@ class DiscordUserLookupTool(BaseTool):
             
             # Search all accessible servers
             else:
+                total_members_searched = 0
                 for guild in self.bot.guilds:
                     servers_searched.append(guild.name)
+                    guild_member_count = 0
                     
                     for member in guild.members:
+                        guild_member_count += 1
+                        total_members_searched += 1
+                        
                         # Skip if we already have this user from another server
                         if any(result["user_id"] == str(member.id) for result in results):
                             continue
@@ -169,9 +174,13 @@ class DiscordUserLookupTool(BaseTool):
                             user_data["match_score"] = score
                             results.append(user_data)
                     
+                    logger.debug(f"Searched {guild_member_count} members in guild '{guild.name}'")
+                    
                     # Stop if we have enough results
                     if len(results) >= max_results * 2:  # Search a bit more for better sorting
                         break
+                
+                logger.info(f"User lookup for '{search_term}': searched {total_members_searched} total members across {len(servers_searched)} servers, found {len(results)} matches")
             
             # Sort results by match score (highest first)
             results.sort(key=lambda x: x["match_score"], reverse=True)
@@ -179,18 +188,64 @@ class DiscordUserLookupTool(BaseTool):
             # Limit to requested number of results
             results = results[:max_results]
             
+            # If no results found, provide helpful debugging info and suggestions
+            message = f"Found {len(results)} user(s) matching '{search_term}' across {len(servers_searched)} server(s)"
+            suggestions = []
+            
+            if len(results) == 0:
+                # Try to find similar usernames for suggestions
+                similar_users = []
+                search_term_lower = search_term.lower()
+                
+                # Search for partial matches that didn't make the cut
+                for guild in self.bot.guilds:
+                    for member in guild.members:
+                        if member.bot and not include_bots:
+                            continue
+                        
+                        username_lower = member.name.lower()
+                        display_name_lower = member.display_name.lower()
+                        
+                        # Find users with similar names (more relaxed matching)
+                        similarity_score = 0
+                        if any(char in username_lower for char in search_term_lower):
+                            similarity_score += 1
+                        if any(char in display_name_lower for char in search_term_lower):
+                            similarity_score += 1
+                        if len(set(search_term_lower) & set(username_lower)) >= min(2, len(search_term_lower) // 2):
+                            similarity_score += 2
+                        if len(set(search_term_lower) & set(display_name_lower)) >= min(2, len(search_term_lower) // 2):
+                            similarity_score += 2
+                        
+                        if similarity_score > 0:
+                            similar_users.append({
+                                "username": member.name,
+                                "display_name": member.display_name,
+                                "user_id": str(member.id),
+                                "similarity": similarity_score
+                            })
+                
+                # Sort by similarity and take top 5
+                similar_users.sort(key=lambda x: x["similarity"], reverse=True)
+                suggestions = similar_users[:5]
+                
+                if suggestions:
+                    message += f". Did you mean one of these users: {', '.join([f'{u['username']} ({u['display_name']})' for u in suggestions[:3]])}?"
+            
             return {
                 "success": True,
                 "results": results,
                 "search_term": search_term,
                 "total_results": len(results),
+                "suggestions": suggestions,
                 "search_stats": {
                     "servers_searched": len(servers_searched),
                     "servers_searched_names": servers_searched[:5],  # Limit for readability
                     "exact_match_mode": exact_match,
-                    "included_bots": include_bots
+                    "included_bots": include_bots,
+                    "total_members_searched": total_members_searched if 'total_members_searched' in locals() else 0
                 },
-                "message": f"Found {len(results)} user(s) matching '{search_term}' across {len(servers_searched)} server(s)"
+                "message": message
             }
             
         except ValueError as e:
