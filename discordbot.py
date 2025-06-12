@@ -100,13 +100,23 @@ async def handle_thread_conversation(message):
         logging.info(f"Processing thread message from {message.author.name} in thread {message.channel.name}")
         logging.info(f"Using model: {model_key}, prompt length: {len(full_prompt)}")
         
-        await ai_commands._process_ai_request(
-            prompt=full_prompt,
-            model_key=model_key,
-            reply_msg=message,
-            reply_user=message.author,
-            tool_calling=True  # Enable tools by default in threads
-        )
+        # Send thinking message
+        thinking_msg = await message.reply("🤖 Thinking...")
+        
+        try:
+            await ai_commands._process_ai_request(
+                prompt=full_prompt,
+                model_key=model_key,
+                reply_msg=message,
+                reply_user=message.author,
+                tool_calling=True  # Enable tools by default in threads
+            )
+        finally:
+            # Clean up thinking message
+            try:
+                await thinking_msg.delete()
+            except:
+                pass  # Ignore deletion errors
         
     except Exception as e:
         logging.error(f"Error handling thread conversation: {e}")
