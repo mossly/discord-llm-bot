@@ -276,7 +276,7 @@ async def perform_chat_query(
             server_id = str(channel.guild.id) if channel.guild else None
             server_name = channel.guild.name if channel.guild else None
             channel_id = str(channel.id)
-            channel_name = channel.name
+            channel_name = getattr(channel, 'name', 'DM' if isinstance(channel, discord.DMChannel) else 'Unknown')
             thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
             
             # Use provided username or try to get from interaction
@@ -556,7 +556,7 @@ async def perform_chat_query_with_tools(
                     server_id = str(channel.guild.id) if channel.guild else None
                     server_name = channel.guild.name if channel.guild else None
                     channel_id = str(channel.id)
-                    channel_name = channel.name
+                    channel_name = getattr(channel, 'name', 'DM' if isinstance(channel, discord.DMChannel) else 'Unknown')
                     thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
                     
                     # Use provided username or try to get from interaction
@@ -684,7 +684,7 @@ async def perform_chat_query_with_tools(
             server_id = str(channel.guild.id) if channel.guild else None
             server_name = channel.guild.name if channel.guild else None
             channel_id = str(channel.id)
-            channel_name = channel.name
+            channel_name = getattr(channel, 'name', 'DM' if isinstance(channel, discord.DMChannel) else 'Unknown')
             thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
             
             # Use provided username or try to get from interaction
