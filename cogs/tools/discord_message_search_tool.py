@@ -275,7 +275,7 @@ class DiscordMessageSearchTool(BaseTool):
             },
             "channel": {
                 "id": str(message.channel.id),
-                "name": message.channel.name,
+                "name": getattr(message.channel, 'name', None),
                 "type": str(message.channel.type)
             },
             "server": {

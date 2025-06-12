@@ -190,7 +190,8 @@ class APIUtils(commands.Cog):
             discord_context += f"Server ID: {emoji_channel.guild.id}\n"
             discord_context += f"Server Name: {emoji_channel.guild.name}\n"
             discord_context += f"Channel ID: {emoji_channel.id}\n"
-            discord_context += f"Channel Name: {emoji_channel.name}\n"
+            if hasattr(emoji_channel, 'name') and emoji_channel.name:
+                discord_context += f"Channel Name: {emoji_channel.name}\n"
             discord_context += f"Channel Type: {emoji_channel.type}\n\n"
             system_used = base_system_prompt + discord_context
         
