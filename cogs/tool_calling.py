@@ -59,9 +59,9 @@ class ToolCalling(commands.Cog):
     def set_discord_context(self, channel: discord.TextChannel):
         """Set Discord context for context-aware tools"""
         # Find the context-aware Discord search tool and set its context
-        for tool in self.registry.list_tools():
-            tool_instance = self.registry.get_tool(tool)
-            if hasattr(tool_instance, 'set_context'):
+        for tool_name in self.registry.list_tools():
+            tool_instance = self.registry.get(tool_name)
+            if tool_instance and hasattr(tool_instance, 'set_context'):
                 tool_instance.set_context(channel)
                 logger.info(f"Set Discord context for {tool_instance.name}: {channel.guild.name}#{channel.name}")
     
