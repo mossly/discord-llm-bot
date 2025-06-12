@@ -63,7 +63,12 @@ class ToolCalling(commands.Cog):
             tool_instance = self.registry.get(tool_name)
             if tool_instance and hasattr(tool_instance, 'set_context'):
                 tool_instance.set_context(channel)
-                logger.info(f"Set Discord context for {tool_instance.name}: {channel.guild.name}#{channel.name}")
+                if channel and channel.guild:
+                    logger.info(f"Set Discord context for {tool_instance.name}: {channel.guild.name}#{channel.name}")
+                elif channel:
+                    logger.info(f"Set Discord context for {tool_instance.name}: DM channel {channel.id}")
+                else:
+                    logger.info(f"Set Discord context for {tool_instance.name}: None channel")
     
     async def process_tool_calls(
         self,

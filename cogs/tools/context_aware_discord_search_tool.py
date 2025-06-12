@@ -41,7 +41,14 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         """Set the current Discord context for this tool"""
         self.current_channel = channel
         self.current_guild = channel.guild if channel else None
-        logger.info(f"Discord search context set to: {channel.guild.name}#{channel.name} (Server: {channel.guild.id}, Channel: {channel.id})")
+        
+        if channel:
+            if channel.guild:
+                logger.info(f"Discord search context set to: {channel.guild.name}#{channel.name} (Server: {channel.guild.id}, Channel: {channel.id})")
+            else:
+                logger.info(f"Discord search context set to DM channel: {channel.id}")
+        else:
+            logger.warning("Discord search context set to None channel")
     
     async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
                      server_id: Optional[str] = None, limit: int = 10000,
