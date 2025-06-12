@@ -112,7 +112,7 @@ async def handle_thread_conversation(message):
         logging.info(f"Using model: {model_key}, context messages: {len(conversation_history)}, total prompt length: {len(full_prompt)}")
         
         # Send thinking message
-        thinking_msg = await message.reply("🤖 Thinking...")
+        thinking_msg = await message.reply("-# *Thinking...*")
         
         try:
             await ai_commands._process_ai_request(

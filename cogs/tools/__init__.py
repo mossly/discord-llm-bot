@@ -27,6 +27,13 @@ except ImportError:
     DEEP_RESEARCH_AVAILABLE = False
     DeepResearchTool = None
 
+try:
+    from .conversation_search_tool import ConversationSearchTool
+    CONVERSATION_SEARCH_AVAILABLE = True
+except ImportError:
+    CONVERSATION_SEARCH_AVAILABLE = False
+    ConversationSearchTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -37,3 +44,6 @@ if CONTENT_TOOL_AVAILABLE:
 
 if DEEP_RESEARCH_AVAILABLE:
     __all__.append('DeepResearchTool')
+
+if CONVERSATION_SEARCH_AVAILABLE:
+    __all__.append('ConversationSearchTool')

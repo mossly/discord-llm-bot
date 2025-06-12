@@ -155,19 +155,23 @@ class AICommands(commands.Cog):
         if reply_msg and not ctx and not interaction:
             logger.info(f"_process_ai_request called for thread conversation - reply_msg.channel: {reply_msg.channel}, type: {type(reply_msg.channel) if reply_msg.channel else 'None'}")
         
-        # Get user ID for quota tracking and model availability check
+        # Get user ID and username for quota tracking and model availability check
         if ctx:
             user_id = str(ctx.author.id)
             user_id_int = ctx.author.id
+            username = ctx.author.name
         elif interaction:
             user_id = str(interaction.user.id)
             user_id_int = interaction.user.id
+            username = interaction.user.name
         elif reply_user:
             user_id = str(reply_user.id)
             user_id_int = reply_user.id
+            username = reply_user.name
         else:
             user_id = "unknown"
             user_id_int = 0
+            username = "Unknown"
         
         # Check if model is available to this user
         available_models = self._get_available_models(user_id_int)
@@ -301,7 +305,8 @@ class AICommands(commands.Cog):
                     force_tools=force_tools,
                     max_tokens=max_tokens,
                     interaction=interaction,
-                    deep_research=deep_research
+                    deep_research=deep_research,
+                    username=username
                 )
             else:
                 # Fall back to standard query
@@ -319,7 +324,8 @@ class AICommands(commands.Cog):
                     use_fun=fun,
                     web_search=web_search,
                     max_tokens=max_tokens,
-                    interaction=interaction
+                    interaction=interaction,
+                    username=username
                 )
             
             # Check if result contains API error information
