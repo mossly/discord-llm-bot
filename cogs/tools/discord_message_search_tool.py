@@ -29,7 +29,7 @@ class DiscordMessageSearchTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "Search through Discord message history in real-time. Can search by content query, by user, or both. Useful for finding past discussions, specific messages, recent user activity, or context from server conversations. Only searches channels the bot has access to."
+        return "Search through Discord message history in real-time. Can search by content query, by user, or both. Useful for finding past discussions, specific messages, recent user activity, or context from server conversations. Note: You can only search messages in servers and channels where you have access."
     
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -253,7 +253,8 @@ class DiscordMessageSearchTool(BaseTool):
                      server_id: Optional[str] = None, limit: int = 1000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
-                     exclude_bots: bool = True, max_results: int = 20) -> Dict[str, Any]:
+                     exclude_bots: bool = True, max_results: int = 20,
+                     requesting_user_id: Optional[str] = None) -> Dict[str, Any]:
         """Execute Discord message search"""
         try:
             # Validate parameters - require either query or author filter
@@ -323,6 +324,23 @@ class DiscordMessageSearchTool(BaseTool):
                         "error": f"Channel {channel_id} is not a text channel"
                     }
                 
+                # Security check: Verify requesting user has access to this channel
+                if requesting_user_id and channel.guild:
+                    member = channel.guild.get_member(int(requesting_user_id))
+                    if not member:
+                        return {
+                            "success": False,
+                            "error": f"You are not a member of the server containing channel {channel_id}"
+                        }
+                    
+                    # Check channel permissions
+                    perms = channel.permissions_for(member)
+                    if not perms.read_messages:
+                        return {
+                            "success": False,
+                            "error": f"You do not have permission to read messages in channel {channel.name}"
+                        }
+                
                 channel_results = await self._search_channel(
                     channel, query, limit, case_sensitive, exclude_bots,
                     final_author_id, cutoff_time, max_results
@@ -340,9 +358,25 @@ class DiscordMessageSearchTool(BaseTool):
                         "error": f"Server with ID {server_id} not found or not accessible"
                     }
                 
+                # Security check: Verify requesting user is a member of this server
+                if requesting_user_id:
+                    member = guild.get_member(int(requesting_user_id))
+                    if not member:
+                        return {
+                            "success": False,
+                            "error": f"You are not a member of server '{guild.name}'"
+                        }
+                
                 for channel in guild.text_channels:
                     if len(results) >= max_results:
                         break
+                    
+                    # Skip channels the requesting user can't access
+                    if requesting_user_id and member:
+                        perms = channel.permissions_for(member)
+                        if not perms.read_messages:
+                            search_stats["permission_errors"] += 1
+                            continue
                         
                     try:
                         channel_results = await self._search_channel(
@@ -362,12 +396,27 @@ class DiscordMessageSearchTool(BaseTool):
             
             # Search all accessible servers (limited scope for performance)
             else:
-                # Limit to first few guilds to prevent excessive API usage
-                guilds_to_search = list(self.bot.guilds)[:3]  # Max 3 servers
+                # Security: Only search servers where the requesting user is a member
+                if requesting_user_id:
+                    # Get only guilds where the user is a member
+                    user_guilds = []
+                    for guild in self.bot.guilds:
+                        member = guild.get_member(int(requesting_user_id))
+                        if member:
+                            user_guilds.append(guild)
+                    
+                    # Limit to first few guilds to prevent excessive API usage
+                    guilds_to_search = user_guilds[:3]  # Max 3 servers
+                else:
+                    # Fallback if no requesting_user_id (shouldn't happen in production)
+                    guilds_to_search = list(self.bot.guilds)[:3]
                 
                 for guild in guilds_to_search:
                     if len(results) >= max_results:
                         break
+                    
+                    # Get member for permission checks
+                    member = guild.get_member(int(requesting_user_id)) if requesting_user_id else None
                         
                     # Limit channels per guild
                     channels_to_search = guild.text_channels[:5]  # Max 5 channels per server
@@ -375,6 +424,12 @@ class DiscordMessageSearchTool(BaseTool):
                     for channel in channels_to_search:
                         if len(results) >= max_results:
                             break
+                        
+                        # Skip channels the requesting user can't access
+                        if requesting_user_id and member:
+                            perms = channel.permissions_for(member)
+                            if not perms.read_messages:
+                                continue
                             
                         try:
                             channel_results = await self._search_channel(

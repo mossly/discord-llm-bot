@@ -7,6 +7,7 @@
 
 # Environment variables
 .env
+.system_prompt
 
 # Python
 __pycache__/
