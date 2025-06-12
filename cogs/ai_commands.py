@@ -196,7 +196,7 @@ class AICommands(commands.Cog):
                 await interaction.followup.send(embed=error_embed)
             return
         
-        channel = ctx.channel if ctx else interaction.channel
+        channel = ctx.channel if ctx else (interaction.channel if interaction else reply_msg.channel)
         api_cog = self.bot.get_cog("APIUtils")
         duck_cog = self.bot.get_cog("DuckDuckGo")
         tool_cog = self.bot.get_cog("ToolCalling")
