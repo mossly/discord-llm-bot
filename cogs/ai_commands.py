@@ -9,6 +9,9 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Default model to use as fallback
+DEFAULT_MODEL = "gemini-2.5-flash-preview"
+
 # Model type definition
 ModelChoices = Literal[
     "gpt-4o-mini",
@@ -39,7 +42,7 @@ MODELS_CONFIG = {
         "name": "o4-mini",
         "default_footer": "o4-mini", 
         "api_model": "o4-mini",
-        "supports_images": False,
+        "supports_images": True,
         "supports_tools": True,
         "api": "openai",
         "enabled": True,
@@ -195,16 +198,61 @@ class AICommands(commands.Cog):
         tool_cog = self.bot.get_cog("ToolCalling")
         
         if image_url and not config.get("supports_images", False):
-            error_embed = discord.Embed(
-                title="ERROR",
-                description=f"Image attachments are not supported by {config.get('name', model_key)}. Please use a model that supports images.",
-                color=0xDC143C
-            )
-            if ctx:
-                await ctx.reply(embed=error_embed)
-            else:
-                await interaction.followup.send(embed=error_embed)
-            return
+            # Use gpt-4.1-nano to caption the image
+            try:
+                # Caption the image using gpt-4.1-nano
+                caption_prompt = "Please describe this image in detail, focusing on the main subjects, their actions, expressions, and the overall context or scene. Be specific and comprehensive."
+                
+                # Get API cog first
+                if not api_cog:
+                    api_cog = self.bot.get_cog("APIUtils")
+                
+                caption_result, caption_stats = await api_cog.send_request(
+                    model="openai/gpt-4.1-nano",
+                    message_content=caption_prompt,
+                    image_url=image_url,
+                    api="openrouter",
+                    max_tokens=500
+                )
+                
+                # Add caption cost to user quota
+                if caption_stats and caption_stats.get('total_cost', 0) > 0:
+                    from user_quotas import quota_manager
+                    quota_manager.add_usage(user_id, caption_stats['total_cost'])
+                
+                # Prepend caption to the original prompt
+                image_context = f"[Image Description: {caption_result}]\n\n{prompt}"
+                
+                # Log the captioning
+                logger.info(f"Generated image caption for unsupported model {model_key}: {len(caption_result)} chars")
+                
+                # Continue with text-only request using the caption
+                prompt = image_context
+                image_url = None  # Clear image URL since we're now using text
+                
+                # Notify user about automatic captioning
+                notify_embed = discord.Embed(
+                    title="Image Captioning",
+                    description=f"✨ {config.get('name', model_key)} doesn't support images directly. I've automatically generated a description of your image to include with your request.",
+                    color=0x00CED1
+                )
+                if ctx:
+                    await ctx.send(embed=notify_embed, delete_after=10)
+                else:
+                    await interaction.followup.send(embed=notify_embed, ephemeral=True)
+                    
+            except Exception as e:
+                logger.exception(f"Error captioning image: {e}")
+                error_embed = discord.Embed(
+                    title="Image Processing Error",
+                    description=f"Failed to process the image for {config.get('name', model_key)}. Please try using a model that supports images directly.",
+                    color=0xDC143C
+                )
+                if ctx:
+                    await ctx.reply(embed=error_embed)
+                else:
+                    await interaction.followup.send(embed=error_embed)
+                return
 
         if not image_url:
             from generic_chat import process_attachments, perform_chat_query, perform_chat_query_with_tools
@@ -316,7 +364,49 @@ class AICommands(commands.Cog):
                 message_link = f"https://discord.com/channels/@me/{reply_msg.channel.id}/{reply_msg.id}"
             attribution_text = f"### {reply_user.mention} used AI Reply > {message_link}"
 
-        if ctx or reply_msg:
+        # Check if this is a context menu reply in a server that should create a thread
+        if reply_msg and reply_msg.guild and reply_user and not isinstance(reply_msg.channel, discord.Thread):
+            # Generate AI thread name using gpt-4.1-nano
+            try:
+                original_content = reply_msg.content or "[No text content]"
+                if reply_msg.embeds and reply_msg.embeds[0].description:
+                    original_content = reply_msg.embeds[0].description
+                
+                # Prepare content for thread naming (limit for API efficiency)
+                user_content = original_content[:200]
+                ai_content = result[:200]
+                
+                name_prompt = f"Generate a concise thread title (max 50 chars) for this conversation:\nUser: {user_content}\nAI: {ai_content}"
+                
+                api_cog = self.bot.get_cog("APIUtils")
+                if api_cog:
+                    thread_name, _ = await api_cog.send_request(
+                        model="openai/gpt-4.1-nano", 
+                        message_content=name_prompt,
+                        api="openai",
+                        max_tokens=20
+                    )
+                    thread_name = thread_name.strip()[:50]  # Ensure 50 char limit
+                else:
+                    # Fallback if API not available
+                    thread_name = user_content[:47] + "..." if len(user_content) > 47 else user_content
+                
+                # Create thread from the original message
+                thread = await reply_msg.create_thread(name=thread_name or "AI Conversation")
+                
+                # Send response in the thread
+                await send_embed(thread, embed, content=attribution_text)
+                
+                logger.info(f"Created thread '{thread_name}' for AI conversation")
+                
+            except Exception as e:
+                logger.error(f"Failed to create thread: {e}")
+                # Fallback to normal reply if thread creation fails
+                await send_embed(reply_msg.channel, embed, reply_to=reply_msg, content=attribution_text)
+        elif reply_msg and isinstance(reply_msg.channel, discord.Thread):
+            # Already in a thread, just send the response there
+            await send_embed(reply_msg.channel, embed, content=attribution_text)
+        elif ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel
             message_to_reply = ctx.message if ctx else reply_msg
             await send_embed(channel, embed, reply_to=message_to_reply, content=attribution_text)
@@ -339,7 +429,7 @@ class AICommands(commands.Cog):
         self, 
         interaction: Interaction, 
         prompt: str,
-        model: ModelChoices = "gemini-2.5-flash-preview", 
+        model: ModelChoices = DEFAULT_MODEL, 
         fun: bool = False,
         web_search: bool = False,
         deep_research: bool = False,
@@ -358,18 +448,44 @@ class AICommands(commands.Cog):
         
         model_config = self._get_model_config(model)
         if has_image and model_config and not model_config.get("supports_images", False):
+            default_model_config = self._get_model_config(DEFAULT_MODEL)
+            default_model_name = default_model_config.get('name', DEFAULT_MODEL) if default_model_config else DEFAULT_MODEL
             await interaction.followup.send(
-                f"⚠️ Automatically switched to Gemini 2.5 Flash because you attached an image " 
+                f"⚠️ Automatically switched to {default_model_name} because you attached an image " 
                 f"and {model_config.get('name', model)} doesn't support image processing.",
                 ephemeral=True
             )
-            model = "gemini-2.5-flash-preview"
+            model = DEFAULT_MODEL
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, deep_research=deep_research, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+    
+    def _detect_model_from_footer(self, message: discord.Message) -> Optional[str]:
+        """Detect which model was used based on the message footer"""
+        if not message.author.bot or not message.embeds:
+            return None
+        
+        embed = message.embeds[0]
+        if not embed.footer or not embed.footer.text:
+            return None
+        
+        # The footer format has model name on the first line
+        footer_text = embed.footer.text
+        first_line = footer_text.split('\n')[0].strip()
+        
+        logger.info(f"Detecting model from footer: '{first_line}'")
+        
+        # Map footer names back to model keys
+        for model_key, config in MODELS_CONFIG.items():
+            if config.get("default_footer") == first_line or config.get("name") == first_line:
+                logger.info(f"Detected model: {model_key}")
+                return model_key
+        
+        logger.warning(f"Could not detect model from footer: '{first_line}'")
+        return None
         
     class ModelSelectModal(discord.ui.Modal):
         additional_input = discord.ui.TextInput(
@@ -379,10 +495,11 @@ class AIContextMenus(commands.Cog):
             placeholder="Add any extra context or instructions..."
         )
         
-        def __init__(self, reference_message, original_message, channel):
+        def __init__(self, reference_message, original_message, channel, detected_model=None):
             self.reference_message = reference_message
             self.original_message = original_message
             self.channel = channel
+            self.detected_model = detected_model
             
             self.has_image = self._check_for_images(original_message)
             
@@ -405,10 +522,13 @@ class AIContextMenus(commands.Cog):
                 reference_message=self.reference_message,
                 original_message=self.original_message,
                 additional_text=formatted_prompt,
-                user_id=interaction.user.id
+                user_id=interaction.user.id,
+                detected_model=self.detected_model
             )
             # Store bot reference for model availability check
             view._bot_ref = interaction.client
+            # Store interaction reference for deletion
+            view._modal_interaction = interaction
             # Refresh dropdown now that we have bot reference
             view.clear_items()
             view._create_dropdown()
@@ -422,14 +542,14 @@ class AIContextMenus(commands.Cog):
 
 
 class ModelSelectionView(discord.ui.View):
-    def __init__(self, has_image, reference_message, original_message, additional_text, user_id=None):
+    def __init__(self, has_image, reference_message, original_message, additional_text, user_id=None, detected_model=None):
         super().__init__(timeout=120)
         self.has_image = has_image
         self.reference_message = reference_message
         self.original_message = original_message
         self.additional_text = additional_text
         self.user_id = user_id
-        self.selected_model = "gemini-2.5-flash-preview"
+        self.selected_model = detected_model if detected_model else DEFAULT_MODEL
         self.fun = False
         self.web_search = False
         self.deep_research = False
@@ -616,10 +736,15 @@ class ModelSelectionView(discord.ui.View):
                 reply_user=interaction.user
             )
             
+            # Delete the ephemeral message from the modal submission
             try:
-                await interaction.delete_original_response()
+                if hasattr(self, '_modal_interaction') and self._modal_interaction:
+                    await self._modal_interaction.delete_original_response()
+                else:
+                    # Fallback: try to delete the current interaction response
+                    await interaction.delete_original_response()
             except discord.HTTPException as e:
-                logger.warning(f"Could not delete original response: {e}")
+                logger.warning(f"Could not delete ephemeral message: {e}")
             
         except Exception as e:
             logger.exception(f"Error processing AI request: {e}")
@@ -628,7 +753,15 @@ class ModelSelectionView(discord.ui.View):
 
 @app_commands.context_menu(name="AI Reply")
 async def ai_context_menu(interaction: Interaction, message: discord.Message):
-    if message.author == interaction.client.user:
+    # Get the AIContextMenus cog to access detection method
+    ai_context_cog = interaction.client.get_cog("AIContextMenus")
+    detected_model = None
+    
+    if ai_context_cog and message.author == interaction.client.user:
+        # Try to detect the model from the bot's own message footer
+        detected_model = ai_context_cog._detect_model_from_footer(message)
+        if detected_model:
+            logger.info(f"Context menu detected model '{detected_model}' from bot message")
         content = message.embeds[0].description.strip() if message.embeds and message.embeds[0].description else ""
     else:
         content = message.content
@@ -643,7 +776,7 @@ async def ai_context_menu(interaction: Interaction, message: discord.Message):
     if has_images:
         reference_message += " [This message contains an image attachment]"
     
-    modal = AIContextMenus.ModelSelectModal(reference_message, message, interaction.channel)
+    modal = AIContextMenus.ModelSelectModal(reference_message, message, interaction.channel, detected_model)
     await interaction.response.send_modal(modal)
 
 @app_commands.context_menu(name="Generate with Image")
