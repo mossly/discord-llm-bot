@@ -8,8 +8,12 @@ import json
 import uuid
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from user_quotas import quota_manager
+from conversation_history import ConversationHistoryManager
 
 logger = logging.getLogger(__name__)
+
+# Initialize conversation history manager
+conversation_history = ConversationHistoryManager()
 
 def extract_footnotes(content: str) -> tuple[str, str]:
     """Extract footnotes from content and return (cleaned_content, footnotes)"""
@@ -137,7 +141,8 @@ async def perform_chat_query(
     use_fun: bool = False,
     web_search: bool = False,
     max_tokens: int = 8000,
-    interaction=None
+    interaction=None,
+    username: str = None
 ) -> tuple[str, float, str]:
     start_time = time.time()
     original_prompt = prompt
@@ -265,6 +270,40 @@ async def perform_chat_query(
             footnotes=footnotes
         )
         
+        # Log conversation to history
+        try:
+            # Get server and channel info if available
+            server_id = str(channel.guild.id) if channel.guild else None
+            server_name = channel.guild.name if channel.guild else None
+            channel_id = str(channel.id)
+            channel_name = channel.name
+            thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
+            
+            # Use provided username or try to get from interaction
+            user_name = username
+            if not user_name and interaction and hasattr(interaction, 'user'):
+                user_name = interaction.user.name
+            if not user_name:
+                user_name = f"User_{user_id}"
+            
+            conversation_history.add_conversation(
+                user_id=user_id,
+                user_name=user_name,
+                user_message=original_prompt,
+                bot_response=cleaned_content,
+                model=model or "unknown",
+                server_id=server_id,
+                server_name=server_name,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                thread_id=thread_id,
+                cost=total_cost,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+        except Exception as e:
+            logger.error(f"Failed to log conversation: {e}")
+        
         return cleaned_content, elapsed, footer
             
     except Exception as e:
@@ -290,7 +329,8 @@ async def perform_chat_query_with_tools(
     deep_research: bool = False,
     max_tokens: int = 8000,
     max_iterations: int = 10,
-    interaction=None
+    interaction=None,
+    username: str = None
 ) -> tuple[str, float, str]:
     """Enhanced chat query with tool calling support"""
     start_time = time.time()
@@ -317,7 +357,9 @@ async def perform_chat_query_with_tools(
             api=api,
             use_fun=use_fun,
             web_search=False,  # Handled by tools now
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            interaction=interaction,
+            username=username
         )
     
     # Get tool registry
@@ -336,7 +378,9 @@ async def perform_chat_query_with_tools(
             api=api,
             use_fun=use_fun,
             web_search=False,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            interaction=interaction,
+            username=username
         )
     
     tool_registry = tool_cog.get_registry()
@@ -362,7 +406,9 @@ async def perform_chat_query_with_tools(
             api=api,
             use_fun=use_fun,
             web_search=False,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            interaction=interaction,
+            username=username
         )
     
     # Build initial conversation
@@ -597,6 +643,40 @@ async def perform_chat_query_with_tools(
             elapsed_time=elapsed,
             footnotes=footnotes
         )
+        
+        # Log conversation to history
+        try:
+            # Get server and channel info if available
+            server_id = str(channel.guild.id) if channel.guild else None
+            server_name = channel.guild.name if channel.guild else None
+            channel_id = str(channel.id)
+            channel_name = channel.name
+            thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
+            
+            # Use provided username or try to get from interaction
+            user_name = username
+            if not user_name and interaction and hasattr(interaction, 'user'):
+                user_name = interaction.user.name
+            if not user_name:
+                user_name = f"User_{user_id}"
+            
+            conversation_history.add_conversation(
+                user_id=user_id,
+                user_name=user_name,
+                user_message=prompt,
+                bot_response=cleaned_content,
+                model=model or "unknown",
+                server_id=server_id,
+                server_name=server_name,
+                channel_id=channel_id,
+                channel_name=channel_name,
+                thread_id=thread_id,
+                cost=final_cost,
+                input_tokens=final_input_tokens,
+                output_tokens=final_output_tokens
+            )
+        except Exception as e:
+            logger.error(f"Failed to log conversation: {e}")
         
         # Clean up session
         tool_cog.end_session(session_id)

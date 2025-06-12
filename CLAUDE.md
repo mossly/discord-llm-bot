@@ -111,3 +111,33 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 - **Post-call Tracking**: Deducts actual costs from quotas
 - **Real-time Updates**: Immediate quota adjustments
 - **Comprehensive Coverage**: Text generation, image generation, and editing
+
+## Data Persistence
+
+**IMPORTANT**: All persistent data files must be stored in the `/data` directory or subdirectories within `/data`. This includes:
+
+- User quotas (`/data/user_quotas.json`)
+- Conversation history (`/data/conversation_history.json`)
+- Reminders (`reminders.json` - should be moved to `/data/reminders.json`)
+- User timezones (`user_timezones.json` - should be moved to `/data/user_timezones.json`)
+- Any new persistent storage files
+
+This ensures proper data organization and facilitates backup/deployment strategies.
+
+## Conversation History System
+
+The bot automatically logs all conversations between users and AI models for LLM tool access:
+
+### Storage
+- **File**: `/data/conversation_history.json`
+- **Structure**: User-indexed JSON with conversation metadata
+- **Capacity**: Auto-managed with size limits (100k conversations)
+
+### LLM Tool Integration
+- **Tool Name**: `search_conversations`
+- **Purpose**: Allows LLMs to search previous conversations for context
+- **Parameters**: query (required), user_id (required), limit (optional)
+- **Use Cases**: Follow-up questions, context retrieval, conversation continuity
+
+### User Commands
+- `/stats` - View personal conversation statistics (total conversations, tokens, cost)
