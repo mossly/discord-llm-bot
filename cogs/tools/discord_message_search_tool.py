@@ -29,7 +29,7 @@ class DiscordMessageSearchTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "Search through Discord message history in real-time. Useful for finding past discussions, specific messages, or context from server conversations. Only searches channels the bot has access to."
+        return "Search through Discord message history in real-time. Can search by content query, by user, or both. Useful for finding past discussions, specific messages, recent user activity, or context from server conversations. Only searches channels the bot has access to."
     
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -38,7 +38,7 @@ class DiscordMessageSearchTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search term or phrase to find in messages (case-insensitive by default)"
+                    "description": "Search term or phrase to find in messages (optional). If not provided, returns recent messages from the specified user or channel."
                 },
                 "channel_id": {
                     "type": "string",
@@ -81,7 +81,7 @@ class DiscordMessageSearchTool(BaseTool):
                     "default": 20
                 }
             },
-            "required": ["query"]
+            "required": []
         }
     
     def _parse_time_range(self, time_range: str) -> Optional[datetime]:
@@ -160,7 +160,7 @@ class DiscordMessageSearchTool(BaseTool):
         # Return exact match first, then partial match, then None
         return exact_match or best_match
     
-    def _should_include_message(self, message: discord.Message, query: str, 
+    def _should_include_message(self, message: discord.Message, query: Optional[str], 
                                case_sensitive: bool, exclude_bots: bool, 
                                author_id: Optional[str], cutoff_time: Optional[datetime]) -> bool:
         """Check if message matches search criteria"""
@@ -176,9 +176,13 @@ class DiscordMessageSearchTool(BaseTool):
         if author_id and str(message.author.id) != author_id:
             return False
             
-        # Content search
+        # If no query provided, include all messages that pass other filters
+        if not query:
+            return True
+            
+        # Content search - skip empty messages when searching
         content = message.content
-        if not content:  # Skip empty messages
+        if not content:  # Skip empty messages when doing content search
             return False
             
         # Case sensitivity
@@ -214,7 +218,7 @@ class DiscordMessageSearchTool(BaseTool):
             "reply_to": str(message.reference.message_id) if message.reference else None
         }
     
-    async def _search_channel(self, channel: discord.TextChannel, query: str,
+    async def _search_channel(self, channel: discord.TextChannel, query: Optional[str],
                              limit: int, case_sensitive: bool, exclude_bots: bool,
                              author_id: Optional[str], cutoff_time: Optional[datetime],
                              max_results: int) -> List[Dict[str, Any]]:
@@ -245,18 +249,24 @@ class DiscordMessageSearchTool(BaseTool):
             
         return results
     
-    async def execute(self, query: str, channel_id: Optional[str] = None,
+    async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
                      server_id: Optional[str] = None, limit: int = 1000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
                      exclude_bots: bool = True, max_results: int = 20) -> Dict[str, Any]:
         """Execute Discord message search"""
         try:
-            # Validate parameters
-            if not query or len(query.strip()) < 2:
+            # Validate parameters - require either query or author filter
+            if query and len(query.strip()) < 2:
                 return {
                     "success": False,
                     "error": "Query must be at least 2 characters long"
+                }
+            
+            if not query and not author_name and not author_id:
+                return {
+                    "success": False,
+                    "error": "Either a search query or author filter (author_name/author_id) must be provided"
                 }
             
             # Resolve author_name to author_id if provided
@@ -405,7 +415,7 @@ class DiscordMessageSearchTool(BaseTool):
                     "time_range": time_range,
                     "cutoff_time": cutoff_time.isoformat() if cutoff_time else None
                 },
-                "message": f"Found {len(results)} message(s) matching '{query}' across {search_stats['channels_searched']} channel(s)"
+                "message": f"Found {len(results)} message(s) {f\"matching '{query}'\" if query else \"from specified user\"} across {search_stats['channels_searched']} channel(s)"
             }
             
         except ValueError as e:

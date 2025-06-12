@@ -24,7 +24,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
     
     @property
     def description(self) -> str:
-        return "Search through Discord message history in the current server/channel context. Automatically uses the current Discord server and channel as defaults, but can be overridden with specific server_id/channel_id parameters."
+        return "Search through Discord message history in the current server/channel context. Can search by content query, by user, or both. Automatically uses the current Discord server and channel as defaults, but can be overridden with specific server_id/channel_id parameters."
     
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -43,7 +43,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         self.current_guild = channel.guild if channel else None
         logger.info(f"Discord search context set to: {channel.guild.name}#{channel.name} (Server: {channel.guild.id}, Channel: {channel.id})")
     
-    async def execute(self, query: str, channel_id: Optional[str] = None,
+    async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
                      server_id: Optional[str] = None, limit: int = 1000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
