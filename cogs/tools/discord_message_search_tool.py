@@ -397,6 +397,12 @@ class DiscordMessageSearchTool(BaseTool):
             # Sort results by timestamp (newest first)
             results.sort(key=lambda x: x["timestamp"], reverse=True)
             
+            # Build search description message
+            if query:
+                search_description = f'matching "{query}"'
+            else:
+                search_description = "from specified user"
+            
             return {
                 "success": True,
                 "results": results,
@@ -415,7 +421,7 @@ class DiscordMessageSearchTool(BaseTool):
                     "time_range": time_range,
                     "cutoff_time": cutoff_time.isoformat() if cutoff_time else None
                 },
-                "message": f"Found {len(results)} message(s) {('matching \"' + query + '\"') if query else 'from specified user'} across {search_stats['channels_searched']} channel(s)"
+                "message": f"Found {len(results)} message(s) {search_description} across {search_stats['channels_searched']} channel(s)"
             }
             
         except ValueError as e:
