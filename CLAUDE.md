@@ -183,19 +183,20 @@ The Discord bot runs on a remote **Render** cloud instance. To manage the deploy
 - `render deploys list [SERVICE_ID]` - View deployment history and logs
 - `render deploys create [SERVICE_ID]` - Trigger a new deployment
 - `render ssh [SERVICE_ID]` - Open SSH session to the running instance
-- `render logs [SERVICE_ID]` - View real-time logs (alternative to deploys list)
+- `render logs -r [SERVICE_ID] -o text --limit 100` - View recent logs (working command format)
 
 ### Common Operations
 ```bash
 # View logs for debugging
-render services  # Select the Discord bot service to get SERVICE_ID
-render deploys list [SERVICE_ID]  # Select a deploy to view logs
+render services -o json  # Get service ID (srv-cgdpib7ekgjpv7sspsf0)
+render logs -r srv-cgdpib7ekgjpv7sspsf0 -o text --limit 100  # View recent logs
+render logs -r srv-cgdpib7ekgjpv7sspsf0 -o text --limit 100 | grep "permission\|error"  # Search logs
 
 # Deploy updates
-render deploys create [SERVICE_ID] --wait
+render deploys create srv-cgdpib7ekgjpv7sspsf0 --wait
 
 # SSH into the running instance
-render ssh [SERVICE_ID]
+render ssh srv-cgdpib7ekgjpv7sspsf0
 ```
 
 The bot's persistent data (quotas, conversation history, etc.) is stored in the `/data` directory on the Render instance.
