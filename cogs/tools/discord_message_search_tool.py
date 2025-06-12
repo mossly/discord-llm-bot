@@ -376,7 +376,7 @@ class DiscordMessageSearchTool(BaseTool):
                         perms = channel.permissions_for(member)
                         if not perms.read_messages:
                             search_stats["permission_errors"] += 1
-                            logger.debug(f"Skipping channel '{channel.name}' - user lacks read permission")
+                            logger.info(f"Skipping channel '{channel.name}' - user lacks read permission")
                             continue
                         
                     try:
@@ -431,7 +431,7 @@ class DiscordMessageSearchTool(BaseTool):
                         if requesting_user_id and member:
                             perms = channel.permissions_for(member)
                             if not perms.read_messages:
-                                logger.debug(f"Skipping channel '{channel.name}' in '{guild.name}' - user lacks read permission")
+                                logger.info(f"Skipping channel '{channel.name}' in '{guild.name}' - user lacks read permission")
                                 continue
                             
                         try:
