@@ -7,7 +7,7 @@ from discord.ext import commands
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,10 @@ class ToolCalling(commands.Cog):
         # Conversation search tool
         conversation_search = ConversationSearchTool()
         self.registry.register(conversation_search, enabled=True)
+        
+        # Discord message search tool
+        discord_search = DiscordMessageSearchTool(bot=self.bot)
+        self.registry.register(discord_search, enabled=True)
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
     
@@ -84,6 +88,10 @@ class ToolCalling(commands.Cog):
             # Pass model parameter for deep_research tool
             if tool_name == "deep_research" and model:
                 arguments["model"] = model
+            
+            # Auto-inject user_id for search_conversations tool
+            if tool_name == "search_conversations":
+                arguments["user_id"] = user_id
             
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             
