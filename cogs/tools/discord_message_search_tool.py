@@ -225,10 +225,19 @@ class DiscordMessageSearchTool(BaseTool):
         """Search through a specific channel"""
         results = []
         messages_searched = 0
+        matching_author_count = 0
         
         try:
             async for message in channel.history(limit=limit):
                 messages_searched += 1
+                
+                # Debug logging for specific channel and author
+                if channel.name == "based-text-chat" and author_id and str(message.author.id) == author_id:
+                    matching_author_count += 1
+                    if query and query.lower() in message.content.lower():
+                        logger.info(f"DEBUG: Found matching message in {channel.name} from target user: '{message.content[:100]}...'")
+                    elif query:
+                        logger.info(f"DEBUG: Found message from target user in {channel.name} but no query match: '{message.content[:100]}...'")
                 
                 if self._should_include_message(message, query, case_sensitive, 
                                                exclude_bots, author_id, cutoff_time):
@@ -241,6 +250,10 @@ class DiscordMessageSearchTool(BaseTool):
                 # Rate limiting
                 if messages_searched % 100 == 0:
                     await asyncio.sleep(self.rate_limit_delay)
+                    
+            # Debug logging for based-text-chat
+            if channel.name == "based-text-chat" and author_id:
+                logger.info(f"DEBUG: In {channel.name} searched {messages_searched} messages, found {matching_author_count} from target user, {len(results)} final results")
                     
         except discord.Forbidden as e:
             logger.warning(f"Bot lacks permission to read history in channel '{channel.name}': {e}")
