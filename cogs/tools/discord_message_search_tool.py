@@ -58,8 +58,8 @@ class DiscordMessageSearchTool(BaseTool):
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of messages to search through (default: 1000, max: 10000)",
-                    "default": 1000
+                    "description": "Maximum number of messages to search through (default: 10000, max: 10000)",
+                    "default": 10000
                 },
                 "author_id": {
                     "type": "string",
@@ -334,7 +334,7 @@ class DiscordMessageSearchTool(BaseTool):
         return results
     
     async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
-                     server_id: Optional[str] = None, limit: int = 1000,
+                     server_id: Optional[str] = None, limit: int = 10000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
                      channel_name: Optional[str] = None, server_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 

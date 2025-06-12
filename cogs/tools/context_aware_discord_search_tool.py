@@ -44,7 +44,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         logger.info(f"Discord search context set to: {channel.guild.name}#{channel.name} (Server: {channel.guild.id}, Channel: {channel.id})")
     
     async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
-                     server_id: Optional[str] = None, limit: int = 1000,
+                     server_id: Optional[str] = None, limit: int = 10000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
                      channel_name: Optional[str] = None, server_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
