@@ -413,12 +413,12 @@ async def perform_chat_query_with_tools(
     
     # Build initial conversation
     system_prompt = api_cog.FUN_SYSTEM_PROMPT if use_fun else api_cog.SYSTEM_PROMPT
-    conversation_history = [
+    conversation_messages = [
         {"role": "system", "content": system_prompt}
     ]
     
     if reference_message:
-        conversation_history.append({"role": "user", "content": reference_message})
+        conversation_messages.append({"role": "user", "content": reference_message})
     
     # Add the user's message
     if image_url:
@@ -441,12 +441,12 @@ async def perform_chat_query_with_tools(
                             "type": "image_url", 
                             "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}
                         })
-            conversation_history.append({"role": "user", "content": content_list})
+            conversation_messages.append({"role": "user", "content": content_list})
         except Exception as e:
             logger.error(f"Error processing image: {e}")
-            conversation_history.append({"role": "user", "content": prompt})
+            conversation_messages.append({"role": "user", "content": prompt})
     else:
-        conversation_history.append({"role": "user", "content": prompt})
+        conversation_messages.append({"role": "user", "content": prompt})
     
     # Tool calling loop
     total_cost = 0
@@ -464,7 +464,7 @@ async def perform_chat_query_with_tools(
             # Make API call with tools
             response = await api_cog.send_request_with_tools(
                 model=model,
-                messages=conversation_history,
+                messages=conversation_messages,
                 tools=available_tools,
                 tool_choice=tool_choice,
                 api=api,
@@ -502,7 +502,7 @@ async def perform_chat_query_with_tools(
             
             if tool_calls:
                 # Add assistant message with tool calls
-                conversation_history.append({
+                conversation_messages.append({
                     "role": "assistant",
                     "content": assistant_content,
                     "tool_calls": tool_calls
@@ -520,7 +520,7 @@ async def perform_chat_query_with_tools(
                 
                 # Add tool results to conversation
                 formatted_results = tool_cog.format_tool_results_for_llm(tool_results)
-                conversation_history.extend(formatted_results)
+                conversation_messages.extend(formatted_results)
                 
                 # Continue to next iteration
                 continue
@@ -549,6 +549,40 @@ async def perform_chat_query_with_tools(
                     elapsed_time=elapsed,
                     footnotes=footnotes
                 )
+                
+                # Log conversation to history
+                try:
+                    # Get server and channel info if available
+                    server_id = str(channel.guild.id) if channel.guild else None
+                    server_name = channel.guild.name if channel.guild else None
+                    channel_id = str(channel.id)
+                    channel_name = channel.name
+                    thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
+                    
+                    # Use provided username or try to get from interaction
+                    user_name = username
+                    if not user_name and interaction and hasattr(interaction, 'user'):
+                        user_name = interaction.user.name
+                    if not user_name:
+                        user_name = f"User_{user_id}"
+                    
+                    conversation_history.add_conversation(
+                        user_id=user_id,
+                        user_name=user_name,
+                        user_message=prompt,
+                        bot_response=cleaned_content,
+                        model=model or "unknown",
+                        server_id=server_id,
+                        server_name=server_name,
+                        channel_id=channel_id,
+                        channel_name=channel_name,
+                        thread_id=thread_id,
+                        cost=final_cost,
+                        input_tokens=final_input_tokens,
+                        output_tokens=final_output_tokens
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to log conversation: {e}")
                 
                 # Clean up session
                 tool_cog.end_session(session_id)
@@ -581,7 +615,7 @@ async def perform_chat_query_with_tools(
     elapsed = round(time.time() - start_time, 2)
     
     # Add system message instructing the model to provide final output
-    conversation_history.append({
+    conversation_messages.append({
         "role": "system",
         "content": "Maximum tool iterations reached. Please provide your final response based on the information gathered so far. Do not attempt to use any more tools."
     })
@@ -590,7 +624,7 @@ async def perform_chat_query_with_tools(
     try:
         final_response = await api_cog.send_request_with_tools(
             model=model,
-            messages=conversation_history,
+            messages=conversation_messages,
             tools=None,  # No tools for final response
             tool_choice="none",
             api=api,
