@@ -76,9 +76,9 @@ async def handle_thread_conversation(message):
             from cogs.ai_commands import DEFAULT_MODEL
             model_key = DEFAULT_MODEL
         
-        # Gather conversation history from thread
+        # Gather conversation history from thread (newest first, excluding current message)
         conversation_history = []
-        async for msg in message.channel.history(limit=20, oldest_first=True):
+        async for msg in message.channel.history(limit=50, before=message):
             if msg.author == bot.user:
                 # Bot message - extract content from embed
                 if msg.embeds and msg.embeds[0].description:
@@ -87,18 +87,29 @@ async def handle_thread_conversation(message):
                 # User message
                 conversation_history.append(f"{msg.author.name}: {msg.content}")
         
-        # Build context prompt
-        context = "\n".join(conversation_history[:-1])  # Exclude the current message
+        # Reverse to get chronological order (oldest first)
+        conversation_history.reverse()
+        
+        # Limit context length - keep recent messages, trim from beginning if needed
+        max_context_length = 4000  # Leave room for current message and system prompts
+        context_text = "\n".join(conversation_history)
+        
+        # If context is too long, trim from the beginning
+        while len(context_text) > max_context_length and conversation_history:
+            conversation_history.pop(0)  # Remove oldest message
+            context_text = "\n".join(conversation_history)
+        
+        # Build final prompt
         current_prompt = f"{message.author.name}: {message.content}"
         
-        if context:
-            full_prompt = f"Previous conversation:\n{context}\n\nCurrent message:\n{current_prompt}"
+        if conversation_history:
+            full_prompt = f"Previous conversation:\n{context_text}\n\nCurrent message:\n{current_prompt}"
         else:
             full_prompt = current_prompt
         
         # Process the AI request using the same model and in the thread
         logging.info(f"Processing thread message from {message.author.name} in thread {message.channel.name}")
-        logging.info(f"Using model: {model_key}, prompt length: {len(full_prompt)}")
+        logging.info(f"Using model: {model_key}, context messages: {len(conversation_history)}, total prompt length: {len(full_prompt)}")
         
         # Send thinking message
         thinking_msg = await message.reply("🤖 Thinking...")
