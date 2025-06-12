@@ -128,7 +128,9 @@ class ToolCalling(commands.Cog):
                     "user_id": arguments.get("user_id", ""),
                     "author_name": arguments.get("author_name", ""),
                     "server_id": arguments.get("server_id", ""),
+                    "server_name": arguments.get("server_name", ""),
                     "channel_id": arguments.get("channel_id", ""),
+                    "channel_name": arguments.get("channel_name", ""),
                     "time_range": arguments.get("time_range", ""),
                     "results_found": len(result.get('results', []))
                 }

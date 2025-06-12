@@ -46,6 +46,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
     async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
                      server_id: Optional[str] = None, limit: int = 1000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
+                     channel_name: Optional[str] = None, server_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
                      exclude_bots: bool = True, max_results: int = 20,
                      requesting_user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -78,6 +79,8 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
             limit=limit,
             author_id=author_id,
             author_name=author_name,
+            channel_name=channel_name,
+            server_name=server_name,
             time_range=time_range,
             case_sensitive=case_sensitive,
             exclude_bots=exclude_bots,
