@@ -109,9 +109,20 @@ class APIUtils(commands.Cog):
             logger.info(f"Using OpenAI API for model: {model}")
             
         if use_fun:
-            system_used = self.FUN_SYSTEM_PROMPT
+            base_system_prompt = self.FUN_SYSTEM_PROMPT
         else:
-            system_used = self.SYSTEM_PROMPT
+            base_system_prompt = self.SYSTEM_PROMPT
+        
+        # Add Discord context to system prompt if channel information is available
+        system_used = base_system_prompt
+        if emoji_channel and emoji_channel.guild:
+            discord_context = f"\nCurrent Discord Context:\n"
+            discord_context += f"Server ID: {emoji_channel.guild.id}\n"
+            discord_context += f"Server Name: {emoji_channel.guild.name}\n"
+            discord_context += f"Channel ID: {emoji_channel.id}\n"
+            discord_context += f"Channel Name: {emoji_channel.name}\n"
+            discord_context += f"Channel Type: {emoji_channel.type}\n\n"
+            system_used = base_system_prompt + discord_context
         
         message_content = message_content.replace(self.BOT_TAG, "")
 

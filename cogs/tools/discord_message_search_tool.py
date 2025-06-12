@@ -57,6 +57,10 @@ class DiscordMessageSearchTool(BaseTool):
                     "type": "string",
                     "description": "Search only messages from specific user ID (optional)"
                 },
+                "author_name": {
+                    "type": "string",
+                    "description": "Search only messages from specific username or display name (optional). Will be resolved to user ID automatically."
+                },
                 "time_range": {
                     "type": "string",
                     "description": "Time range to search within: '1h', '6h', '1d', '7d', '30d' (optional)"
@@ -103,6 +107,58 @@ class DiscordMessageSearchTool(BaseTool):
         kwargs = {time_map[unit]: amount}
         cutoff_time = datetime.now(timezone.utc) - timedelta(**kwargs)
         return cutoff_time
+    
+    async def _resolve_user_id(self, author_name: str, guild_id: Optional[int] = None) -> Optional[str]:
+        """Resolve username/display name to user ID"""
+        if not author_name:
+            return None
+            
+        author_name_lower = author_name.lower().strip()
+        best_match = None
+        exact_match = None
+        
+        # Search in specific guild if provided
+        if guild_id:
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                for member in guild.members:
+                    # Exact username match (case-insensitive)
+                    if member.name.lower() == author_name_lower:
+                        exact_match = str(member.id)
+                        break
+                    # Exact display name match (case-insensitive)  
+                    if member.display_name.lower() == author_name_lower:
+                        exact_match = str(member.id)
+                        break
+                    # Partial matches for fallback
+                    if (author_name_lower in member.name.lower() or 
+                        author_name_lower in member.display_name.lower()):
+                        if not best_match:  # First partial match
+                            best_match = str(member.id)
+                            
+        # If no guild specified or no match found, search across all accessible guilds
+        if not exact_match and not best_match:
+            for guild in self.bot.guilds:
+                for member in guild.members:
+                    # Exact username match (case-insensitive)
+                    if member.name.lower() == author_name_lower:
+                        exact_match = str(member.id)
+                        break
+                    # Exact display name match (case-insensitive)
+                    if member.display_name.lower() == author_name_lower:
+                        exact_match = str(member.id)
+                        break
+                    # Partial matches for fallback
+                    if (author_name_lower in member.name.lower() or 
+                        author_name_lower in member.display_name.lower()):
+                        if not best_match:  # First partial match
+                            best_match = str(member.id)
+                            
+                if exact_match:  # Break out of outer loop if exact match found
+                    break
+        
+        # Return exact match first, then partial match, then None
+        return exact_match or best_match
     
     def _should_include_message(self, message: discord.Message, query: str, 
                                case_sensitive: bool, exclude_bots: bool, 
@@ -191,9 +247,9 @@ class DiscordMessageSearchTool(BaseTool):
     
     async def execute(self, query: str, channel_id: Optional[str] = None,
                      server_id: Optional[str] = None, limit: int = 1000,
-                     author_id: Optional[str] = None, time_range: Optional[str] = None,
-                     case_sensitive: bool = False, exclude_bots: bool = True,
-                     max_results: int = 20) -> Dict[str, Any]:
+                     author_id: Optional[str] = None, author_name: Optional[str] = None,
+                     time_range: Optional[str] = None, case_sensitive: bool = False, 
+                     exclude_bots: bool = True, max_results: int = 20) -> Dict[str, Any]:
         """Execute Discord message search"""
         try:
             # Validate parameters
@@ -202,6 +258,28 @@ class DiscordMessageSearchTool(BaseTool):
                     "success": False,
                     "error": "Query must be at least 2 characters long"
                 }
+            
+            # Resolve author_name to author_id if provided
+            resolved_author_id = None
+            if author_name and not author_id:
+                # Determine guild context for user resolution
+                guild_id = None
+                if server_id:
+                    guild_id = int(server_id)
+                elif channel_id:
+                    channel = self.bot.get_channel(int(channel_id))
+                    if channel and channel.guild:
+                        guild_id = channel.guild.id
+                
+                resolved_author_id = await self._resolve_user_id(author_name, guild_id)
+                if not resolved_author_id:
+                    return {
+                        "success": False,
+                        "error": f"Could not find user with name '{author_name}'. Try using the exact username or display name."
+                    }
+            
+            # Use resolved author_id or provided author_id
+            final_author_id = author_id or resolved_author_id
             
             # Apply safety limits
             limit = min(limit, self.max_search_limit)
@@ -237,7 +315,7 @@ class DiscordMessageSearchTool(BaseTool):
                 
                 channel_results = await self._search_channel(
                     channel, query, limit, case_sensitive, exclude_bots,
-                    author_id, cutoff_time, max_results
+                    final_author_id, cutoff_time, max_results
                 )
                 results.extend(channel_results)
                 channels_searched.append(channel.name)
@@ -259,7 +337,7 @@ class DiscordMessageSearchTool(BaseTool):
                     try:
                         channel_results = await self._search_channel(
                             channel, query, limit // len(guild.text_channels) + 1,
-                            case_sensitive, exclude_bots, author_id, cutoff_time,
+                            case_sensitive, exclude_bots, final_author_id, cutoff_time,
                             max_results - len(results)
                         )
                         results.extend(channel_results)
@@ -291,7 +369,7 @@ class DiscordMessageSearchTool(BaseTool):
                         try:
                             channel_results = await self._search_channel(
                                 channel, query, min(limit // 10, 100),  # Reduced limit for broad search
-                                case_sensitive, exclude_bots, author_id, cutoff_time,
+                                case_sensitive, exclude_bots, final_author_id, cutoff_time,
                                 max_results - len(results)
                             )
                             results.extend(channel_results)
@@ -322,7 +400,8 @@ class DiscordMessageSearchTool(BaseTool):
                 "filters_applied": {
                     "case_sensitive": case_sensitive,
                     "exclude_bots": exclude_bots,
-                    "author_id": author_id,
+                    "author_id": final_author_id,
+                    "author_name_searched": author_name,
                     "time_range": time_range,
                     "cutoff_time": cutoff_time.isoformat() if cutoff_time else None
                 },
