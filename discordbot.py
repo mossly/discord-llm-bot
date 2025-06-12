@@ -12,6 +12,7 @@ logging.basicConfig(
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True  # Required for user lookup and username resolution
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
