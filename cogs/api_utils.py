@@ -7,6 +7,7 @@ from discord.ext import commands
 import base64
 import aiohttp
 import io
+import re
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,75 @@ class APIUtils(commands.Cog):
         emoji_string = ",".join(emoji_list)
         logger.info(f"Compiled emoji list with {len(emoji_list)} emojis")
         return emoji_string
+    
+    def create_emoji_name_mapping(self, guild: discord.Guild) -> dict:
+        """Create a mapping of emoji names to their proper Discord format"""
+        if not guild or not guild.emojis:
+            return {}
+        
+        emoji_mapping = {}
+        for emoji in guild.emojis:
+            if emoji.animated:
+                emoji_mapping[emoji.name.lower()] = f"<a:{emoji.name}:{emoji.id}>"
+            else:
+                emoji_mapping[emoji.name.lower()] = f"<:{emoji.name}:{emoji.id}>"
+        
+        return emoji_mapping
+    
+    def substitute_emoji_formats(self, content: str, guild: discord.Guild) -> str:
+        """Convert :emoji_name: format to proper <:emoji_name:id> format for server emojis"""
+        if not content or not guild:
+            return content
+        
+        # Get emoji name mapping
+        emoji_mapping = self.create_emoji_name_mapping(guild)
+        if not emoji_mapping:
+            return content
+        
+        # Simple approach: find all :word: patterns and check if they're already formatted
+        pattern = r':([a-zA-Z0-9_]+):'
+        substitution_count = 0
+        
+        def replace_emoji(match):
+            nonlocal substitution_count
+            full_match = match.group(0)  # :word:
+            emoji_name = match.group(1).lower()
+            
+            # Check if this is part of an already formatted emoji by looking at context
+            start_pos = match.start()
+            end_pos = match.end()
+            
+            # Look for < before the match (allowing for 'a:' in animated emojis)
+            if start_pos > 0 and content[start_pos-1] == ':':
+                # This might be part of <:name: or <a:name:
+                if start_pos > 1 and content[start_pos-2] == 'a':
+                    # Check for <a:
+                    if start_pos > 2 and content[start_pos-3] == '<':
+                        return full_match  # Already formatted animated emoji
+                elif start_pos > 1 and content[start_pos-2] == '<':
+                    # Check for <:
+                    return full_match  # Already formatted emoji
+            
+            # Look for > after the match (indicating this is already formatted)
+            if end_pos < len(content) and re.match(r'[0-9]+>', content[end_pos:]):
+                return full_match  # Already formatted (has :id> after)
+            
+            # If emoji name matches a server emoji, convert it
+            if emoji_name in emoji_mapping:
+                logger.debug(f"Converting :{emoji_name}: to {emoji_mapping[emoji_name]}")
+                substitution_count += 1
+                return emoji_mapping[emoji_name]
+            
+            # Return original if not found (might be Unicode emoji)
+            return full_match
+        
+        substituted_content = re.sub(pattern, replace_emoji, content)
+        
+        # Log if any substitutions were made
+        if substitution_count > 0:
+            logger.info(f"Made {substitution_count} emoji format substitutions")
+        
+        return substituted_content
     
     async def fetch_generation_stats(self, generation_id: str) -> dict:
         logger.info(f"Fetching generation stats for ID: {generation_id}")

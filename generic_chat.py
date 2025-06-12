@@ -260,6 +260,10 @@ async def perform_chat_query(
         # Extract footnotes from response and clean content
         cleaned_content, footnotes = extract_footnotes(result)
         
+        # Apply emoji format substitution if emojis are enabled
+        if use_fun and channel and channel.guild:
+            cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, channel.guild)
+        
         # Build standardized footer
         footer = build_standardized_footer(
             model_name=reply_footer,
@@ -558,6 +562,10 @@ async def perform_chat_query_with_tools(
                 final_content = assistant_content or "I couldn't generate a response."
                 cleaned_content, footnotes = extract_footnotes(final_content)
                 
+                # Apply emoji format substitution if emojis are enabled
+                if use_fun and channel and channel.guild:
+                    cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, channel.guild)
+                
                 footer = build_standardized_footer(
                     model_name=reply_footer,
                     input_tokens=final_input_tokens,
@@ -685,6 +693,10 @@ async def perform_chat_query_with_tools(
         # Extract footnotes from response and clean content
         raw_content = final_response.get("content", "I couldn't generate a response.")
         cleaned_content, footnotes = extract_footnotes(raw_content)
+        
+        # Apply emoji format substitution if emojis are enabled
+        if use_fun and channel and channel.guild:
+            cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, channel.guild)
         
         footer = build_standardized_footer(
             model_name=reply_footer,
