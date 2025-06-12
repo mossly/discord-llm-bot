@@ -390,6 +390,10 @@ async def perform_chat_query_with_tools(
     session_id = str(uuid.uuid4())
     tool_cog.start_session(session_id)
     
+    # Set Discord context for context-aware tools
+    if channel:
+        tool_cog.set_discord_context(channel)
+    
     if not available_tools:
         logger.warning("No tools available, falling back to standard query")
         tool_cog.end_session(session_id)  # Clean up session
@@ -411,8 +415,20 @@ async def perform_chat_query_with_tools(
             username=username
         )
     
-    # Build initial conversation
-    system_prompt = api_cog.FUN_SYSTEM_PROMPT if use_fun else api_cog.SYSTEM_PROMPT
+    # Build initial conversation with Discord context
+    base_system_prompt = api_cog.FUN_SYSTEM_PROMPT if use_fun else api_cog.SYSTEM_PROMPT
+    
+    # Add Discord context to system prompt
+    discord_context = ""
+    if channel:
+        discord_context += f"\nCurrent Discord Context:\n"
+        discord_context += f"Server ID: {channel.guild.id}\n"
+        discord_context += f"Server Name: {channel.guild.name}\n"
+        discord_context += f"Channel ID: {channel.id}\n"
+        discord_context += f"Channel Name: {channel.name}\n"
+        discord_context += f"Channel Type: {channel.type}\n\n"
+    
+    system_prompt = base_system_prompt + discord_context
     conversation_messages = [
         {"role": "system", "content": system_prompt}
     ]

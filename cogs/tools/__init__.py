@@ -41,6 +41,20 @@ except ImportError:
     DISCORD_MESSAGE_SEARCH_AVAILABLE = False
     DiscordMessageSearchTool = None
 
+try:
+    from .context_aware_discord_search_tool import ContextAwareDiscordSearchTool
+    CONTEXT_AWARE_DISCORD_SEARCH_AVAILABLE = True
+except ImportError:
+    CONTEXT_AWARE_DISCORD_SEARCH_AVAILABLE = False
+    ContextAwareDiscordSearchTool = None
+
+try:
+    from .discord_user_lookup_tool import DiscordUserLookupTool
+    DISCORD_USER_LOOKUP_AVAILABLE = True
+except ImportError:
+    DISCORD_USER_LOOKUP_AVAILABLE = False
+    DiscordUserLookupTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -57,3 +71,9 @@ if CONVERSATION_SEARCH_AVAILABLE:
 
 if DISCORD_MESSAGE_SEARCH_AVAILABLE:
     __all__.append('DiscordMessageSearchTool')
+
+if CONTEXT_AWARE_DISCORD_SEARCH_AVAILABLE:
+    __all__.append('ContextAwareDiscordSearchTool')
+
+if DISCORD_USER_LOOKUP_AVAILABLE:
+    __all__.append('DiscordUserLookupTool')

@@ -90,14 +90,33 @@ async def handle_thread_conversation(message):
         # Reverse to get chronological order (oldest first)
         conversation_history.reverse()
         
-        # Limit context length - keep recent messages, trim from beginning if needed
+        # Limit context length - preserve system prompts while trimming
         max_context_length = 4000  # Leave room for current message and system prompts
-        context_text = "\n".join(conversation_history)
         
-        # If context is too long, trim from the beginning
-        while len(context_text) > max_context_length and conversation_history:
-            conversation_history.pop(0)  # Remove oldest message
-            context_text = "\n".join(conversation_history)
+        # Separate system prompts from regular conversation messages
+        system_prompts = []
+        regular_messages = []
+        
+        for msg in conversation_history:
+            # Identify system prompts - these are typically the first assistant messages 
+            # or messages containing system-like content
+            if (msg.startswith("Assistant:") and 
+                (len(regular_messages) == 0 or  # First assistant message is likely system prompt
+                 any(keyword in msg.lower() for keyword in [
+                     "current date and time:", "you are", "system", "instructions",
+                     "server id:", "channel id:", "discord context"
+                 ]))):
+                system_prompts.append(msg)
+            else:
+                regular_messages.append(msg)
+        
+        # Build context with system prompts first, then regular messages
+        context_text = "\n".join(system_prompts + regular_messages)
+        
+        # If context is too long, trim regular messages while preserving system prompts
+        while len(context_text) > max_context_length and regular_messages:
+            regular_messages.pop(0)  # Remove oldest regular message, keep system prompts
+            context_text = "\n".join(system_prompts + regular_messages)
         
         # Build final prompt
         current_prompt = f"{message.author.name}: {message.content}"

@@ -7,7 +7,7 @@ from discord.ext import commands
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,28 @@ class ToolCalling(commands.Cog):
         discord_search = DiscordMessageSearchTool(bot=self.bot)
         self.registry.register(discord_search, enabled=True)
         
+        # Context-aware Discord message search tool
+        context_discord_search = ContextAwareDiscordSearchTool(bot=self.bot)
+        self.registry.register(context_discord_search, enabled=True)
+        
+        # Discord user lookup tool
+        discord_user_lookup = DiscordUserLookupTool(bot=self.bot)
+        self.registry.register(discord_user_lookup, enabled=True)
+        
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
     
     def get_registry(self) -> ToolRegistry:
         """Get the tool registry"""
         return self.registry
+    
+    def set_discord_context(self, channel: discord.TextChannel):
+        """Set Discord context for context-aware tools"""
+        # Find the context-aware Discord search tool and set its context
+        for tool in self.registry.list_tools():
+            tool_instance = self.registry.get_tool(tool)
+            if hasattr(tool_instance, 'set_context'):
+                tool_instance.set_context(channel)
+                logger.info(f"Set Discord context for {tool_instance.name}: {channel.guild.name}#{channel.name}")
     
     async def process_tool_calls(
         self,
