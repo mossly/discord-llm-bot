@@ -44,9 +44,17 @@ class DiscordMessageSearchTool(BaseTool):
                     "type": "string",
                     "description": "Specific channel ID to search in (optional). If not provided, searches accessible channels in current server."
                 },
+                "channel_name": {
+                    "type": "string",
+                    "description": "Specific channel name to search in (optional). Will be resolved to channel ID automatically."
+                },
                 "server_id": {
                     "type": "string", 
                     "description": "Specific server/guild ID to search in (optional). Searches all accessible channels in the server."
+                },
+                "server_name": {
+                    "type": "string",
+                    "description": "Specific server/guild name to search in (optional). Will be resolved to server ID automatically."
                 },
                 "limit": {
                     "type": "integer",
@@ -160,6 +168,69 @@ class DiscordMessageSearchTool(BaseTool):
         # Return exact match first, then partial match, then None
         return exact_match or best_match
     
+    async def _resolve_channel_id(self, channel_name: str, guild_id: Optional[int] = None) -> Optional[str]:
+        """Resolve channel name to channel ID"""
+        if not channel_name:
+            return None
+            
+        channel_name_lower = channel_name.lower().strip()
+        best_match = None
+        exact_match = None
+        
+        # Search in specific guild if provided
+        if guild_id:
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                for channel in guild.text_channels:
+                    # Exact name match (case-insensitive)
+                    if channel.name.lower() == channel_name_lower:
+                        exact_match = str(channel.id)
+                        break
+                    # Partial matches for fallback
+                    if channel_name_lower in channel.name.lower():
+                        if not best_match:  # First partial match
+                            best_match = str(channel.id)
+        
+        # If no guild specified or no match found, search across all accessible guilds
+        if not exact_match and not best_match:
+            for guild in self.bot.guilds:
+                for channel in guild.text_channels:
+                    # Exact name match (case-insensitive)
+                    if channel.name.lower() == channel_name_lower:
+                        exact_match = str(channel.id)
+                        break
+                    # Partial matches for fallback
+                    if channel_name_lower in channel.name.lower():
+                        if not best_match:  # First partial match
+                            best_match = str(channel.id)
+                            
+                if exact_match:  # Break out of outer loop if exact match found
+                    break
+        
+        return exact_match or best_match
+    
+    async def _resolve_server_id(self, server_name: str) -> Optional[str]:
+        """Resolve server name to server ID"""
+        if not server_name:
+            return None
+            
+        server_name_lower = server_name.lower().strip()
+        best_match = None
+        exact_match = None
+        
+        # Search through all accessible guilds
+        for guild in self.bot.guilds:
+            # Exact name match (case-insensitive)
+            if guild.name.lower() == server_name_lower:
+                exact_match = str(guild.id)
+                break
+            # Partial matches for fallback
+            if server_name_lower in guild.name.lower():
+                if not best_match:  # First partial match
+                    best_match = str(guild.id)
+        
+        return exact_match or best_match
+    
     def _should_include_message(self, message: discord.Message, query: Optional[str], 
                                case_sensitive: bool, exclude_bots: bool, 
                                author_id: Optional[str], cutoff_time: Optional[datetime]) -> bool:
@@ -265,6 +336,7 @@ class DiscordMessageSearchTool(BaseTool):
     async def execute(self, query: Optional[str] = None, channel_id: Optional[str] = None,
                      server_id: Optional[str] = None, limit: int = 1000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
+                     channel_name: Optional[str] = None, server_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
                      exclude_bots: bool = True, max_results: int = 20,
                      requesting_user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -283,15 +355,46 @@ class DiscordMessageSearchTool(BaseTool):
                     "error": "Either a search query or author filter (author_name/author_id) must be provided"
                 }
             
+            # Resolve server_name to server_id if provided
+            resolved_server_id = None
+            if server_name and not server_id:
+                resolved_server_id = await self._resolve_server_id(server_name)
+                if not resolved_server_id:
+                    return {
+                        "success": False,
+                        "error": f"Could not find server with name '{server_name}'. Try using the exact server name."
+                    }
+            
+            # Use resolved server_id or provided server_id
+            final_server_id = server_id or resolved_server_id
+            
+            # Resolve channel_name to channel_id if provided
+            resolved_channel_id = None
+            if channel_name and not channel_id:
+                # Determine guild context for channel resolution
+                guild_id = None
+                if final_server_id:
+                    guild_id = int(final_server_id)
+                
+                resolved_channel_id = await self._resolve_channel_id(channel_name, guild_id)
+                if not resolved_channel_id:
+                    return {
+                        "success": False,
+                        "error": f"Could not find channel with name '{channel_name}'. Try using the exact channel name."
+                    }
+            
+            # Use resolved channel_id or provided channel_id  
+            final_channel_id = channel_id or resolved_channel_id
+            
             # Resolve author_name to author_id if provided
             resolved_author_id = None
             if author_name and not author_id:
                 # Determine guild context for user resolution
                 guild_id = None
-                if server_id:
-                    guild_id = int(server_id)
-                elif channel_id:
-                    channel = self.bot.get_channel(int(channel_id))
+                if final_server_id:
+                    guild_id = int(final_server_id)
+                elif final_channel_id:
+                    channel = self.bot.get_channel(int(final_channel_id))
                     if channel and channel.guild:
                         guild_id = channel.guild.id
                 
@@ -323,18 +426,18 @@ class DiscordMessageSearchTool(BaseTool):
             start_time = time.time()
             
             # Search specific channel
-            if channel_id:
-                channel = self.bot.get_channel(int(channel_id))
+            if final_channel_id:
+                channel = self.bot.get_channel(int(final_channel_id))
                 if not channel:
                     return {
                         "success": False,
-                        "error": f"Channel with ID {channel_id} not found or not accessible"
+                        "error": f"Channel with ID {final_channel_id} not found or not accessible"
                     }
                 
                 if not isinstance(channel, discord.TextChannel):
                     return {
                         "success": False,
-                        "error": f"Channel {channel_id} is not a text channel"
+                        "error": f"Channel {final_channel_id} is not a text channel"
                     }
                 
                 # Security check: Verify requesting user has access to this channel
@@ -343,7 +446,7 @@ class DiscordMessageSearchTool(BaseTool):
                     if not member:
                         return {
                             "success": False,
-                            "error": f"You are not a member of the server containing channel {channel_id}"
+                            "error": f"You are not a member of the server containing channel {final_channel_id}"
                         }
                     
                     # Check channel permissions
@@ -363,12 +466,12 @@ class DiscordMessageSearchTool(BaseTool):
                 search_stats["channels_searched"] = 1
                 
             # Search specific server
-            elif server_id:
-                guild = self.bot.get_guild(int(server_id))
+            elif final_server_id:
+                guild = self.bot.get_guild(int(final_server_id))
                 if not guild:
                     return {
                         "success": False,
-                        "error": f"Server with ID {server_id} not found or not accessible"
+                        "error": f"Server with ID {final_server_id} not found or not accessible"
                     }
                 
                 # Security check: Verify requesting user is a member of this server
@@ -478,7 +581,7 @@ class DiscordMessageSearchTool(BaseTool):
             # Log comprehensive search summary
             logger.info(f"Discord message search completed:")
             logger.info(f"  Query: '{query}' | Author: {author_name or final_author_id or 'Any'}")
-            logger.info(f"  Server: {server_id or 'Multiple'} | Channel: {channel_id or 'Multiple'}")
+            logger.info(f"  Server: {server_name or final_server_id or 'Multiple'} | Channel: {channel_name or final_channel_id or 'Multiple'}")
             logger.info(f"  Time range: {time_range or 'All time'} | Results: {len(results)}/{max_results}")
             logger.info(f"  Channels searched: {search_stats['channels_searched']} | Permission errors: {search_stats['permission_errors']}")
             logger.info(f"  Searched channels: {', '.join(channels_searched[:10])}")  # Log first 10 channel names
