@@ -64,7 +64,8 @@ class ToolCalling(commands.Cog):
             if tool_instance and hasattr(tool_instance, 'set_context'):
                 tool_instance.set_context(channel)
                 if channel and channel.guild:
-                    logger.info(f"Set Discord context for {tool_instance.name}: {channel.guild.name}#{channel.name}")
+                    channel_name = getattr(channel, 'name', f'Channel {channel.id}')
+                    logger.info(f"Set Discord context for {tool_instance.name}: {channel.guild.name}#{channel_name}")
                 elif channel:
                     logger.info(f"Set Discord context for {tool_instance.name}: DM channel {channel.id}")
                 else:

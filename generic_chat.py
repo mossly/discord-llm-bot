@@ -432,7 +432,8 @@ async def perform_chat_query_with_tools(
         else:
             discord_context += f"Context: Direct Message\n"
         discord_context += f"Channel ID: {channel.id}\n"
-        discord_context += f"Channel Name: {channel.name}\n"
+        if hasattr(channel, 'name') and channel.name:
+            discord_context += f"Channel Name: {channel.name}\n"
         discord_context += f"Channel Type: {channel.type}\n\n"
     
     system_prompt = base_system_prompt + discord_context

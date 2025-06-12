@@ -76,7 +76,8 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         elif not effective_server_id and self.current_channel:
             # Fallback: if somehow we have no server context, at least use channel
             effective_channel_id = str(self.current_channel.id)
-            logger.info(f"Using current channel as fallback: {self.current_channel.name} ({effective_channel_id})")
+            channel_name = getattr(self.current_channel, 'name', f'Channel {self.current_channel.id}')
+            logger.info(f"Using current channel as fallback: {channel_name} ({effective_channel_id})")
         
         # Call the parent class execute method with the effective IDs and security context
         result = await super().execute(
@@ -100,7 +101,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
             result["context_used"] = {
                 "current_channel": {
                     "id": str(self.current_channel.id) if self.current_channel else None,
-                    "name": self.current_channel.name if self.current_channel else None
+                    "name": getattr(self.current_channel, 'name', None) if self.current_channel else None
                 },
                 "current_server": {
                     "id": str(self.current_guild.id) if self.current_guild else None,
@@ -117,5 +118,6 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         """Get a summary of tool usage for monitoring"""
         context_info = ""
         if self.current_channel:
-            context_info = f" (Context: {self.current_guild.name}#{self.current_channel.name})"
+            channel_name = getattr(self.current_channel, 'name', f'Channel {self.current_channel.id}')
+            context_info = f" (Context: {self.current_guild.name}#{channel_name})"
         return f"ContextAwareDiscordSearch: {self.usage_count} searches, {self.error_count} errors{context_info}"
