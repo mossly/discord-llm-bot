@@ -415,7 +415,7 @@ class DiscordMessageSearchTool(BaseTool):
                     "time_range": time_range,
                     "cutoff_time": cutoff_time.isoformat() if cutoff_time else None
                 },
-                "message": f"Found {len(results)} message(s) {f\"matching '{query}'\" if query else \"from specified user\"} across {search_stats['channels_searched']} channel(s)"
+                "message": f"Found {len(results)} message(s) {('matching \"' + query + '\"') if query else 'from specified user'} across {search_stats['channels_searched']} channel(s)"
             }
             
         except ValueError as e:
