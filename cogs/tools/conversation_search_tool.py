@@ -24,7 +24,7 @@ class ConversationSearchTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "Search through previous conversation history to find relevant context from past interactions. Use this to help with follow-up questions or when context from previous conversations would be helpful."
+        return "Search through your previous conversation history to find relevant context from past interactions. Use this to help with follow-up questions or when context from previous conversations would be helpful. Note: You can only search your own conversation history for privacy."
     
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -37,7 +37,7 @@ class ConversationSearchTool(BaseTool):
                 },
                 "user_id": {
                     "type": "string",
-                    "description": "User ID to search conversations for (automatically provided from context)"
+                    "description": "User ID to search conversations for (automatically set to your ID for security)"
                 },
                 "limit": {
                     "type": "integer",

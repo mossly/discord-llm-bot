@@ -24,7 +24,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
     
     @property
     def description(self) -> str:
-        return "Search through Discord message history in the current server/channel context. Can search by content query, by user, or both. Automatically uses the current Discord server and channel as defaults, but can be overridden with specific server_id/channel_id parameters."
+        return "Search through Discord message history in the current server/channel context. Can search by content query, by user, or both. Automatically uses the current Discord server and channel as defaults, but can be overridden with specific server_id/channel_id parameters. Note: You can only search messages in servers and channels where you have access."
     
     @property
     def parameters(self) -> Dict[str, Any]:
@@ -47,7 +47,8 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
                      server_id: Optional[str] = None, limit: int = 1000,
                      author_id: Optional[str] = None, author_name: Optional[str] = None,
                      time_range: Optional[str] = None, case_sensitive: bool = False, 
-                     exclude_bots: bool = True, max_results: int = 20) -> Dict[str, Any]:
+                     exclude_bots: bool = True, max_results: int = 20,
+                     requesting_user_id: Optional[str] = None) -> Dict[str, Any]:
         """Execute context-aware Discord message search"""
         
         # Use current context as defaults if no specific IDs provided
@@ -63,7 +64,7 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
             effective_server_id = str(self.current_guild.id)
             logger.info(f"Using current server context: {self.current_guild.name} ({effective_server_id})")
         
-        # Call the parent class execute method with the effective IDs
+        # Call the parent class execute method with the effective IDs and security context
         result = await super().execute(
             query=query,
             channel_id=effective_channel_id,
@@ -74,7 +75,8 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
             time_range=time_range,
             case_sensitive=case_sensitive,
             exclude_bots=exclude_bots,
-            max_results=max_results
+            max_results=max_results,
+            requesting_user_id=requesting_user_id
         )
         
         # Add context information to the result

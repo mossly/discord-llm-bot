@@ -71,7 +71,8 @@ class ToolCalling(commands.Cog):
         user_id: str,
         channel: discord.TextChannel,
         session_id: str = None,
-        model: str = None
+        model: str = None,
+        requesting_user_id: str = None
     ) -> List[Dict[str, Any]]:
         """Process a list of tool calls and return results"""
         results = []
@@ -107,9 +108,14 @@ class ToolCalling(commands.Cog):
             if tool_name == "deep_research" and model:
                 arguments["model"] = model
             
-            # Auto-inject user_id for search_conversations tool
+            # Auto-inject user_id for search_conversations tool and enforce security
             if tool_name == "search_conversations":
-                arguments["user_id"] = user_id
+                # Force the user_id to match the requesting user for security
+                arguments["user_id"] = requesting_user_id or user_id
+            
+            # Pass requesting_user_id for security validation in search tools
+            if tool_name in ["search_discord_messages", "search_current_discord_messages"]:
+                arguments["requesting_user_id"] = requesting_user_id or user_id
             
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             logger.info(f"Tool '{tool_name}' executed successfully, found {len(result.get('results', []))} results")

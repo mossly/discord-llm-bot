@@ -525,13 +525,14 @@ async def perform_chat_query_with_tools(
                 })
                 
                 
-                # Execute tools
+                # Execute tools with user context for security
                 tool_results = await tool_cog.process_tool_calls(
                     tool_calls,
                     user_id,
                     channel,
                     session_id,
-                    model
+                    model,
+                    requesting_user_id=user_id  # Pass the actual Discord user making the request
                 )
                 
                 # Add tool results to conversation
