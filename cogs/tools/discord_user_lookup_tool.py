@@ -180,7 +180,12 @@ class DiscordUserLookupTool(BaseTool):
                     if len(results) >= max_results * 2:  # Search a bit more for better sorting
                         break
                 
-                logger.info(f"User lookup for '{search_term}': searched {total_members_searched} total members across {len(servers_searched)} servers, found {len(results)} matches")
+                logger.info(f"User lookup completed:")
+                logger.info(f"  Search term: '{search_term}' | Server: {server_id or 'All accessible'}")
+                logger.info(f"  Members searched: {total_members_searched} | Servers: {len(servers_searched)}")
+                logger.info(f"  Results: {len(results)} | Exact match: {exact_match}")
+                if results and len(results) > 0:
+                    logger.info(f"  Top match: {results[0]['username']} ({results[0]['display_name']}) - Score: {results[0].get('match_score', 'N/A')}")
             
             # Sort results by match score (highest first)
             results.sort(key=lambda x: x["match_score"], reverse=True)

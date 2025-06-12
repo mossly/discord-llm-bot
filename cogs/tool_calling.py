@@ -118,7 +118,36 @@ class ToolCalling(commands.Cog):
                 arguments["requesting_user_id"] = requesting_user_id or user_id
             
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
-            logger.info(f"Tool '{tool_name}' executed successfully, found {len(result.get('results', []))} results")
+            
+            # Enhanced logging for search tools
+            if tool_name in ["search_discord_messages", "search_current_discord_messages", "search_conversations"]:
+                # Log search parameters
+                search_params = {
+                    "tool": tool_name,
+                    "query": arguments.get("query", ""),
+                    "user_id": arguments.get("user_id", ""),
+                    "author_name": arguments.get("author_name", ""),
+                    "server_id": arguments.get("server_id", ""),
+                    "channel_id": arguments.get("channel_id", ""),
+                    "time_range": arguments.get("time_range", ""),
+                    "results_found": len(result.get('results', []))
+                }
+                logger.info(f"Search executed: {search_params}")
+                
+                # Log truncated results for debugging
+                if result.get('results'):
+                    first_results = result['results'][:3]  # First 3 results
+                    for i, res in enumerate(first_results):
+                        if tool_name == "search_conversations":
+                            preview = f"User: {res.get('user_message', '')[:50]}... Bot: {res.get('bot_response', '')[:50]}..."
+                        else:  # Discord message search
+                            preview = f"{res.get('author', {}).get('name', 'Unknown')}: {res.get('content', '')[:100]}..."
+                        logger.info(f"  Result {i+1}: {preview}")
+                    
+                    if len(result['results']) > 3:
+                        logger.info(f"  ... and {len(result['results']) - 3} more results")
+            else:
+                logger.info(f"Tool '{tool_name}' executed successfully, found {len(result.get('results', []))} results")
             
             # Format result
             results.append({
