@@ -84,6 +84,7 @@ class ToolCalling(commands.Cog):
             
             # Execute tool
             logger.info(f"Executing tool '{tool_name}' for user {user_id}")
+            logger.info(f"Executing tool '{tool_name}' with parameters: {arguments}")
             
             # Pass model parameter for deep_research tool
             if tool_name == "deep_research" and model:
@@ -94,6 +95,7 @@ class ToolCalling(commands.Cog):
                 arguments["user_id"] = user_id
             
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
+            logger.info(f"Tool '{tool_name}' executed successfully, found {len(result.get('results', []))} results")
             
             # Format result
             results.append({

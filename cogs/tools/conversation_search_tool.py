@@ -131,6 +131,36 @@ class ConversationSearchTool(BaseTool):
                 "error": f"Failed to search conversations: {str(e)}"
             }
     
+    def format_results_for_llm(self, result: Dict[str, Any]) -> str:
+        """Format search results in a readable way for LLM consumption"""
+        if not result.get("success"):
+            return f"Search failed: {result.get('error', 'Unknown error')}"
+        
+        results = result.get("results", [])
+        if not results:
+            query = result.get("query", "")
+            search_type = result.get("search_type", "")
+            return f"No conversations found matching '{query}' for {search_type}."
+        
+        # Format each conversation in a readable way
+        formatted_conversations = []
+        for i, conv in enumerate(results, 1):
+            formatted_conv = f"**Conversation {i}** ({conv['timestamp']}):\n"
+            formatted_conv += f"User ({conv['user_name']}): {conv['user_message']}\n"
+            formatted_conv += f"Bot ({conv['model']}): {conv['bot_response']}\n"
+            
+            if conv.get('server'):
+                formatted_conv += f"Server: {conv['server']}\n"
+            if conv.get('channel'):
+                formatted_conv += f"Channel: {conv['channel']}\n"
+            if conv.get('cost'):
+                formatted_conv += f"Cost: ${conv['cost']:.4f}\n"
+            
+            formatted_conversations.append(formatted_conv)
+        
+        header = f"Found {len(results)} conversation(s) matching '{result.get('query', '')}'"
+        return header + "\n\n" + "\n---\n".join(formatted_conversations)
+    
     def get_usage_summary(self) -> str:
         """Get a summary of tool usage for monitoring"""
         return f"ConversationSearch: {self.usage_count} searches, {self.error_count} errors"
