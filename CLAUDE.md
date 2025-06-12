@@ -172,3 +172,30 @@ The bot provides real-time search capabilities through existing Discord message 
 - Locating specific messages or announcements  
 - Gathering context from previous conversations
 - Research and reference lookup in server history
+
+## Deployment
+
+The Discord bot runs on a remote **Render** cloud instance. To manage the deployed bot, use the Render CLI from your local machine:
+
+### Render CLI Commands
+- `render login` - Authorize the CLI for your account
+- `render services` - List all services (select the Discord bot service)
+- `render deploys list [SERVICE_ID]` - View deployment history and logs
+- `render deploys create [SERVICE_ID]` - Trigger a new deployment
+- `render ssh [SERVICE_ID]` - Open SSH session to the running instance
+- `render logs [SERVICE_ID]` - View real-time logs (alternative to deploys list)
+
+### Common Operations
+```bash
+# View logs for debugging
+render services  # Select the Discord bot service to get SERVICE_ID
+render deploys list [SERVICE_ID]  # Select a deploy to view logs
+
+# Deploy updates
+render deploys create [SERVICE_ID] --wait
+
+# SSH into the running instance
+render ssh [SERVICE_ID]
+```
+
+The bot's persistent data (quotas, conversation history, etc.) is stored in the `/data` directory on the Render instance.
