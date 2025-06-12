@@ -426,8 +426,11 @@ async def perform_chat_query_with_tools(
     discord_context = ""
     if channel:
         discord_context += f"\nCurrent Discord Context:\n"
-        discord_context += f"Server ID: {channel.guild.id}\n"
-        discord_context += f"Server Name: {channel.guild.name}\n"
+        if channel.guild:
+            discord_context += f"Server ID: {channel.guild.id}\n"
+            discord_context += f"Server Name: {channel.guild.name}\n"
+        else:
+            discord_context += f"Context: Direct Message\n"
         discord_context += f"Channel ID: {channel.id}\n"
         discord_context += f"Channel Name: {channel.name}\n"
         discord_context += f"Channel Type: {channel.type}\n\n"
