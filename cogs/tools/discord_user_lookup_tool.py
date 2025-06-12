@@ -230,7 +230,8 @@ class DiscordUserLookupTool(BaseTool):
                 suggestions = similar_users[:5]
                 
                 if suggestions:
-                    message += f". Did you mean one of these users: {', '.join([f'{u['username']} ({u['display_name']})' for u in suggestions[:3]])}?"
+                    user_suggestions = [f"{u['username']} ({u['display_name']})" for u in suggestions[:3]]
+                    message += f". Did you mean one of these users: {', '.join(user_suggestions)}?"
             
             return {
                 "success": True,
