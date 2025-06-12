@@ -151,6 +151,10 @@ class AICommands(commands.Cog):
         return False
     
     async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, deep_research: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
+        # Debug logging for thread conversations
+        if reply_msg and not ctx and not interaction:
+            logger.info(f"_process_ai_request called for thread conversation - reply_msg.channel: {reply_msg.channel}, type: {type(reply_msg.channel) if reply_msg.channel else 'None'}")
+        
         # Get user ID for quota tracking and model availability check
         if ctx:
             user_id = str(ctx.author.id)
@@ -405,7 +409,12 @@ class AICommands(commands.Cog):
                 await send_embed(reply_msg.channel, embed, reply_to=reply_msg, content=attribution_text)
         elif reply_msg and isinstance(reply_msg.channel, discord.Thread):
             # Already in a thread, just send the response there
-            await send_embed(reply_msg.channel, embed, content=attribution_text)
+            logger.info(f"Sending response to thread: {reply_msg.channel.name if reply_msg.channel else 'None channel'}")
+            if reply_msg.channel:
+                await send_embed(reply_msg.channel, embed, content=attribution_text)
+            else:
+                logger.error("reply_msg.channel is None, cannot send response")
+                return
         elif ctx or reply_msg:
             channel = ctx.channel if ctx else reply_msg.channel
             message_to_reply = ctx.message if ctx else reply_msg

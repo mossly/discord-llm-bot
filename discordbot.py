@@ -97,6 +97,9 @@ async def handle_thread_conversation(message):
             full_prompt = current_prompt
         
         # Process the AI request using the same model and in the thread
+        logging.info(f"Processing thread message from {message.author.name} in thread {message.channel.name}")
+        logging.info(f"Using model: {model_key}, prompt length: {len(full_prompt)}")
+        
         await ai_commands._process_ai_request(
             prompt=full_prompt,
             model_key=model_key,
