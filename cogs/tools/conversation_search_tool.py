@@ -115,6 +115,15 @@ class ConversationSearchTool(BaseTool):
                 
                 formatted_results.append(result)
             
+            # Log search summary
+            logger.info(f"Conversation search completed:")
+            logger.info(f"  Query: '{query}' | User: {user_id}")
+            logger.info(f"  Results: {len(conversations)}/{limit}")
+            if formatted_results:
+                # Log first result preview
+                first = formatted_results[0]
+                logger.info(f"  First result: {first['timestamp']} - User: '{first['user_message'][:50]}...'")
+            
             return {
                 "success": True,
                 "results": formatted_results,

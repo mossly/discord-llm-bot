@@ -458,6 +458,14 @@ class DiscordMessageSearchTool(BaseTool):
             else:
                 search_description = "from specified user"
             
+            # Log comprehensive search summary
+            logger.info(f"Discord message search completed:")
+            logger.info(f"  Query: '{query}' | Author: {author_name or final_author_id or 'Any'}")
+            logger.info(f"  Server: {server_id or 'Multiple'} | Channel: {channel_id or 'Multiple'}")
+            logger.info(f"  Time range: {time_range or 'All time'} | Results: {len(results)}/{max_results}")
+            logger.info(f"  Channels searched: {search_stats['channels_searched']} | Errors: {search_stats['permission_errors']}")
+            logger.info(f"  Search time: {round(elapsed_time, 2)}s")
+            
             return {
                 "success": True,
                 "results": results,
