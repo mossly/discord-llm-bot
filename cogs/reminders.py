@@ -10,6 +10,7 @@ from discord.ext import commands
 from collections import defaultdict
 import pytz
 from typing import Dict, Optional
+from embed_utils import create_error_embed
 
 # Set up enhanced logging
 logging.basicConfig(
@@ -423,6 +424,10 @@ class Reminders(commands.Cog):
 
     def _create_embed(self, title, description, color=discord.Color.blue()):
         """Create a standardized embed for responses"""
+        # Use standardized error format for red/error embeds
+        if color == discord.Color.red():
+            return create_error_embed(description)
+        
         embed = discord.Embed(
             title=title,
             description=description,

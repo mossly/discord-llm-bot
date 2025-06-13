@@ -8,6 +8,7 @@ from discord import app_commands
 from typing import Literal, Optional
 import aiohttp
 import io
+from embed_utils import create_error_embed
 import os
 import base64
 from user_quotas import quota_manager
@@ -573,7 +574,8 @@ class ImageGen(commands.Cog):
         estimated_cost = base_cost * 1.5 if num_input_images > 1 else base_cost
         
         if remaining_quota == 0:
-            await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            error_embed = create_error_embed("You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            await interaction.followup.send(embed=error_embed)
             return
         elif remaining_quota != float('inf') and remaining_quota < estimated_cost:
             cost_msg = f"${estimated_cost:.2f}" if num_input_images > 1 else "$0.04-$0.08"
@@ -777,7 +779,8 @@ class ImageEditModal(discord.ui.Modal):
         estimated_cost = base_cost * 1.5 if num_input_images > 1 else base_cost
         
         if remaining_quota == 0:
-            await interaction.followup.send("❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            error_embed = create_error_embed("You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
+            await interaction.followup.send(embed=error_embed)
             return
         elif remaining_quota != float('inf') and remaining_quota < estimated_cost:
             cost_msg = f"${estimated_cost:.2f}" if num_input_images > 1 else "$0.04-$0.08"

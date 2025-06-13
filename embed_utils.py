@@ -4,6 +4,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def create_error_embed(error_message: str) -> discord.Embed:
+    """Create a standardized error embed with consistent formatting"""
+    embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
+    embed.set_footer(text=f"Error: {error_message}")
+    return embed
+
+
+def create_success_embed(message: str, title: str = "") -> discord.Embed:
+    """Create a standardized success embed with consistent formatting"""
+    embed = discord.Embed(title=title, description=message, color=0x32a956)
+    return embed
+
 def get_embed_total_length(embed: discord.Embed) -> int:
     logger.debug("Calculating total length of embed.")
     total = 0
@@ -89,3 +102,7 @@ async def send_embed(destination, embed: discord.Embed, *, reply_to: Optional[di
             message = await destination.send(content=content, embed=embed)
             logger.info("Embed sent to destination.")
             return message
+
+
+# Export functions for easy importing
+__all__ = ['create_error_embed', 'create_success_embed', 'get_embed_total_length', 'split_embed', 'send_embed']

@@ -4,7 +4,7 @@ import discord
 from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
-from embed_utils import send_embed
+from embed_utils import send_embed, create_error_embed
 import os
 
 logger = logging.getLogger(__name__)
@@ -176,11 +176,7 @@ class AICommands(commands.Cog):
         # Check if model is available to this user
         available_models = self._get_available_models(user_id_int)
         if model_key not in available_models:
-            error_embed = discord.Embed(
-                title="Model Not Available",
-                description=f"The model '{model_key}' is not currently available.",
-                color=0xDC143C
-            )
+            error_embed = create_error_embed(f"The model '{model_key}' is not currently available.")
             if ctx:
                 await ctx.reply(embed=error_embed)
             else:
@@ -189,11 +185,7 @@ class AICommands(commands.Cog):
         
         config = available_models[model_key]  # Use already fetched config
         if not config:
-            error_embed = discord.Embed(
-                title="Model Configuration Error",
-                description=f"Configuration for model '{model_key}' not found.",
-                color=0xDC143C
-            )
+            error_embed = create_error_embed(f"Configuration for model '{model_key}' not found.")
             if ctx:
                 await ctx.reply(embed=error_embed)
             else:
@@ -251,11 +243,7 @@ class AICommands(commands.Cog):
                     
             except Exception as e:
                 logger.exception(f"Error captioning image: {e}")
-                error_embed = discord.Embed(
-                    title="Image Processing Error",
-                    description=f"Failed to process the image for {config.get('name', model_key)}. Please try using a model that supports images directly.",
-                    color=0xDC143C
-                )
+                error_embed = create_error_embed(f"Failed to process the image for {config.get('name', model_key)}. Please try using a model that supports images directly.")
                 if ctx:
                     await ctx.reply(embed=error_embed)
                 else:
@@ -330,23 +318,13 @@ class AICommands(commands.Cog):
             
             # Check if result contains API error information
             if result and "Error code: 402" in result:
-                error_embed = discord.Embed(
-                    title="API Quota Exceeded", 
-                    description="The AI service has insufficient credits. Please reduce max_tokens or try again later.",
-                    color=0xDC143C
-                )
-                error_embed.set_footer(text="Error: Insufficient API credits")
+                error_embed = create_error_embed("The AI service has insufficient credits. Please reduce max_tokens or try again later.")
                 if ctx:
                     return await ctx.reply(embed=error_embed)
                 else:
                     return await interaction.followup.send(embed=error_embed)
             elif result and "there was an error communicating with the AI service:" in result:
-                error_embed = discord.Embed(
-                    title="API Error", 
-                    description=result,
-                    color=0xDC143C
-                )
-                error_embed.set_footer(text="AI Service Error")
+                error_embed = create_error_embed(result)
                 if ctx:
                     return await ctx.reply(embed=error_embed)
                 else:
@@ -356,8 +334,7 @@ class AICommands(commands.Cog):
                 
         except Exception as e:
             logger.exception(f"Error in {model_key} request: %s", e)
-            error_embed = discord.Embed(title="ERROR", description="x_x", color=0xDC143C)
-            error_embed.set_footer(text=f"Error generating reply: {e}")
+            error_embed = create_error_embed(f"Error generating reply: {e}")
             if ctx:
                 return await ctx.reply(embed=error_embed)
             else:

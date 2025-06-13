@@ -3,6 +3,7 @@ import asyncio
 import logging
 import discord
 from discord.ext import commands
+from embed_utils import create_error_embed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,8 +152,9 @@ async def handle_thread_conversation(message):
         
     except Exception as e:
         logging.error(f"Error handling thread conversation: {e}")
-        # Send simple error message to thread
-        await message.channel.send(f"❌ Error processing message: {str(e)[:100]}...")
+        # Send standardized error embed to thread
+        error_embed = create_error_embed(f"Error processing message: {str(e)[:100]}...")
+        await message.channel.send(embed=error_embed)
 
 async def load_cogs():
     for filename in os.listdir("./cogs"):
