@@ -4,6 +4,7 @@ from discord import app_commands
 from typing import Optional
 import logging
 from user_quotas import quota_manager
+from embed_utils import create_error_embed, create_success_embed
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +116,13 @@ class QuotaManagement(commands.Cog):
     async def set_quota(self, interaction: discord.Interaction, user: discord.User, amount: float):
         """Admin command to set user quotas"""
         if not self.is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            error_embed = create_error_embed("You don't have permission to use this command.")
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
             return
         
         if amount < 0:
-            await interaction.response.send_message("❌ Quota amount must be non-negative.", ephemeral=True)
+            error_embed = create_error_embed("Quota amount must be non-negative.")
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
             return
         
         user_id = str(user.id)
@@ -139,7 +142,8 @@ class QuotaManagement(commands.Cog):
     async def reset_usage(self, interaction: discord.Interaction, user: discord.User):
         """Admin command to reset user usage"""
         if not self.is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            error_embed = create_error_embed("You don't have permission to use this command.")
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
             return
         
         user_id = str(user.id)
@@ -156,7 +160,8 @@ class QuotaManagement(commands.Cog):
     async def quota_stats(self, interaction: discord.Interaction):
         """Admin command to view all user quota statistics"""
         if not self.is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            error_embed = create_error_embed("You don't have permission to use this command.")
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
             return
         
         all_stats = quota_manager.get_all_users_stats()
@@ -206,7 +211,8 @@ class QuotaManagement(commands.Cog):
     async def user_quota(self, interaction: discord.Interaction, user: discord.User):
         """Admin command to check specific user's quota"""
         if not self.is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            error_embed = create_error_embed("You don't have permission to use this command.")
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
             return
         
         user_id = str(user.id)
