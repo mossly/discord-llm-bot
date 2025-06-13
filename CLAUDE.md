@@ -27,6 +27,8 @@ This is a Discord bot that integrates multiple LLM models through OpenRouter and
 ### Model Configuration
 The bot supports multiple AI models with different capabilities configured in `ai_commands.py`. Models include GPT-4o-mini (with image support), o3-mini, Claude 3.7 Sonnet, DeepSeek v3, Gemini 2.0 Flash Lite, Grok 2, and Mistral Large.
 
+**IMPORTANT**: Model configurations are hardcoded in `ai_commands.py` for performance reasons. Loading model configurations from external files would introduce unacceptable latency for Discord interactions. Any changes to model configurations must be made directly in the code and require a deployment.
+
 ### API Integration
 - Uses OpenRouter for most models and OpenAI directly for some
 - Implements retry logic with tenacity for API reliability
@@ -121,15 +123,27 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 
 ## Data Persistence
 
-**IMPORTANT**: All persistent data files must be stored in the `/data` directory or subdirectories within `/data`. This includes:
+**CRITICAL REQUIREMENT**: All persistent data files MUST be stored in the `/data` directory or subdirectories within `/data`. This is a hard requirement for the Render hosting environment where the bot runs.
 
-- User quotas (`/data/user_quotas.json`)
-- Conversation history (`/data/conversation_history.json`)
-- Reminders (`reminders.json` - should be moved to `/data/reminders.json`)
-- User timezones (`user_timezones.json` - should be moved to `/data/user_timezones.json`)
-- Any new persistent storage files
+### Data Storage Rules
+1. **Never use relative paths** like `./file.json` or `file.json` for persistent data
+2. **Always use absolute paths** starting with `/data/` for all persistent storage
+3. **Create subdirectories** within `/data/` to organize different types of data
+4. **Ensure `/data` directory exists** before writing files (`os.makedirs("/data", exist_ok=True)`)
 
-This ensures proper data organization and facilitates backup/deployment strategies.
+### Current Data Files
+- User quotas (`/data/user_quotas.json`) ✅ Compliant
+- Conversation history (`/data/conversation_history.json`) ✅ Compliant
+- Reminders (`reminders.json` - should be moved to `/data/reminders.json`) ❌ Needs fixing
+- User timezones (`user_timezones.json` - should be moved to `/data/user_timezones.json`) ❌ Needs fixing
+- Any new persistent storage files must follow `/data/` pattern
+
+### Render Hosting Context
+The `/data` directory requirement exists because:
+- Render's ephemeral filesystem requires specific persistent volume mounting
+- Only the `/data` directory persists across deployments and restarts
+- Files outside `/data` are lost during container restarts
+- This ensures data continuity and proper backup strategies
 
 ## Conversation History System
 

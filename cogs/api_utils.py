@@ -9,28 +9,26 @@ import aiohttp
 import io
 import re
 from PIL import Image
+from config_manager import config
 
 logger = logging.getLogger(__name__)
 
 class APIUtils(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.OAICLIENT = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Initialize API clients using config manager
+        api_config = config.get_api_clients_config()
+        self.OAICLIENT = openai.OpenAI(api_key=api_config['openai_api_key'])
         self.OPENROUTERCLIENT = openai.OpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=os.getenv("OPENROUTER_API_KEY")
+            api_key=api_config['openrouter_api_key']
         )
-        # Load system prompts and prepend current datetime for LLM reference
-        import datetime
-        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        datetime_prefix = f"Current date and time: {current_time}\n\n"
         
-        base_system_prompt = os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
-        base_fun_prompt = os.getenv("FUN_PROMPT", "Write an amusing and sarcastic!")
-        
-        self.SYSTEM_PROMPT = datetime_prefix + base_system_prompt
-        self.BOT_TAG = os.getenv("BOT_TAG", "")
-        self.FUN_SYSTEM_PROMPT = datetime_prefix + base_fun_prompt
+        # Load system prompts from config manager
+        self.SYSTEM_PROMPT = config.get_system_prompt(use_fun=False)
+        self.FUN_SYSTEM_PROMPT = config.get_system_prompt(use_fun=True)
+        self.BOT_TAG = config.get('bot_tag', '')
 
     async def get_guild_emoji_list(self, guild: discord.Guild) -> str:
         if not guild or not guild.emojis:

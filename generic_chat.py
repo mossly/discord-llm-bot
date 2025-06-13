@@ -3,129 +3,21 @@ import logging
 import openai
 import discord
 import aiohttp
-import re
 import json
 import uuid
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
-from user_quotas import quota_manager
-from conversation_history import ConversationHistoryManager
+from response_formatter import extract_footnotes, build_standardized_footer
+from attachment_handler import process_attachments
+from conversation_logger import conversation_logger
+from quota_validator import quota_validator
 
 logger = logging.getLogger(__name__)
 
-# Initialize conversation history manager
-conversation_history = ConversationHistoryManager()
-
-def extract_footnotes(content: str) -> tuple[str, str]:
-    """Extract footnotes from content and return (cleaned_content, footnotes)"""
-    import re
-    
-    # First check for the explicit separator used by deep research
-    if '===FOOTNOTES===' in content:
-        parts = content.split('===FOOTNOTES===', 1)
-        if len(parts) == 2:
-            cleaned_content = parts[0].strip()
-            footnotes = parts[1].strip()
-            return cleaned_content, footnotes
-    
-    # Fallback to older patterns for backward compatibility
-    # Patterns: "References:", "Sources:", "Footnotes:", or lines starting with [1], 1., etc.
-    footnote_patterns = [
-        r'\n\n(References?:.*?)$',
-        r'\n\n(Sources?:.*?)$', 
-        r'\n\n(Footnotes?:.*?)$',
-        r'\n\n(\[[0-9]+\].*?)$',
-        r'\n\n([0-9]+\..*?)$'
-    ]
-    
-    for pattern in footnote_patterns:
-        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
-        if match:
-            footnotes = match.group(1).strip()
-            # Remove the footnotes from the main content
-            cleaned_content = content[:match.start()] + content[match.end():]
-            return cleaned_content.strip(), footnotes
-    
-    # No footnotes found
-    return content, ""
-
-def build_standardized_footer(model_name: str, input_tokens: int = 0, output_tokens: int = 0, cost: float = 0, elapsed_time: float = 0, footnotes: str = "") -> str:
-    """Build standardized footer for AI responses"""
-    # First line: Clean model name only
-    first_line = model_name
-    
-    # Second line: Usage stats
-    usage_parts = []
-    
-    # Input tokens (abbreviate with k after 1000)
-    if input_tokens > 0:
-        if input_tokens >= 1000:
-            input_str = f"{input_tokens / 1000:.1f}k"
-        else:
-            input_str = str(input_tokens)
-        usage_parts.append(f"{input_str} input tokens")
-    
-    # Output tokens (abbreviate with k after 1000)
-    if output_tokens > 0:
-        if output_tokens >= 1000:
-            output_str = f"{output_tokens / 1000:.1f}k"
-        else:
-            output_str = str(output_tokens)
-        usage_parts.append(f"{output_str} output tokens")
-    
-    # Cost (show $x.xx, but to first non-zero digit if under $0.01)
-    if cost >= 0.01:
-        cost_str = f"${cost:.2f}"
-    elif cost > 0:
-        # Find first non-zero digit
-        decimal_places = 2
-        while cost < (1 / (10 ** decimal_places)) and decimal_places < 10:
-            decimal_places += 1
-        cost_str = f"${cost:.{decimal_places}f}"
-    else:
-        cost_str = "$0.00"
-    usage_parts.append(cost_str)
-    
-    # Time
-    if elapsed_time > 0:
-        usage_parts.append(f"{elapsed_time} seconds")
-    
-    second_line = " | ".join(usage_parts)
-    
-    # Add footnotes if provided (utilize extra footer space)
-    if footnotes:
-        # Ensure we stay within Discord's 2048 character footer limit
-        available_space = 2048 - len(first_line) - len(second_line) - 10  # Buffer for newlines
-        if available_space > 50:  # Only add if we have reasonable space
-            truncated_footnotes = footnotes[:available_space]
-            if len(footnotes) > available_space:
-                truncated_footnotes = truncated_footnotes.rsplit(' ', 1)[0] + "..."
-            return f"{first_line}\n{second_line}\n{truncated_footnotes}"
-    
-    return f"{first_line}\n{second_line}"
-
-async def process_attachments(prompt: str, attachments: list, is_slash: bool = False) -> (str, str):
-    image_url = None
-    final_prompt = prompt
-    if attachments:
-        for att in attachments:
-            filename = att.filename.lower()
-            if filename.endswith(".txt"):
-                try:
-                    if is_slash:
-                        file_bytes = await att.read()
-                        final_prompt =  file_bytes.decode("utf-8")
-                    else:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(att.url) as response:
-                                if response.status == 200:
-                                    final_prompt = await response.text()
-                                else:
-                                    logger.warning(f"Failed to download attachment: {att.url} with status {response.status}")
-                except Exception as e:
-                    logger.exception("Error processing text attachment: %s", e)
-            elif filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and not image_url:
-                image_url = att.proxy_url or att.url
-    return final_prompt, image_url
+# Note: Functions moved to separate modules for better organization:
+# - extract_footnotes, build_standardized_footer -> response_formatter.py
+# - process_attachments -> attachment_handler.py
+# - conversation logging -> conversation_logger.py
+# - quota validation -> quota_validator.py
 
 async def perform_chat_query(
     prompt: str,
@@ -166,11 +58,9 @@ async def perform_chat_query(
         prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
 
     # Check user quota before making API call
-    remaining_quota = quota_manager.get_remaining_quota(user_id)
-    if remaining_quota == 0:
-        return "❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.", 0, "Quota exceeded"
-    elif remaining_quota != float('inf') and remaining_quota < 0.01:  # Less than 1 cent remaining
-        return f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Please be mindful of usage.", 0, f"${remaining_quota:.4f} remaining"
+    can_proceed, quota_error = quota_validator.check_user_quota(user_id)
+    if not can_proceed:
+        return quota_error, 0, "Quota check failed"
 
     try:
         async for attempt in AsyncRetrying(
@@ -250,10 +140,7 @@ async def perform_chat_query(
             
             if total_cost is not None and total_cost > 0:
                 # Track usage in user quota system
-                if quota_manager.add_usage(user_id, total_cost):
-                    logger.info(f"Tracked ${total_cost:.4f} usage for user {user_id}")
-                else:
-                    logger.warning(f"Failed to track usage for user {user_id}")
+                quota_validator.track_usage(user_id, total_cost)
         else:
             logger.warning("No generation stats received from API")
         
@@ -275,38 +162,18 @@ async def perform_chat_query(
         )
         
         # Log conversation to history
-        try:
-            # Get server and channel info if available
-            server_id = str(channel.guild.id) if channel.guild else None
-            server_name = channel.guild.name if channel.guild else None
-            channel_id = str(channel.id)
-            channel_name = getattr(channel, 'name', 'DM' if isinstance(channel, discord.DMChannel) else 'Unknown')
-            thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
-            
-            # Use provided username or try to get from interaction
-            user_name = username
-            if not user_name and interaction and hasattr(interaction, 'user'):
-                user_name = interaction.user.name
-            if not user_name:
-                user_name = f"User_{user_id}"
-            
-            conversation_history.add_conversation(
-                user_id=user_id,
-                user_name=user_name,
-                user_message=original_prompt,
-                bot_response=cleaned_content,
-                model=model or "unknown",
-                server_id=server_id,
-                server_name=server_name,
-                channel_id=channel_id,
-                channel_name=channel_name,
-                thread_id=thread_id,
-                cost=total_cost,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens
-            )
-        except Exception as e:
-            logger.error(f"Failed to log conversation: {e}")
+        await conversation_logger.log_conversation(
+            user_id=user_id,
+            user_message=original_prompt,
+            bot_response=cleaned_content,
+            model=model or "unknown",
+            channel=channel,
+            interaction=interaction,
+            username=username,
+            cost=total_cost,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
         
         return cleaned_content, elapsed, footer
             
@@ -340,11 +207,9 @@ async def perform_chat_query_with_tools(
     start_time = time.time()
     
     # Check user quota before starting
-    remaining_quota = quota_manager.get_remaining_quota(user_id)
-    if remaining_quota == 0:
-        return "❌ **Quota Exceeded**: You've reached your monthly usage limit. Your quota resets at the beginning of each month.", 0, "Quota exceeded"
-    elif remaining_quota != float('inf') and remaining_quota < 0.01:
-        return f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Please be mindful of usage.", 0, f"${remaining_quota:.4f} remaining"
+    can_proceed, quota_error = quota_validator.check_user_quota(user_id)
+    if not can_proceed:
+        return quota_error, 0, "Quota check failed"
     
     # If tools are disabled, use the standard flow
     if not use_tools:
@@ -518,7 +383,7 @@ async def perform_chat_query_with_tools(
                 
                 # Track usage
                 if iteration_cost > 0:
-                    quota_manager.add_usage(user_id, iteration_cost)
+                    quota_validator.track_usage(user_id, iteration_cost)
             
             # Add assistant message to history
             assistant_content = response.get("content")
@@ -560,7 +425,7 @@ async def perform_chat_query_with_tools(
                 
                 # Add tool costs to user quota
                 if tool_usage["cost"] > 0:
-                    quota_manager.add_usage(user_id, tool_usage["cost"])
+                    quota_validator.track_usage(user_id, tool_usage["cost"])
                 
                 # Extract footnotes from response and clean content
                 final_content = assistant_content or "I couldn't generate a response."
@@ -580,38 +445,18 @@ async def perform_chat_query_with_tools(
                 )
                 
                 # Log conversation to history
-                try:
-                    # Get server and channel info if available
-                    server_id = str(channel.guild.id) if channel.guild else None
-                    server_name = channel.guild.name if channel.guild else None
-                    channel_id = str(channel.id)
-                    channel_name = getattr(channel, 'name', 'DM' if isinstance(channel, discord.DMChannel) else 'Unknown')
-                    thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
-                    
-                    # Use provided username or try to get from interaction
-                    user_name = username
-                    if not user_name and interaction and hasattr(interaction, 'user'):
-                        user_name = interaction.user.name
-                    if not user_name:
-                        user_name = f"User_{user_id}"
-                    
-                    conversation_history.add_conversation(
-                        user_id=user_id,
-                        user_name=user_name,
-                        user_message=prompt,
-                        bot_response=cleaned_content,
-                        model=model or "unknown",
-                        server_id=server_id,
-                        server_name=server_name,
-                        channel_id=channel_id,
-                        channel_name=channel_name,
-                        thread_id=thread_id,
-                        cost=final_cost,
-                        input_tokens=final_input_tokens,
-                        output_tokens=final_output_tokens
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to log conversation: {e}")
+                await conversation_logger.log_conversation(
+                    user_id=user_id,
+                    user_message=prompt,
+                    bot_response=cleaned_content,
+                    model=model or "unknown",
+                    channel=channel,
+                    interaction=interaction,
+                    username=username,
+                    cost=final_cost,
+                    input_tokens=final_input_tokens,
+                    output_tokens=final_output_tokens
+                )
                 
                 # Clean up session
                 tool_cog.end_session(session_id)
@@ -680,7 +525,7 @@ async def perform_chat_query_with_tools(
             total_cost += iteration_cost
             
             if iteration_cost > 0:
-                quota_manager.add_usage(user_id, iteration_cost)
+                quota_validator.track_usage(user_id, iteration_cost)
         
         elapsed = round(time.time() - start_time, 2)
         
@@ -692,7 +537,7 @@ async def perform_chat_query_with_tools(
         
         # Add tool costs to user quota
         if tool_usage["cost"] > 0:
-            quota_manager.add_usage(user_id, tool_usage["cost"])
+            quota_validator.track_usage(user_id, tool_usage["cost"])
         
         # Extract footnotes from response and clean content
         raw_content = final_response.get("content", "I couldn't generate a response.")
@@ -712,38 +557,18 @@ async def perform_chat_query_with_tools(
         )
         
         # Log conversation to history
-        try:
-            # Get server and channel info if available
-            server_id = str(channel.guild.id) if channel.guild else None
-            server_name = channel.guild.name if channel.guild else None
-            channel_id = str(channel.id)
-            channel_name = getattr(channel, 'name', 'DM' if isinstance(channel, discord.DMChannel) else 'Unknown')
-            thread_id = str(channel.id) if isinstance(channel, discord.Thread) else None
-            
-            # Use provided username or try to get from interaction
-            user_name = username
-            if not user_name and interaction and hasattr(interaction, 'user'):
-                user_name = interaction.user.name
-            if not user_name:
-                user_name = f"User_{user_id}"
-            
-            conversation_history.add_conversation(
-                user_id=user_id,
-                user_name=user_name,
-                user_message=prompt,
-                bot_response=cleaned_content,
-                model=model or "unknown",
-                server_id=server_id,
-                server_name=server_name,
-                channel_id=channel_id,
-                channel_name=channel_name,
-                thread_id=thread_id,
-                cost=final_cost,
-                input_tokens=final_input_tokens,
-                output_tokens=final_output_tokens
-            )
-        except Exception as e:
-            logger.error(f"Failed to log conversation: {e}")
+        await conversation_logger.log_conversation(
+            user_id=user_id,
+            user_message=prompt,
+            bot_response=cleaned_content,
+            model=model or "unknown",
+            channel=channel,
+            interaction=interaction,
+            username=username,
+            cost=final_cost,
+            input_tokens=final_input_tokens,
+            output_tokens=final_output_tokens
+        )
         
         # Clean up session
         tool_cog.end_session(session_id)
@@ -761,7 +586,7 @@ async def perform_chat_query_with_tools(
         
         # Add tool costs to user quota
         if tool_usage["cost"] > 0:
-            quota_manager.add_usage(user_id, tool_usage["cost"])
+            quota_validator.track_usage(user_id, tool_usage["cost"])
         
         footer = build_standardized_footer(
             model_name=reply_footer,

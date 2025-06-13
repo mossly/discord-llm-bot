@@ -23,10 +23,10 @@ class ReminderTool(BaseTool):
     
     def __init__(self):
         super().__init__()
-        self.reminders_file = "data/reminders.json"
-        self.timezones_file = "data/user_timezones.json"
+        self.reminders_file = "/data/reminders.json"
+        self.timezones_file = "/data/user_timezones.json"
         # Create data directory if it doesn't exist
-        os.makedirs("data", exist_ok=True)
+        os.makedirs("/data", exist_ok=True)
         self._load_data()
     
     @property
