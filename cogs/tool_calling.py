@@ -7,7 +7,7 @@ from discord.ext import commands
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,10 @@ class ToolCalling(commands.Cog):
         # Discord user lookup tool
         discord_user_lookup = DiscordUserLookupTool(bot=self.bot)
         self.registry.register(discord_user_lookup, enabled=True)
+        
+        # Reminder management tool
+        reminder_tool = ReminderTool()
+        self.registry.register(reminder_tool, enabled=True)
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
     
@@ -122,6 +126,11 @@ class ToolCalling(commands.Cog):
             # Pass requesting_user_id for security validation in search tools
             if tool_name in ["search_discord_messages", "search_current_discord_messages"]:
                 arguments["requesting_user_id"] = requesting_user_id or user_id
+            
+            # Auto-inject user_id for manage_reminders tool and enforce security
+            if tool_name == "manage_reminders":
+                # Force the user_id to match the requesting user for security
+                arguments["user_id"] = requesting_user_id or user_id
             
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             

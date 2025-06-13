@@ -413,8 +413,10 @@ class Reminders(commands.Cog):
         self.reminders = {}  # {timestamp: (user_id, message, timezone)}
         self.user_timezones = {}  # {user_id: timezone_string}
         self.task = None
-        self.reminders_file = "reminders.json"
-        self.timezones_file = "user_timezones.json"
+        # Ensure data directory exists
+        os.makedirs("data", exist_ok=True)
+        self.reminders_file = "data/reminders.json"
+        self.timezones_file = "data/user_timezones.json"
         self.dm_failed_users = set()  # Track users with failed DMs
         self._load_user_timezones()
         self._load_reminders()
