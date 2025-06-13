@@ -61,7 +61,7 @@ class ReminderManager:
                     self.user_timezones = {
                         int(uid): tz for uid, tz in data.items()
                     }
-                logger.info(f"Loaded {len(self.user_timezones)} user timezone preferences")
+                logger.debug(f"Loaded {len(self.user_timezones)} user timezone preferences")
             except Exception as e:
                 logger.error(f"Failed to load user timezones: {e}", exc_info=True)
                 self.user_timezones = {}
@@ -78,7 +78,7 @@ class ReminderManager:
                         float(ts): (int(uid), msg, tz) 
                         for ts, (uid, msg, tz) in data.items()
                     }
-                logger.info(f"Loaded {len(self.reminders)} reminders from disk (instance: {id(self)})")
+                logger.debug(f"Loaded {len(self.reminders)} reminders from disk (instance: {id(self)})")
                     
             except Exception as e:
                 logger.error(f"Failed to load reminders: {e}", exc_info=True)
@@ -95,7 +95,7 @@ class ReminderManager:
             }
             with open(self.reminders_file, 'w') as f:
                 json.dump(data, f)
-            logger.info(f"Saved {len(self.reminders)} reminders (instance: {id(self)})")
+            logger.debug(f"Saved {len(self.reminders)} reminders (instance: {id(self)})")
         except Exception as e:
             logger.error(f"Failed to save reminders: {e}", exc_info=True)
     
@@ -107,7 +107,7 @@ class ReminderManager:
             }
             with open(self.timezones_file, 'w') as f:
                 json.dump(data, f)
-            logger.info(f"Saved {len(self.user_timezones)} user timezone preferences")
+            logger.debug(f"Saved {len(self.user_timezones)} user timezone preferences")
         except Exception as e:
             logger.error(f"Failed to save user timezones: {e}", exc_info=True)
     
