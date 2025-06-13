@@ -55,6 +55,13 @@ except ImportError:
     DISCORD_USER_LOOKUP_AVAILABLE = False
     DiscordUserLookupTool = None
 
+try:
+    from .reminder_tool import ReminderTool
+    REMINDER_TOOL_AVAILABLE = True
+except ImportError:
+    REMINDER_TOOL_AVAILABLE = False
+    ReminderTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -77,3 +84,6 @@ if CONTEXT_AWARE_DISCORD_SEARCH_AVAILABLE:
 
 if DISCORD_USER_LOOKUP_AVAILABLE:
     __all__.append('DiscordUserLookupTool')
+
+if REMINDER_TOOL_AVAILABLE:
+    __all__.append('ReminderTool')

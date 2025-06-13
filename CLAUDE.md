@@ -54,12 +54,19 @@ python discordbot.py
 - `BOT_API_TOKEN` - Discord bot token
 - `OPENAI_API_KEY` - OpenAI API key
 - `OPENROUTER_API_KEY` - OpenRouter API key
-- `SYSTEM_PROMPT` - Default system prompt
+- `SYSTEM_PROMPT` - Default system prompt (also see `.system_prompt.txt`)
 - `FUN_PROMPT` - Fun mode system prompt
 - `BOT_TAG` - Bot's mention tag
 - `DUCK_PROXY` (optional) - Proxy for DuckDuckGo searches
 - `BOT_ADMIN_IDS` (optional) - Comma-separated list of admin Discord user IDs
 - `BOT_UNLIMITED_USER_IDS` (optional) - Comma-separated list of Discord user IDs with unlimited quota
+
+### System Prompt Configuration
+The bot's system prompt can be configured in two ways:
+1. **Environment Variable**: Set `SYSTEM_PROMPT` environment variable
+2. **File-based**: Edit `.system_prompt.txt` file which contains the detailed system prompt including tool descriptions and usage guidelines
+
+The `.system_prompt.txt` file is the recommended approach as it provides better readability and version control for the comprehensive system prompt that includes detailed tool descriptions and agentic behavior guidelines.
 
 ## Code Patterns
 
