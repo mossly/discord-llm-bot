@@ -18,7 +18,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("reminders.log")
+        logging.FileHandler("/data/reminders.log")
     ]
 )
 logger = logging.getLogger(__name__)
@@ -415,9 +415,9 @@ class Reminders(commands.Cog):
         self.user_timezones = {}  # {user_id: timezone_string}
         self.task = None
         # Ensure data directory exists
-        os.makedirs("data", exist_ok=True)
-        self.reminders_file = "data/reminders.json"
-        self.timezones_file = "data/user_timezones.json"
+        os.makedirs("/data", exist_ok=True)
+        self.reminders_file = "/data/reminders.json"
+        self.timezones_file = "/data/user_timezones.json"
         self.dm_failed_users = set()  # Track users with failed DMs
         self._load_user_timezones()
         self._load_reminders()

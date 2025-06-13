@@ -3,7 +3,8 @@ import asyncio
 import logging
 import discord
 from discord.ext import commands
-from embed_utils import create_error_embed
+from conversation_handler import ConversationHandler, is_ai_conversation_thread
+from config_manager import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,7 +15,10 @@ logging.basicConfig(
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True  # Required for user lookup and username resolution
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix=config.get('command_prefix', '!'), intents=intents)
+
+# Initialize conversation handler
+conversation_handler = ConversationHandler(bot)
 
 @bot.event
 async def on_ready():
@@ -29,132 +33,10 @@ async def on_message(message):
     if message.author.bot:
         return
     
-    # Only handle messages in threads
-    if not isinstance(message.channel, discord.Thread):
-        return
-    
-    # Check if this is an AI conversation thread
-    # (thread where the first message is from our bot)
-    try:
-        first_message = None
-        async for msg in message.channel.history(limit=1, oldest_first=True):
-            first_message = msg
-            break
-        
-        if not first_message or first_message.author != bot.user:
-            return
-        
-        # This is an AI thread, respond to the user's message
-        await handle_thread_conversation(message)
-        
-    except Exception as e:
-        logging.error(f"Error in thread conversation handler: {e}")
+    # Only handle messages in AI conversation threads
+    if await is_ai_conversation_thread(bot, message.channel):
+        await conversation_handler.handle_thread_conversation(message)
 
-async def handle_thread_conversation(message):
-    """Handle conversation in AI threads"""
-    try:
-        # Get AI commands cog
-        ai_commands = bot.get_cog("AICommands")
-        if not ai_commands:
-            return
-        
-        # Extract model from the first bot message footer
-        model_key = None
-        async for msg in message.channel.history(limit=50, oldest_first=True):
-            if msg.author == bot.user and msg.embeds and msg.embeds[0].footer:
-                footer_text = msg.embeds[0].footer.text
-                if footer_text:
-                    first_line = footer_text.split('\n')[0].strip()
-                    # Try to detect model from footer
-                    from cogs.ai_commands import MODELS_CONFIG
-                    for key, config in MODELS_CONFIG.items():
-                        if config.get("default_footer") == first_line or config.get("name") == first_line:
-                            model_key = key
-                            break
-                break
-        
-        # Fallback to default model if detection fails
-        if not model_key:
-            from cogs.ai_commands import DEFAULT_MODEL
-            model_key = DEFAULT_MODEL
-        
-        # Gather conversation history from thread (newest first, excluding current message)
-        conversation_history = []
-        async for msg in message.channel.history(limit=50, before=message):
-            if msg.author == bot.user:
-                # Bot message - extract content from embed
-                if msg.embeds and msg.embeds[0].description:
-                    conversation_history.append(f"Assistant: {msg.embeds[0].description}")
-            elif not msg.author.bot:
-                # User message
-                conversation_history.append(f"{msg.author.name}: {msg.content}")
-        
-        # Reverse to get chronological order (oldest first)
-        conversation_history.reverse()
-        
-        # Limit context length - preserve system prompts while trimming
-        max_context_length = 4000  # Leave room for current message and system prompts
-        
-        # Separate system prompts from regular conversation messages
-        system_prompts = []
-        regular_messages = []
-        
-        for msg in conversation_history:
-            # Identify system prompts - these are typically the first assistant messages 
-            # or messages containing system-like content
-            if (msg.startswith("Assistant:") and 
-                (len(regular_messages) == 0 or  # First assistant message is likely system prompt
-                 any(keyword in msg.lower() for keyword in [
-                     "current date and time:", "you are", "system", "instructions",
-                     "server id:", "channel id:", "discord context"
-                 ]))):
-                system_prompts.append(msg)
-            else:
-                regular_messages.append(msg)
-        
-        # Build context with system prompts first, then regular messages
-        context_text = "\n".join(system_prompts + regular_messages)
-        
-        # If context is too long, trim regular messages while preserving system prompts
-        while len(context_text) > max_context_length and regular_messages:
-            regular_messages.pop(0)  # Remove oldest regular message, keep system prompts
-            context_text = "\n".join(system_prompts + regular_messages)
-        
-        # Build final prompt
-        current_prompt = f"{message.author.name}: {message.content}"
-        
-        if conversation_history:
-            full_prompt = f"Previous conversation:\n{context_text}\n\nCurrent message:\n{current_prompt}"
-        else:
-            full_prompt = current_prompt
-        
-        # Process the AI request using the same model and in the thread
-        logging.info(f"Processing thread message from {message.author.name} in thread {message.channel.name}")
-        logging.info(f"Using model: {model_key}, context messages: {len(conversation_history)}, total prompt length: {len(full_prompt)}")
-        
-        # Send thinking message
-        thinking_msg = await message.reply("-# *Thinking...*")
-        
-        try:
-            await ai_commands._process_ai_request(
-                prompt=full_prompt,
-                model_key=model_key,
-                reply_msg=message,
-                reply_user=message.author,
-                tool_calling=True  # Enable tools by default in threads
-            )
-        finally:
-            # Clean up thinking message
-            try:
-                await thinking_msg.delete()
-            except:
-                pass  # Ignore deletion errors
-        
-    except Exception as e:
-        logging.error(f"Error handling thread conversation: {e}")
-        # Send standardized error embed to thread
-        error_embed = create_error_embed(f"Error processing message: {str(e)[:100]}...")
-        await message.channel.send(embed=error_embed)
 
 async def load_cogs():
     for filename in os.listdir("./cogs"):
@@ -163,8 +45,15 @@ async def load_cogs():
             logging.info(f"Loaded cog: {filename}")
 
 async def main():
+    # Validate configuration before starting
+    config_issues = config.validate_configuration()
+    if config_issues:
+        for issue in config_issues:
+            logging.error(f"Configuration issue: {issue}")
+        raise RuntimeError("Configuration validation failed")
+    
     await load_cogs()
-    await bot.start(os.getenv("BOT_API_TOKEN"))
+    await bot.start(config.get_required('bot_token'))
 
 if __name__ == "__main__":
     asyncio.run(main())
