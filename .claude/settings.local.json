@@ -18,7 +18,9 @@
       "Bash(pip install:*)",
       "Bash(git rm:*)",
       "Bash(render logs:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(render services)",
+      "Bash(render services -o json)"
     ],
     "deny": []
   }

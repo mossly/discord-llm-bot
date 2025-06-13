@@ -439,8 +439,11 @@ class AICommands(commands.Cog):
                         logger.info(f"Created thread '{thread_name}' from /thread command")
                         thread_created = True
                     
-                    # Discord requires a response to deferred interactions, send a minimal ephemeral message
-                    await interaction.followup.send(content="✓", ephemeral=True)
+                    # Send minimal ephemeral response to satisfy Discord interaction requirement
+                    if thread_created:
+                        await interaction.followup.send("✅ Thread created successfully.", ephemeral=True)
+                    else:
+                        await interaction.followup.send("⚠️ Thread creation failed, but here's your AI response above.", ephemeral=True)
                     
                 except Exception as e:
                     logger.error(f"Failed to create thread from /thread command: {e}")
