@@ -44,6 +44,7 @@ class ReminderManager:
             os.makedirs("/data", exist_ok=True)
             
             # Load existing data
+            logger.info(f"Initializing ReminderManager instance {id(self)}")
             self._load_data()
     
     def _load_data(self):

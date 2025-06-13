@@ -9,6 +9,7 @@ from .conversation_logger import ConversationLogger, conversation_logger
 from .quota_validator import QuotaValidator, quota_validator
 from .response_formatter import extract_footnotes, build_standardized_footer, format_usage_stats
 from .embed_utils import create_error_embed, create_success_embed, send_embed, split_embed
+from .reminder_manager import reminder_manager
 
 __all__ = [
     # Attachment handling
@@ -34,4 +35,7 @@ __all__ = [
     'create_success_embed',
     'send_embed',
     'split_embed',
+    
+    # Reminder management
+    'reminder_manager',
 ]
