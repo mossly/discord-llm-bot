@@ -4,7 +4,7 @@ import discord
 from discord import app_commands, Interaction, Embed, Attachment
 from discord.ext import commands
 from typing import Optional, Literal
-from embed_utils import send_embed, create_error_embed
+from utils.embed_utils import send_embed, create_error_embed
 import os
 
 logger = logging.getLogger(__name__)

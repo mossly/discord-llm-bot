@@ -17,7 +17,8 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Bash(git rm:*)",
-      "Bash(render logs:*)"
+      "Bash(render logs:*)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }

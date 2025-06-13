@@ -6,10 +6,10 @@ import aiohttp
 import json
 import uuid
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
-from response_formatter import extract_footnotes, build_standardized_footer
-from attachment_handler import process_attachments
-from conversation_logger import conversation_logger
-from quota_validator import quota_validator
+from utils.response_formatter import extract_footnotes, build_standardized_footer
+from utils.attachment_handler import process_attachments
+from utils.conversation_logger import conversation_logger
+from utils.quota_validator import quota_validator
 
 logger = logging.getLogger(__name__)
 
