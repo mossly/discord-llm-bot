@@ -434,16 +434,6 @@ class AICommands(commands.Cog):
                     if bot_message:
                         thread = await bot_message.create_thread(name=thread_name or "AI Conversation")
                         logger.info(f"Created thread '{thread_name}' from /thread command")
-                        
-                        # Send a welcome message in the thread
-                        welcome_embed = discord.Embed(
-                            description="🧵 Thread created! Continue your conversation here.",
-                            color=0x00CED1
-                        )
-                        await thread.send(embed=welcome_embed)
-                        
-                        # Notify user of successful thread creation
-                        await interaction.followup.send(f"🧵 Thread created: {thread.mention}")
                         thread_created = True
                     
                 except Exception as e:
@@ -451,9 +441,11 @@ class AICommands(commands.Cog):
                     error_embed = create_error_embed(f"Failed to create thread: {str(e)}")
                     await interaction.followup.send(embed=error_embed)
                 
-                # If thread wasn't created, we still need to respond to the interaction
-                if not thread_created:
-                    await interaction.followup.send("⚠️ Thread creation failed, but here's your AI response above.")
+                # Send a simple confirmation to satisfy the interaction requirement
+                if thread_created:
+                    await interaction.followup.send("✅ Thread created successfully.", ephemeral=True)
+                else:
+                    await interaction.followup.send("⚠️ Thread creation failed, but here's your AI response above.", ephemeral=True)
             else:
                 await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
