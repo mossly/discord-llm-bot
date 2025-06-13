@@ -4,7 +4,7 @@ from discord import app_commands
 from typing import Optional
 import logging
 from user_quotas import quota_manager
-from embed_utils import create_error_embed, create_success_embed
+from utils.embed_utils import create_error_embed, create_success_embed
 
 logger = logging.getLogger(__name__)
 

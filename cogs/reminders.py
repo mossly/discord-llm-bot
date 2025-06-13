@@ -10,7 +10,7 @@ from discord.ext import commands
 from collections import defaultdict
 import pytz
 from typing import Dict, Optional
-from embed_utils import create_error_embed
+from utils.embed_utils import create_error_embed
 
 # Set up enhanced logging
 logging.basicConfig(

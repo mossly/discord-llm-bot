@@ -6,7 +6,7 @@ Extracted from discordbot.py to improve maintainability and separation of concer
 import asyncio
 import logging
 import discord
-from embed_utils import create_error_embed
+from utils.embed_utils import create_error_embed
 
 logger = logging.getLogger(__name__)
 

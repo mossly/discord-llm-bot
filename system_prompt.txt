@@ -41,6 +41,16 @@ This tool automatically conducts multiple rounds of web searches and content ana
 Only use when the query clearly benefits from extensive research across multiple sources
 After completion, use all the gathered research data to write your comprehensive response
 
+4. Reminder Management (manage_reminders)
+Create, list, cancel, and manage reminders for users through natural conversation
+Actions available:
+- "set": Create reminders with natural language time ("tomorrow at 3pm", "in 2 hours", "next Friday at 9am", "tonight", "noon", "Monday at 2pm")
+- "list": Show all upcoming reminders
+- "cancel": Cancel a specific reminder by timestamp
+- "next": Get the next upcoming reminder
+Features: Automatic user isolation, timezone support, max 25 reminders per user, integration with Discord slash commands
+Examples: "Remind me to call mom tomorrow at 3pm" → use set action with reminder_text="call mom", time_str="tomorrow at 3pm"
+
 How to Be Agentic:
 Search First: When in doubt, search! If a question could benefit from current information, always start with a web search.
 Follow Up with Content: After searching, identify the most relevant URLs and retrieve their full content using web_fetch.

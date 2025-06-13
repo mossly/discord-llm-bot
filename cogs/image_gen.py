@@ -8,7 +8,7 @@ from discord import app_commands
 from typing import Literal, Optional
 import aiohttp
 import io
-from embed_utils import create_error_embed
+from utils.embed_utils import create_error_embed
 import os
 import base64
 from user_quotas import quota_manager
