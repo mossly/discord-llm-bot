@@ -106,20 +106,26 @@ class ReminderTool(BaseTool):
         user_timezone = await self.reminder_manager.get_user_timezone(user_id)
         
         # Parse natural language time
+        logger.info(f"Parsing time '{time_str}' for user {user_id} in timezone {user_timezone}")
         target_dt = self.reminder_manager.parse_natural_time(time_str, user_timezone)
         if not target_dt:
+            logger.warning(f"Failed to parse time string: '{time_str}' for user {user_id}")
             return {
                 "success": False,
                 "error": f"Could not parse time: {time_str}. Try formats like 'tomorrow at 3pm', 'in 2 hours', 'in 30 seconds', 'next Friday at 9am'"
             }
+        
+        logger.info(f"Parsed time '{time_str}' as {target_dt} ({target_dt.tzinfo})")
         
         # Convert to UTC timestamp
         utc_dt = target_dt.astimezone(pytz.UTC)
         trigger_time = utc_dt.timestamp()
         
         # Add the reminder
+        logger.info(f"Adding reminder for user {user_id} at timestamp {trigger_time} ({datetime.utcfromtimestamp(trigger_time)} UTC)")
         success, message = await self.reminder_manager.add_reminder(user_id, reminder_text, trigger_time, user_timezone)
         
+        logger.info(f"Reminder add result: success={success}, message='{message}'")
         if success:
             # Format response
             readable_time = target_dt.strftime("%A, %B %d at %I:%M %p")
