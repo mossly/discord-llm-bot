@@ -78,17 +78,6 @@ class ReminderManager:
                         for ts, (uid, msg, tz) in data.items()
                     }
                 logger.info(f"Loaded {len(self.reminders)} reminders from disk")
-                
-                # Clean up past reminders
-                now = time.time()
-                expired = [ts for ts in self.reminders if float(ts) <= now]
-                for ts in expired:
-                    logger.warning(f"Removing expired reminder from load: {datetime.utcfromtimestamp(float(ts))}")
-                    self.reminders.pop(float(ts), None)
-                
-                if expired:
-                    self._save_reminders()
-                    logger.info(f"Cleaned up {len(expired)} expired reminders")
                     
             except Exception as e:
                 logger.error(f"Failed to load reminders: {e}", exc_info=True)
