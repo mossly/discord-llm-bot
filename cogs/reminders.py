@@ -340,10 +340,7 @@ class Reminders(commands.Cog):
         logger.info("Reminder loop started")
         while True:
             try:
-                # Reload data to catch tool-created reminders
-                self.reminder_manager._load_data()
-                
-                # Get due reminders
+                # Get due reminders (no need to reload every second)
                 due_reminders = await self.reminder_manager.get_due_reminders()
                 
                 # Process each due reminder
