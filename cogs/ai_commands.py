@@ -436,7 +436,12 @@ class AICommands(commands.Cog):
                     # Send the AI response inside the thread
                     await send_embed(thread, embed, content=attribution_text)
                     
-                    # No followup needed - the deferred interaction is satisfied by the thread creation
+                    # Discord requires a response to deferred interactions, but we can make it ephemeral and empty
+                    try:
+                        await interaction.followup.send(content="", ephemeral=True)
+                    except:
+                        # If empty content fails, try with a single space
+                        await interaction.followup.send(content=" ", ephemeral=True)
                     
                 except Exception as e:
                     logger.error(f"Failed to create thread from /thread command: {e}")
