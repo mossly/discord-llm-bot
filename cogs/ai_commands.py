@@ -150,7 +150,7 @@ class AICommands(commands.Cog):
         
         return False
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, deep_research: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, deep_research: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000, create_thread: bool = False):
         # Debug logging for thread conversations
         if reply_msg and not ctx and not interaction:
             logger.info(f"_process_ai_request called for thread conversation - reply_msg.channel: {reply_msg.channel}, type: {type(reply_msg.channel) if reply_msg.channel else 'None'}")
@@ -427,7 +427,48 @@ class AICommands(commands.Cog):
             message_to_reply = ctx.message if ctx else reply_msg
             await send_embed(channel, embed, reply_to=message_to_reply, content=attribution_text)
         else:
-            await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
+            # Handle /thread command thread creation
+            if create_thread and interaction and interaction.guild:
+                try:
+                    # Generate AI thread name
+                    user_content = prompt[:200]
+                    ai_content = result[:200]
+                    
+                    name_prompt = f"Generate a short, descriptive thread title (max 50 characters) based on this conversation topic. Return only the title, no explanation:\n\nUser message: {user_content}\nAI response: {ai_content}\n\nThread title:"
+                    
+                    api_cog = self.bot.get_cog("APIUtils")
+                    if api_cog:
+                        thread_name, _ = await api_cog.send_request(
+                            model="openai/gpt-4.1-nano", 
+                            message_content=name_prompt,
+                            api="openrouter",
+                            max_tokens=20
+                        )
+                        thread_name = thread_name.strip()[:50]  # Ensure 50 char limit
+                    else:
+                        # Fallback if API not available
+                        thread_name = user_content[:47] + "..." if len(user_content) > 47 else user_content
+                    
+                    # Send the initial response
+                    bot_message = await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
+                    
+                    # Create thread from the bot's response message
+                    if bot_message:
+                        thread = await bot_message.create_thread(name=thread_name or "AI Conversation")
+                        logger.info(f"Created thread '{thread_name}' from /thread command")
+                        
+                        # Send a welcome message in the thread
+                        welcome_embed = discord.Embed(
+                            description="🧵 Thread created! Continue your conversation here.",
+                            color=0x00CED1
+                        )
+                        await thread.send(embed=welcome_embed)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to create thread from /thread command: {e}")
+                    # Response already sent, just log the error
+            else:
+                await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
     
     @app_commands.command(name="chat", description="Chat with an AI model")
@@ -474,6 +515,71 @@ class AICommands(commands.Cog):
             model = DEFAULT_MODEL
         
         await self._process_ai_request(formatted_prompt, model, interaction=interaction, attachments=attachments, fun=fun, web_search=web_search, deep_research=deep_research, tool_calling=tool_calling, max_tokens=max_tokens or 8000)
+    
+    @app_commands.command(name="thread", description="Chat with an AI model and create a thread from the response")
+    @app_commands.describe(
+        prompt="Your query or instructions",
+        model="Model to use for the response",
+        fun="Toggle fun mode",
+        web_search="Force web search (requires tool_calling)",
+        deep_research="Force deep research mode",
+        tool_calling="Enable AI to use tools like web search and content retrieval",
+        attachment="Optional attachment (image or text file)",
+        max_tokens="Maximum tokens for response (default: 8000)"
+    )
+    async def thread_slash(
+        self, 
+        interaction: Interaction, 
+        prompt: str,
+        model: ModelChoices = DEFAULT_MODEL, 
+        fun: bool = False,
+        web_search: bool = False,
+        deep_research: bool = False,
+        tool_calling: bool = True,
+        attachment: Optional[Attachment] = None,
+        max_tokens: Optional[int] = None
+    ):
+        # Check if we're in a guild channel that supports threads
+        if not interaction.guild or isinstance(interaction.channel, discord.Thread):
+            await interaction.response.send_message(
+                "❌ Threads can only be created in server text channels (not in DMs or existing threads).",
+                ephemeral=True
+            )
+            return
+        
+        await interaction.response.defer(thinking=True)
+        attachments = [attachment] if attachment else []
+        username = interaction.user.name
+        formatted_prompt = f"{username}: {prompt}"
+        
+        has_image = False
+        if attachment:
+            has_image = attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
+        
+        model_config = self._get_model_config(model)
+        if has_image and model_config and not model_config.get("supports_images", False):
+            default_model_config = self._get_model_config(DEFAULT_MODEL)
+            default_model_name = default_model_config.get('name', DEFAULT_MODEL) if default_model_config else DEFAULT_MODEL
+            await interaction.followup.send(
+                f"⚠️ Automatically switched to {default_model_name} because you attached an image " 
+                f"and {model_config.get('name', model)} doesn't support image processing.",
+                ephemeral=True
+            )
+            model = DEFAULT_MODEL
+        
+        # Process the AI request with a special flag to create thread
+        await self._process_ai_request(
+            formatted_prompt, 
+            model, 
+            interaction=interaction, 
+            attachments=attachments, 
+            fun=fun, 
+            web_search=web_search, 
+            deep_research=deep_research, 
+            tool_calling=tool_calling, 
+            max_tokens=max_tokens or 8000,
+            create_thread=True  # New parameter to signal thread creation
+        )
 
 class AIContextMenus(commands.Cog):
     def __init__(self, bot: commands.Bot):
