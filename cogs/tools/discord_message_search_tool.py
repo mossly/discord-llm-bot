@@ -289,7 +289,7 @@ class DiscordMessageSearchTool(BaseTool):
             "reply_to": str(message.reference.message_id) if message.reference else None
         }
     
-    async def _search_channel(self, channel: discord.TextChannel, query: Optional[str],
+    async def _search_channel(self, channel: Union[discord.TextChannel, discord.DMChannel], query: Optional[str],
                              limit: int, case_sensitive: bool, exclude_bots: bool,
                              author_id: Optional[str], cutoff_time: Optional[datetime],
                              max_results: int) -> List[Dict[str, Any]]:
@@ -303,12 +303,13 @@ class DiscordMessageSearchTool(BaseTool):
                 messages_searched += 1
                 
                 # Debug logging for specific channel and author
-                if channel.name == "based-text-chat" and author_id and str(message.author.id) == author_id:
+                channel_name = getattr(channel, 'name', f'DM-{channel.id}') if isinstance(channel, discord.TextChannel) else f'DM-{channel.id}'
+                if channel_name == "based-text-chat" and author_id and str(message.author.id) == author_id:
                     matching_author_count += 1
                     if query and query.lower() in message.content.lower():
-                        logger.info(f"DEBUG: Found matching message in {channel.name} from target user: '{message.content[:100]}...'")
+                        logger.info(f"DEBUG: Found matching message in {channel_name} from target user: '{message.content[:100]}...'")
                     elif query:
-                        logger.info(f"DEBUG: Found message from target user in {channel.name} but no query match: '{message.content[:100]}...'")
+                        logger.info(f"DEBUG: Found message from target user in {channel_name} but no query match: '{message.content[:100]}...'")
                 
                 if self._should_include_message(message, query, case_sensitive, 
                                                exclude_bots, author_id, cutoff_time):
@@ -323,13 +324,13 @@ class DiscordMessageSearchTool(BaseTool):
                     await asyncio.sleep(self.rate_limit_delay)
                     
             # Debug logging for based-text-chat
-            if channel.name == "based-text-chat" and author_id:
-                logger.info(f"DEBUG: In {channel.name} searched {messages_searched} messages, found {matching_author_count} from target user, {len(results)} final results")
+            if channel_name == "based-text-chat" and author_id:
+                logger.info(f"DEBUG: In {channel_name} searched {messages_searched} messages, found {matching_author_count} from target user, {len(results)} final results")
                     
         except discord.Forbidden as e:
-            logger.warning(f"Bot lacks permission to read history in channel '{channel.name}': {e}")
+            logger.warning(f"Bot lacks permission to read history in channel '{channel_name}': {e}")
         except Exception as e:
-            logger.error(f"Error searching channel '{channel.name}': {e}")
+            logger.error(f"Error searching channel '{channel_name}': {e}")
             
         return results
     
@@ -434,35 +435,44 @@ class DiscordMessageSearchTool(BaseTool):
                         "error": f"Channel with ID {final_channel_id} not found or not accessible"
                     }
                 
-                if not isinstance(channel, discord.TextChannel):
+                if not isinstance(channel, (discord.TextChannel, discord.DMChannel)):
                     return {
                         "success": False,
-                        "error": f"Channel {final_channel_id} is not a text channel"
+                        "error": f"Channel {final_channel_id} is not a text channel or DM channel"
                     }
                 
                 # Security check: Verify requesting user has access to this channel
-                if requesting_user_id and channel.guild:
-                    member = channel.guild.get_member(int(requesting_user_id))
-                    if not member:
-                        return {
-                            "success": False,
-                            "error": f"You are not a member of the server containing channel {final_channel_id}"
-                        }
-                    
-                    # Check channel permissions
-                    perms = channel.permissions_for(member)
-                    if not perms.read_messages:
-                        return {
-                            "success": False,
-                            "error": f"You do not have permission to read messages in channel {channel.name}"
-                        }
+                if requesting_user_id:
+                    if isinstance(channel, discord.TextChannel) and channel.guild:
+                        member = channel.guild.get_member(int(requesting_user_id))
+                        if not member:
+                            return {
+                                "success": False,
+                                "error": f"You are not a member of the server containing channel {final_channel_id}"
+                            }
+                        
+                        # Check channel permissions
+                        perms = channel.permissions_for(member)
+                        if not perms.read_messages:
+                            return {
+                                "success": False,
+                                "error": f"You do not have permission to read messages in channel {getattr(channel, 'name', f'DM-{channel.id}')}"
+                            }
+                    elif isinstance(channel, discord.DMChannel):
+                        # Security check for DM channels: user can only search their own DMs
+                        if str(channel.recipient.id) != requesting_user_id:
+                            return {
+                                "success": False,
+                                "error": "You can only search your own DM messages"
+                            }
                 
                 channel_results = await self._search_channel(
                     channel, query, limit, case_sensitive, exclude_bots,
                     final_author_id, cutoff_time, max_results
                 )
                 results.extend(channel_results)
-                channels_searched.append(channel.name)
+                channel_display_name = getattr(channel, 'name', f'DM-{channel.id}') if isinstance(channel, discord.TextChannel) else f'DM-{channel.id}'
+                channels_searched.append(channel_display_name)
                 search_stats["channels_searched"] = 1
                 
             # Search specific server
