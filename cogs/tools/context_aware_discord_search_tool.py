@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from .discord_message_search_tool import DiscordMessageSearchTool
 import discord
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,29 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
         super().__init__(bot)
         self.current_channel = None
         self.current_guild = None
+        self._validate_environment()
+    
+    def _validate_environment(self):
+        """Validate required environment variables for Discord bot functionality"""
+        required_vars = {
+            "BOT_API_TOKEN": "Discord bot token is required for bot authentication"
+        }
+        
+        missing_vars = []
+        for var, description in required_vars.items():
+            if not os.getenv(var):
+                missing_vars.append(f"{var} - {description}")
+        
+        if missing_vars:
+            error_msg = "Missing required environment variables:\n" + "\n".join(missing_vars)
+            logger.error(error_msg)
+            raise EnvironmentError(error_msg)
+        
+        # Validate bot is properly initialized
+        if not self.bot:
+            raise ValueError("Discord bot instance is not properly initialized")
+        
+        logger.info("Environment validation passed for search_current_discord_messages tool")
     
     @property
     def name(self) -> str:
@@ -58,6 +82,21 @@ class ContextAwareDiscordSearchTool(DiscordMessageSearchTool):
                      exclude_bots: bool = True, max_results: int = 20,
                      requesting_user_id: Optional[str] = None) -> Dict[str, Any]:
         """Execute context-aware Discord message search"""
+        
+        # Validate bot is connected before executing
+        if not self.bot.is_ready():
+            return {
+                "success": False,
+                "error": "Discord bot is not connected or ready. Please ensure the bot is properly initialized."
+            }
+        
+        # Validate we have context when no specific IDs are provided
+        if not (channel_id or server_id) and not (self.current_channel or self.current_guild):
+            logger.warning("No Discord context available and no specific IDs provided")
+            return {
+                "success": False,
+                "error": "No Discord context available. Please specify channel_id or server_id, or ensure the tool is used within a Discord server context."
+            }
         
         # Use current context as defaults if no specific IDs provided
         effective_channel_id = channel_id
