@@ -406,6 +406,7 @@ class AICommands(commands.Cog):
         else:
             # Handle /thread command thread creation
             if create_thread and interaction and interaction.guild:
+                thread_created = False
                 try:
                     # Generate AI thread name
                     user_content = prompt[:200]
@@ -426,15 +427,17 @@ class AICommands(commands.Cog):
                         # Fallback if API not available
                         thread_name = user_content[:47] + "..." if len(user_content) > 47 else user_content
                     
-                    # Create a thread in the channel
-                    thread = await interaction.channel.create_thread(
-                        name=thread_name or "AI Conversation",
-                        auto_archive_duration=1440  # 24 hours
-                    )
-                    logger.info(f"Created thread '{thread_name}' from /thread command")
+                    # Send the AI response to the channel first
+                    bot_message = await send_embed(interaction.channel, embed, content=attribution_text)
                     
-                    # Send the AI response inside the thread
-                    await send_embed(thread, embed, content=attribution_text)
+                    # Create thread from the bot's response message
+                    if bot_message:
+                        thread = await bot_message.create_thread(
+                            name=thread_name or "AI Conversation",
+                            auto_archive_duration=1440  # 24 hours
+                        )
+                        logger.info(f"Created thread '{thread_name}' from /thread command")
+                        thread_created = True
                     
                     # Discord requires a response to deferred interactions, send a minimal ephemeral message
                     await interaction.followup.send(content="✓", ephemeral=True)
@@ -443,6 +446,10 @@ class AICommands(commands.Cog):
                     logger.error(f"Failed to create thread from /thread command: {e}")
                     error_embed = create_error_embed(f"Failed to create thread: {str(e)}")
                     await interaction.followup.send(embed=error_embed, ephemeral=True)
+                
+                # If thread wasn't created, we still need to ensure interaction response was sent
+                if not thread_created:
+                    logger.warning("Thread creation failed but AI response was sent to channel")
             else:
                 await send_embed(interaction.channel, embed, interaction=interaction, content=attribution_text)
 
