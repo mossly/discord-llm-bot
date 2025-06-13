@@ -5,11 +5,15 @@ import discord
 import aiohttp
 import json
 import uuid
+import re
+from datetime import datetime
+import pytz
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from utils.response_formatter import extract_footnotes, build_standardized_footer
 from utils.attachment_handler import process_attachments
 from utils.conversation_logger import conversation_logger
 from utils.quota_validator import quota_validator
+from utils.reminder_manager import reminder_manager
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,16 @@ async def perform_chat_query(
     if ddg_summary:
         summary_text = ddg_summary[0] if isinstance(ddg_summary, tuple) else ddg_summary
         prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
+
+    # Prepend user's current local time for LLM context
+    try:
+        user_timezone = await reminder_manager.get_user_timezone(int(user_id))
+        local_tz = pytz.timezone(user_timezone)
+        current_local_time = datetime.now(local_tz)
+        time_prefix = f"[Current time: {current_local_time.strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}]\n\n"
+        prompt = time_prefix + prompt
+    except Exception as e:
+        logger.warning(f"Failed to add timezone context for user {user_id}: {e}")
 
     # Check user quota before making API call
     can_proceed, quota_error = quota_validator.check_user_quota(user_id)
