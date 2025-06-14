@@ -61,6 +61,17 @@ echo -e "\a"
 
 This is especially useful during long-running operations or when the assistant needs to pause for user input.
 
+### Git Workflow
+**IMPORTANT**: Always commit and push changes at the end of any implementation or significant code changes:
+
+```bash
+git add -A
+git commit -m "Descriptive commit message"
+git push
+```
+
+This ensures that all work is properly saved and synchronized with the remote repository.
+
 ### Environment Variables Required
 - `BOT_API_TOKEN` - Discord bot token
 - `OPENAI_API_KEY` - OpenAI API key
