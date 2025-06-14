@@ -8,7 +8,8 @@ from discord.ext import commands
 import pytz
 from typing import Optional
 from utils.embed_utils import create_error_embed
-from utils.reminder_manager import reminder_manager
+from utils.reminder_manager_v2 import reminder_manager_v2
+from utils.background_task_manager import background_task_manager, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             trigger_time = utc_dt.timestamp()
             
             # Add the reminder
-            success, message = await reminder_manager.add_reminder(
+            success, message = await reminder_manager_v2.add_reminder(
                 interaction.user.id, 
                 self.reminder_text.value, 
                 trigger_time, 
@@ -126,7 +127,7 @@ class TimezoneView(discord.ui.View):
     )
     async def timezone_select(self, interaction: discord.Interaction, select: discord.ui.Select):
         timezone = select.values[0]
-        success, message = await reminder_manager.set_user_timezone(interaction.user.id, timezone)
+        success, message = await reminder_manager_v2.set_user_timezone(interaction.user.id, timezone)
         
         if success:
             # Show current time in the selected timezone
@@ -165,7 +166,7 @@ class CustomTimezoneModal(ui.Modal, title="Enter Custom Timezone"):
     
     async def on_submit(self, interaction: discord.Interaction):
         timezone = self.timezone_input.value.strip()
-        success, message = await reminder_manager.set_user_timezone(interaction.user.id, timezone)
+        success, message = await reminder_manager_v2.set_user_timezone(interaction.user.id, timezone)
         
         if success:
             try:
@@ -204,7 +205,7 @@ class ReminderListView(discord.ui.View):
     
     async def _get_user_reminders(self):
         """Get reminders for the user"""
-        return await reminder_manager.get_user_reminders(self.user_id)
+        return await reminder_manager_v2.get_user_reminders(self.user_id)
     
     @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, disabled=True)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -240,11 +241,12 @@ class ReminderListView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
 
-class Reminders(commands.Cog):
+class RemindersV2(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.task = None
-        self.reminder_manager = reminder_manager
+        self.reminder_loop_task = None
+        self.cache_cleanup_task = None
+        self.reminder_manager = reminder_manager_v2
     
     def _create_embed(self, title, description, color=discord.Color.blue()):
         """Create a standardized embed for responses"""
@@ -332,24 +334,18 @@ class Reminders(commands.Cog):
             return f"{months} month{'s' if months != 1 else ''} ago"
     
     async def cog_load(self):
-        self.task = asyncio.create_task(self.reminder_loop())
-        logger.info("Reminder Cog loaded and reminder loop started")
+        await self.reminder_manager.initialize()
+        self.reminder_loop_task = asyncio.create_task(self.event_driven_reminder_loop())
+        self.cache_cleanup_task = asyncio.create_task(self.cache_cleanup_loop())
+        logger.info("RemindersV2 Cog loaded with event-driven architecture")
     
-    async def reminder_loop(self):
-        """Main loop to check and trigger reminders"""
-        logger.info("Reminder loop started")
-        cleanup_counter = 0
-        cleanup_interval = 3600  # Run cleanup every hour (3600 seconds)
+    async def event_driven_reminder_loop(self):
+        """Event-driven reminder loop that responds immediately to changes"""
+        logger.info("Event-driven reminder loop started")
         
         while True:
             try:
-                # Periodic memory cleanup to prevent bloat
-                cleanup_counter += 1
-                if cleanup_counter * 60 >= cleanup_interval:  # Approximate cleanup timing
-                    await self.reminder_manager.cleanup_expired_reminders()
-                    cleanup_counter = 0
-                
-                # Get due reminders (no need to reload every second)
+                # Get due reminders
                 due_reminders = await self.reminder_manager.get_due_reminders()
                 
                 # Process each due reminder
@@ -394,24 +390,72 @@ class Reminders(commands.Cog):
                     # Mark reminder as sent
                     await self.reminder_manager.mark_reminder_sent(trigger_time)
                 
-                # Smart sleep timing - sleep until next reminder is due
+                # Get next reminder time for smart sleeping
                 next_reminder_time = await self.reminder_manager.get_next_reminder_time()
                 
                 if next_reminder_time is None:
-                    # No reminders scheduled, sleep for a longer period
-                    sleep_duration = 60  # Check every minute for new reminders
+                    # No reminders scheduled, wait for new ones or check periodically
+                    try:
+                        # Wait for either a new reminder or a timeout
+                        await asyncio.wait_for(
+                            self.reminder_manager.wait_for_reminder_change(),
+                            timeout=300  # Check every 5 minutes even if no changes
+                        )
+                        logger.debug("Reminder change detected, checking for new reminders")
+                    except asyncio.TimeoutError:
+                        logger.debug("Timeout waiting for reminder changes, checking for new reminders")
                 else:
                     # Calculate sleep time until next reminder
                     current_time = time.time()
-                    sleep_duration = min(next_reminder_time - current_time, 60)  # Max 1 minute
+                    sleep_duration = min(next_reminder_time - current_time, 300)  # Max 5 minutes
                     sleep_duration = max(sleep_duration, 1)  # Min 1 second
-                
-                logger.debug(f"Reminder loop sleeping for {sleep_duration:.1f} seconds")
-                await asyncio.sleep(sleep_duration)
+                    
+                    if sleep_duration > 60:
+                        # For longer sleeps, also listen for new reminders
+                        try:
+                            await asyncio.wait_for(
+                                self.reminder_manager.wait_for_reminder_change(),
+                                timeout=sleep_duration
+                            )
+                            logger.debug("Reminder change detected during sleep, waking up early")
+                        except asyncio.TimeoutError:
+                            logger.debug(f"Woke up after {sleep_duration:.1f} seconds")
+                    else:
+                        # For short sleeps, just sleep
+                        logger.debug(f"Sleeping for {sleep_duration:.1f} seconds until next reminder")
+                        await asyncio.sleep(sleep_duration)
                 
             except Exception as e:
-                logger.error(f"Error in reminder loop: {e}", exc_info=True)
+                logger.error(f"Error in event-driven reminder loop: {e}", exc_info=True)
                 await asyncio.sleep(10)  # Sleep longer on error to prevent spam
+    
+    async def cache_cleanup_loop(self):
+        """Background task to clean up expired cache entries and database"""
+        while True:
+            try:
+                # Clean up expired reminders every hour using background task manager
+                await asyncio.sleep(3600)  # 1 hour
+                
+                # Submit cleanup as background task
+                await background_task_manager.submit_function(
+                    self.reminder_manager._background_cleanup_expired,
+                    task_id=f"cleanup_expired_{int(time.time())}",
+                    priority=TaskPriority.LOW
+                )
+                
+                # Log background task manager metrics
+                metrics = background_task_manager.get_metrics()
+                active_tasks = len(background_task_manager.get_active_tasks())
+                
+                logger.info(
+                    f"Background task metrics - Active: {active_tasks}, "
+                    f"Total: {metrics['total_tasks']}, "
+                    f"Success rate: {metrics['successful_tasks'] / max(metrics['total_tasks'], 1) * 100:.1f}%"
+                )
+                
+            except Exception as e:
+                logger.error(f"Error in cache cleanup loop: {e}", exc_info=True)
+                await asyncio.sleep(600)  # Wait 10 minutes on error
     
     async def _show_reminder_modal(self, interaction: discord.Interaction, pre_filled_text: str = "", user_timezone: str = None):
         """Show the reminder modal with optional pre-filled text"""
@@ -616,11 +660,14 @@ class Reminders(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
     
     async def cog_unload(self):
-        logger.info("Reminder Cog unloading...")
-        if self.task:
-            self.task.cancel()
+        logger.info("RemindersV2 Cog unloading...")
+        if self.reminder_loop_task:
+            self.reminder_loop_task.cancel()
+        if self.cache_cleanup_task:
+            self.cache_cleanup_task.cancel()
+        await self.reminder_manager.close()
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(Reminders(bot))
-    logger.info("Reminders cog setup complete")
+    await bot.add_cog(RemindersV2(bot))
+    logger.info("RemindersV2 cog setup complete")
