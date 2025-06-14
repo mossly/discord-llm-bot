@@ -1,6 +1,6 @@
 """
-Reminder management tool for Discord bot LLM
-Provides interface for LLM to manage user reminders
+Advanced reminder management tool for Discord bot LLM
+High-performance version with SQLite backend and caching
 """
 
 import logging
@@ -8,17 +8,17 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 import pytz
 from .base_tool import BaseTool
-from utils.reminder_manager import reminder_manager
+from utils.reminder_manager_v2 import reminder_manager_v2
 
 logger = logging.getLogger(__name__)
 
 
-class ReminderTool(BaseTool):
-    """Tool for managing Discord bot reminders"""
+class ReminderToolV2(BaseTool):
+    """Advanced tool for managing Discord bot reminders"""
     
     def __init__(self):
         super().__init__()
-        self.reminder_manager = reminder_manager
+        self.reminder_manager = reminder_manager_v2
     
     @property
     def name(self) -> str:
@@ -26,7 +26,7 @@ class ReminderTool(BaseTool):
     
     @property 
     def description(self) -> str:
-        return "Manage Discord reminders for users. Can set, list, cancel reminders and get next reminder. Note: User's current local time is provided in the message context for accurate time calculations."
+        return "Manage Discord reminders for users with high-performance SQLite backend. Can set, list, cancel reminders and get next reminder. Note: User's current local time is provided in the message context for accurate time calculations."
     
     @property
     def parameters(self) -> dict:
@@ -43,7 +43,7 @@ class ReminderTool(BaseTool):
                     "description": "Text for the reminder (required for 'set' action)"
                 },
                 "time_str": {
-                    "type": "string",
+                    "type": "string", 
                     "description": "Natural language time for the reminder (preferred for 'set' action). Examples: 'tomorrow at 3pm', 'in 2 hours', '1 minute from now', 'next Friday at 9am'. Be flexible with user expressions."
                 },
                 "timestamp": {
