@@ -200,8 +200,15 @@ class APIUtils(commands.Cog):
         if use_emojis and emoji_channel:
             emoji_list = await self.get_guild_emoji_list(emoji_channel.guild)
             if emoji_list:
-                messages_input.append({"role": "system", "content": f"List of available custom emojis: {emoji_list}"})
-        
+                emoji_content = f"""List of available custom emojis: {emoji_list}
+
+        CRITICAL EMOJI RULES:
+        - Use ONLY emojis from the above list with complete <:name:id> format
+        - NEVER use :name: format - it will not work
+        - Example: <:kibsmirk:1043092404959445013> ✅  vs :kibsmirk: ❌"""
+                
+                messages_input.append({"role": "system", "content": emoji_content})
+                
         if reference_message:
             messages_input.append({"role": "user", "content": reference_message})
         
