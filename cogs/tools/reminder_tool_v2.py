@@ -139,9 +139,9 @@ class ReminderToolV2(BaseTool):
                 "error": f"Could not interpret the time '{time_str}'. Please try a different expression like 'in 2 minutes', 'tomorrow at 3pm', or 'next Friday at 9am'."
             }
         
-        # Add the reminder
+        # Add the reminder (no channel context for tool-based reminders - always DM)
         logger.info(f"Adding reminder for user {user_id} at timestamp {trigger_time} ({datetime.utcfromtimestamp(trigger_time)} UTC)")
-        success, message = await self.reminder_manager.add_reminder(user_id, reminder_text, trigger_time, user_timezone)
+        success, message = await self.reminder_manager.add_reminder(user_id, reminder_text, trigger_time, user_timezone, channel_id=None)
         
         logger.info(f"Reminder add result: success={success}, message='{message}'")
         if success:

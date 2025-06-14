@@ -53,12 +53,14 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             utc_dt = local_dt.astimezone(pytz.UTC)
             trigger_time = utc_dt.timestamp()
             
-            # Add the reminder
+            # Add the reminder with channel context
+            channel_id = interaction.channel_id if interaction.channel else None
             success, message = await reminder_manager_v2.add_reminder(
                 interaction.user.id, 
                 self.reminder_text.value, 
                 trigger_time, 
-                self.user_timezone
+                self.user_timezone,
+                channel_id
             )
             
             if success:
@@ -66,10 +68,17 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
                 readable_time = local_dt.strftime("%A, %B %d at %I:%M %p")
                 time_until = self.cog._format_time_until(utc_dt.replace(tzinfo=None))
                 
+                # Show where reminder will be sent
+                location_info = ""
+                if channel_id:
+                    location_info = f"\n📍 **Location:** <#{channel_id}>"
+                else:
+                    location_info = "\n📍 **Location:** Direct Message"
+                
                 embed = self.cog._create_embed(
                     "Reminder Set ✅",
                     f"Your reminder has been set for **{readable_time}** ({time_until}).\n\n"
-                    f"**Reminder:** {self.reminder_text.value}",
+                    f"**Reminder:** {self.reminder_text.value}{location_info}",
                     color=discord.Color.green()
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -349,18 +358,11 @@ class RemindersV2(commands.Cog):
                 due_reminders = await self.reminder_manager.get_due_reminders()
                 
                 # Process each due reminder
-                for trigger_time, user_id, message, user_tz in due_reminders:
+                for trigger_time, user_id, message, user_tz, channel_id in due_reminders:
                     trigger_readable = datetime.utcfromtimestamp(trigger_time).strftime("%Y-%m-%d %H:%M:%S")
                     logger.info(f"Triggering reminder - User: {user_id}, Reminder time: {trigger_readable} UTC, Text: '{message}'")
                     
                     try:
-                        # Skip if user has DM failures
-                        if self.reminder_manager.is_dm_failed_user(user_id):
-                            logger.warning(f"Skipping DM for user {user_id} (previous failures)")
-                            continue
-                            
-                        user = await self.bot.fetch_user(user_id)
-                        
                         # Format reminder time in user's timezone
                         trigger_time_utc = datetime.utcfromtimestamp(trigger_time).replace(tzinfo=pytz.UTC)
                         user_timezone = pytz.timezone(user_tz)
@@ -377,8 +379,29 @@ class RemindersV2(commands.Cog):
                             f"**{message}**\n\nSet {time_since} on {readable_set_date}",
                             color=discord.Color.gold()
                         )
-                        await user.send(embed=embed)
-                        logger.info(f"Successfully sent reminder to user {user_id} ({user.name})")
+                        
+                        # Send to channel if available, otherwise DM
+                        if channel_id:
+                            try:
+                                channel = await self.bot.fetch_channel(channel_id)
+                                await channel.send(f"<@{user_id}>", embed=embed)
+                                logger.info(f"Successfully sent reminder to channel {channel_id} for user {user_id}")
+                            except (discord.NotFound, discord.Forbidden) as e:
+                                logger.warning(f"Cannot send to channel {channel_id}, falling back to DM: {e}")
+                                # Fall back to DM
+                                user = await self.bot.fetch_user(user_id)
+                                await user.send(embed=embed)
+                                logger.info(f"Successfully sent reminder via DM to user {user_id} ({user.name})")
+                        else:
+                            # No channel context, send DM
+                            # Skip if user has DM failures
+                            if self.reminder_manager.is_dm_failed_user(user_id):
+                                logger.warning(f"Skipping DM for user {user_id} (previous failures)")
+                                continue
+                                
+                            user = await self.bot.fetch_user(user_id)
+                            await user.send(embed=embed)
+                            logger.info(f"Successfully sent reminder via DM to user {user_id} ({user.name})")
                         
                     except discord.Forbidden:
                         logger.warning(f"Cannot send DM to user {user_id} (forbidden - likely has DMs disabled)")
@@ -496,12 +519,14 @@ class RemindersV2(commands.Cog):
                 utc_dt = target_dt.astimezone(pytz.UTC)
                 trigger_time = utc_dt.timestamp()
                 
-                # Add the reminder
+                # Add the reminder with channel context
+                channel_id = interaction.channel_id if interaction.channel else None
                 success, message = await self.reminder_manager.add_reminder(
                     interaction.user.id, 
                     reminder_text, 
                     trigger_time, 
-                    user_timezone
+                    user_timezone,
+                    channel_id
                 )
                 
                 if success:
@@ -509,10 +534,17 @@ class RemindersV2(commands.Cog):
                     readable_time = target_dt.strftime("%A, %B %d at %I:%M %p")
                     time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
                     
+                    # Show where reminder will be sent
+                    location_info = ""
+                    if channel_id:
+                        location_info = f"\n📍 **Location:** <#{channel_id}>"
+                    else:
+                        location_info = "\n📍 **Location:** Direct Message"
+                    
                     embed = self._create_embed(
                         "Reminder Set ✅",
                         f"Your reminder has been set for **{readable_time}** ({time_until}).\n\n"
-                        f"**Reminder:** {reminder_text}",
+                        f"**Reminder:** {reminder_text}{location_info}",
                         color=discord.Color.green()
                     )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -549,13 +581,27 @@ class RemindersV2(commands.Cog):
         
         # Format reminders for display
         reminder_list = []
-        for idx, (timestamp, message, _) in enumerate(user_reminders[:10], 1):  # Show first 10
+        for idx, (timestamp, message, _, channel_id) in enumerate(user_reminders[:10], 1):  # Show first 10
             utc_time = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.UTC)
             local_time = utc_time.astimezone(pytz.timezone(user_timezone))
             readable_time = local_time.strftime("%b %d at %I:%M %p")
             time_until = self._format_time_until(utc_time.replace(tzinfo=None))
             
-            reminder_list.append(f"**{idx}.** {message}\n   📅 {readable_time} ({time_until})")
+            # Show where the reminder will be sent
+            location = ""
+            if channel_id:
+                try:
+                    channel = self.bot.get_channel(channel_id)
+                    if channel:
+                        location = f" 📍 #{channel.name}"
+                    else:
+                        location = " 📍 Channel (deleted)"
+                except:
+                    location = " 📍 Channel"
+            else:
+                location = " 📍 DM"
+            
+            reminder_list.append(f"**{idx}.** {message}\n   📅 {readable_time} ({time_until}){location}")
         
         description = "\n\n".join(reminder_list)
         if len(user_reminders) > 10:
@@ -588,7 +634,7 @@ class RemindersV2(commands.Cog):
             return
         
         # Get the next reminder (first in sorted list)
-        next_timestamp, next_message, _ = user_reminders[0]
+        next_timestamp, next_message, _, _ = user_reminders[0]
         
         # Get user's timezone
         user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
