@@ -48,11 +48,14 @@ def build_standardized_footer(
     output_tokens: int = 0, 
     cost: float = 0, 
     elapsed_time: float = 0, 
-    footnotes: str = ""
+    footnotes: str = "",
+    use_fun: bool = False
 ) -> str:
     """Build standardized footer for AI responses"""
-    # First line: Clean model name only
+    # First line: Clean model name with fun mode indicator
     first_line = model_name
+    if use_fun:
+        first_line += " | Fun Mode"
     
     # Second line: Usage stats
     usage_parts = []

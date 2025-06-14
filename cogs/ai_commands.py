@@ -351,6 +351,23 @@ class AICommands(commands.Cog):
                 message_link = f"https://discord.com/channels/@me/{reply_msg.channel.id}/{reply_msg.id}"
             attribution_text = f"### {reply_user.mention} used AI Reply > {message_link}"
 
+        # Detect fun mode from the original message if it was a bot message
+        detected_fun_mode = False
+        if reply_msg and reply_msg.author.bot:
+            ai_context_menus = self.bot.get_cog("AIContextMenus")
+            if ai_context_menus:
+                detected_fun_mode = ai_context_menus._detect_fun_mode_from_footer(reply_msg)
+                if detected_fun_mode:
+                    logger.info("Detected fun mode from original message, updating footer")
+                    # Update the embed footer to include fun mode
+                    current_footer = embed.footer.text if embed.footer else final_footer
+                    if " | Fun Mode" not in current_footer:
+                        # Insert fun mode after the model name (first line)
+                        lines = current_footer.split('\n')
+                        if lines:
+                            lines[0] += " | Fun Mode"
+                            embed.set_footer(text='\n'.join(lines))
+
         # Check if this is a context menu reply in a server that should create a thread
         if reply_msg and reply_msg.guild and reply_user and not isinstance(reply_msg.channel, discord.Thread):
             # Generate AI thread name using gpt-4.1-nano
@@ -391,7 +408,30 @@ class AICommands(commands.Cog):
                 # Fallback to normal reply if thread creation fails
                 await send_embed(reply_msg.channel, embed, reply_to=reply_msg, content=attribution_text)
         elif reply_msg and isinstance(reply_msg.channel, discord.Thread):
-            # Already in a thread, send as a reply without attribution text
+            # Already in a thread, check if we should continue fun mode
+            # Look through thread history to detect if fun mode was used
+            thread_fun_mode = False
+            try:
+                async for message in reply_msg.channel.history(limit=20):
+                    if message.author.bot and message.embeds:
+                        ai_context_menus = self.bot.get_cog("AIContextMenus")
+                        if ai_context_menus and ai_context_menus._detect_fun_mode_from_footer(message):
+                            thread_fun_mode = True
+                            logger.info(f"Detected fun mode in thread history, continuing with fun mode")
+                            break
+            except Exception as e:
+                logger.warning(f"Failed to check thread history for fun mode: {e}")
+            
+            # Update embed footer if thread was using fun mode
+            if thread_fun_mode and embed.footer:
+                current_footer = embed.footer.text
+                if " | Fun Mode" not in current_footer:
+                    lines = current_footer.split('\n')
+                    if lines:
+                        lines[0] += " | Fun Mode"
+                        embed.set_footer(text='\n'.join(lines))
+            
+            # Send as a reply without attribution text
             channel_name = getattr(reply_msg.channel, 'name', f'Channel {reply_msg.channel.id}') if reply_msg.channel else 'None channel'
             logger.info(f"Sending response to thread: {channel_name}")
             if reply_msg.channel:
@@ -592,6 +632,24 @@ class AIContextMenus(commands.Cog):
         
         logger.warning(f"Could not detect model from footer: '{first_line}'")
         return None
+    
+    def _detect_fun_mode_from_footer(self, message: discord.Message) -> bool:
+        """Detect if fun mode was used based on the message footer"""
+        if not message.author.bot or not message.embeds:
+            return False
+        
+        embed = message.embeds[0]
+        if not embed.footer or not embed.footer.text:
+            return False
+        
+        # The footer format has model name on the first line
+        footer_text = embed.footer.text
+        first_line = footer_text.split('\n')[0].strip()
+        
+        # Check if "Fun Mode" is in the first line
+        is_fun = "Fun Mode" in first_line
+        logger.info(f"Detecting fun mode from footer: '{first_line}' -> {is_fun}")
+        return is_fun
         
     class ModelSelectModal(discord.ui.Modal):
         additional_input = discord.ui.TextInput(
@@ -656,7 +714,15 @@ class ModelSelectionView(discord.ui.View):
         self.additional_text = additional_text
         self.user_id = user_id
         self.selected_model = detected_model if detected_model else DEFAULT_MODEL
+        
+        # Detect fun mode from original message footer if it's a bot message
         self.fun = False
+        if original_message and original_message.author.bot and original_message.embeds:
+            embed = original_message.embeds[0]
+            if embed.footer and embed.footer.text and "Fun Mode" in embed.footer.text:
+                self.fun = True
+                logger.info("Detected fun mode from original message footer")
+        
         self.web_search = False
         self.deep_research = False
         self.tool_calling = True

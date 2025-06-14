@@ -172,7 +172,8 @@ async def perform_chat_query(
             output_tokens=output_tokens,
             cost=total_cost,
             elapsed_time=elapsed,
-            footnotes=footnotes
+            footnotes=footnotes,
+            use_fun=use_fun
         )
         
         # Log conversation to history
@@ -455,7 +456,8 @@ async def perform_chat_query_with_tools(
                     output_tokens=final_output_tokens,
                     cost=final_cost,
                     elapsed_time=elapsed,
-                    footnotes=footnotes
+                    footnotes=footnotes,
+                    use_fun=use_fun
                 )
                 
                 # Log conversation to history
@@ -567,7 +569,8 @@ async def perform_chat_query_with_tools(
             output_tokens=final_output_tokens,
             cost=final_cost,
             elapsed_time=elapsed,
-            footnotes=footnotes
+            footnotes=footnotes,
+            use_fun=use_fun
         )
         
         # Log conversation to history
@@ -607,7 +610,8 @@ async def perform_chat_query_with_tools(
             input_tokens=final_input_tokens,
             output_tokens=final_output_tokens,
             cost=final_cost,
-            elapsed_time=elapsed
+            elapsed_time=elapsed,
+            use_fun=use_fun
         )
         
         # Clean up session
