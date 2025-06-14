@@ -41,6 +41,9 @@ async def on_message(message):
 async def load_cogs():
     for filename in os.listdir("./cogs"):
         if filename.endswith(".py") and not filename.startswith("__"):
+            # Skip the old reminders.py since we're using reminders_v2.py
+            if filename == "reminders.py":
+                continue
             await bot.load_extension(f"cogs.{filename[:-3]}")
             logging.info(f"Loaded cog: {filename}")
 
