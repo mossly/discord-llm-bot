@@ -52,6 +52,15 @@ pip install -r requirements.txt
 python discordbot.py
 ```
 
+### User Notification
+When user input is required (e.g., waiting for approval, confirmation, or manual intervention), use the following command to notify the user with an audible beep:
+
+```bash
+echo -e "\a"
+```
+
+This is especially useful during long-running operations or when the assistant needs to pause for user input.
+
 ### Environment Variables Required
 - `BOT_API_TOKEN` - Discord bot token
 - `OPENAI_API_KEY` - OpenAI API key
