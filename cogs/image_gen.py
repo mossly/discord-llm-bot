@@ -482,7 +482,7 @@ class ImageGen(commands.Cog):
         image_mode: Literal["input", "edit"] = "input",
         streaming: bool = False
     ):
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
         start_time = time.time()
         
         user_id = str(interaction.user.id)
@@ -589,8 +589,7 @@ class ImageGen(commands.Cog):
                 result_urls, usage_info = await self.generate_image_streaming(
                     prompt, api_quality, size, model, image_inputs, is_edit, interaction
                 )
-                # Streaming method handles its own Discord output, so we can return early
-                return
+                # Continue with normal flow to ensure image is properly sent
             else:
                 result_urls, usage_info = await self.generate_image(prompt, api_quality, size, model, image_inputs, is_edit)
         except Exception as e:
@@ -827,8 +826,7 @@ class ImageEditModal(discord.ui.Modal):
                 result_urls, usage_info = await self.image_cog.generate_image_streaming(
                     self.prompt.value, api_quality, size, model_str, image_inputs, is_edit, interaction
                 )
-                # Streaming method handles its own Discord output, so we can return early
-                return
+                # Continue with normal flow to ensure image is properly sent
             else:
                 result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, api_quality, size, model_str, image_inputs, is_edit)
         except Exception as e:
