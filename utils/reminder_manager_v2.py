@@ -119,7 +119,7 @@ class ReminderManagerV2:
             # Create indexes for performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_timestamp ON reminders(timestamp)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id)")
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(timestamp) WHERE timestamp <= ?", (time.time(),))
+            # Note: Partial indexes with parameters are not supported in SQLite
             
             await db.commit()
             logger.info("Database schema initialized")
