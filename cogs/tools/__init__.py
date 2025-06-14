@@ -56,7 +56,7 @@ except ImportError:
     DiscordUserLookupTool = None
 
 try:
-    from .reminder_tool_v2 import ReminderToolV2 as ReminderTool
+    from .reminder_tool import ReminderTool
     REMINDER_TOOL_AVAILABLE = True
 except ImportError:
     REMINDER_TOOL_AVAILABLE = False

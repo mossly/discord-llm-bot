@@ -1,9 +1,10 @@
 """
-Unified reminder management system for Discord LLM bot
-Provides a single source of truth for all reminder operations
+Advanced reminder management system with SQLite backend
+Provides high-performance, concurrent-safe reminder operations
 """
 
 import asyncio
+import aiosqlite
 import json
 import logging
 import os
@@ -11,12 +12,9 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Set
 import pytz
-
-try:
-    import aiofiles
-    AIOFILES_AVAILABLE = True
-except ImportError:
-    AIOFILES_AVAILABLE = False
+from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from .background_task_manager import background_task_manager, io_bound, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +22,29 @@ logger = logging.getLogger(__name__)
 MAX_REMINDERS_PER_USER = 25
 MIN_REMINDER_INTERVAL = 60  # Minimum 60 seconds between reminders
 DEFAULT_TIMEZONE = "Pacific/Auckland"  # New Zealand timezone (GMT+13)
+DB_PATH = "/data/reminders.db"
+CACHE_TTL = 300  # 5 minutes cache TTL
 
 
-class ReminderManager:
-    """Centralized reminder management system"""
+@dataclass
+class Reminder:
+    """Reminder data structure"""
+    timestamp: float
+    user_id: int
+    message: str
+    timezone: str
+    created_at: float
+
+
+@dataclass
+class CacheEntry:
+    """Cache entry with TTL"""
+    data: any
+    expires_at: float
+
+
+class ReminderManagerV2:
+    """Advanced reminder management with SQLite backend and caching"""
     
     _instance = None
     _lock = asyncio.Lock()
@@ -40,276 +57,352 @@ class ReminderManager:
     def __init__(self):
         if not hasattr(self, 'initialized'):
             self.initialized = True
-            self.reminders = {}  # {timestamp: (user_id, message, timezone)}
-            self.user_timezones = {}  # {user_id: timezone_string}
-            self.reminders_file = "/data/reminders.json"
-            self.timezones_file = "/data/user_timezones.json"
+            self.db_path = DB_PATH
             self.dm_failed_users = set()  # Track users with failed DMs
             
-            # Debounced save state
-            self._reminders_save_pending = False
-            self._timezones_save_pending = False
-            self._save_delay = 5.0  # 5 second debounce
+            # Cache layer
+            self._cache: Dict[str, CacheEntry] = {}
+            self._cache_lock = asyncio.Lock()
+            
+            # Event-driven architecture
+            self._reminder_added_event = asyncio.Event()
+            self._next_reminder_time = None
+            
+            # Connection pool
+            self._connection_pool: List[aiosqlite.Connection] = []
+            self._pool_lock = asyncio.Lock()
+            self._max_connections = 5
             
             # Ensure data directory exists
             os.makedirs("/data", exist_ok=True)
             
-            # Load existing data
-            logger.info(f"Initializing ReminderManager instance {id(self)}")
-            self._load_data()
+            logger.info(f"Initializing ReminderManagerV2 instance {id(self)}")
     
-    def _load_data(self):
-        """Load reminders and timezones from disk"""
-        self._load_timezones()
-        self._load_reminders()
+    async def initialize(self):
+        """Initialize the database and connection pool"""
+        await self._init_database()
+        await self._init_connection_pool()
+        
+        # Start background task manager
+        await background_task_manager.start()
+        
+        # Migrate from old JSON-based system if needed
+        await self._migrate_from_json()
+        
+        # Add channel_id column if it doesn't exist
+        await self._add_channel_id_column()
     
-    def _load_timezones(self):
-        """Load user timezones from disk"""
-        if os.path.exists(self.timezones_file):
-            try:
-                with open(self.timezones_file, 'r') as f:
-                    data = json.load(f)
-                    self.user_timezones = {
-                        int(uid): tz for uid, tz in data.items()
-                    }
-                logger.debug(f"Loaded {len(self.user_timezones)} user timezone preferences")
-            except Exception as e:
-                logger.error(f"Failed to load user timezones: {e}", exc_info=True)
-                self.user_timezones = {}
-        else:
-            self.user_timezones = {}
-    
-    def _load_reminders(self):
-        """Load reminders from disk"""
-        if os.path.exists(self.reminders_file):
-            try:
-                with open(self.reminders_file, 'r') as f:
-                    data = json.load(f)
-                    self.reminders = {
-                        float(ts): (int(uid), msg, tz) 
-                        for ts, (uid, msg, tz) in data.items()
-                    }
-                logger.debug(f"Loaded {len(self.reminders)} reminders from disk (instance: {id(self)})")
-                    
-            except Exception as e:
-                logger.error(f"Failed to load reminders: {e}", exc_info=True)
-                self.reminders = {}
-        else:
-            self.reminders = {}
-    
-    def _save_reminders(self):
-        """Save reminders to disk"""
-        try:
-            data = {
-                str(ts): [uid, msg, tz] 
-                for ts, (uid, msg, tz) in self.reminders.items()
-            }
-            with open(self.reminders_file, 'w') as f:
-                json.dump(data, f)
-            logger.debug(f"Saved {len(self.reminders)} reminders (instance: {id(self)})")
-        except Exception as e:
-            logger.error(f"Failed to save reminders: {e}", exc_info=True)
-    
-    async def _save_reminders_async(self):
-        """Save reminders to disk asynchronously"""
-        try:
-            data = {
-                str(ts): [uid, msg, tz] 
-                for ts, (uid, msg, tz) in self.reminders.items()
-            }
+    async def _init_database(self):
+        """Initialize SQLite database with proper schema"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    message TEXT NOT NULL,
+                    timezone TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    channel_id INTEGER,
+                    UNIQUE(timestamp, user_id)
+                )
+            """)
             
-            if AIOFILES_AVAILABLE:
-                async with aiofiles.open(self.reminders_file, 'w') as f:
-                    await f.write(json.dumps(data))
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_timezones (
+                    user_id INTEGER PRIMARY KEY,
+                    timezone TEXT NOT NULL,
+                    updated_at REAL NOT NULL
+                )
+            """)
+            
+            # Create indexes for performance
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_timestamp ON reminders(timestamp)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id)")
+            # Note: Partial indexes with parameters are not supported in SQLite
+            
+            await db.commit()
+            logger.info("Database schema initialized")
+    
+    async def _init_connection_pool(self):
+        """Initialize connection pool for better concurrency"""
+        async with self._pool_lock:
+            for _ in range(self._max_connections):
+                conn = await aiosqlite.connect(self.db_path)
+                conn.row_factory = aiosqlite.Row
+                self._connection_pool.append(conn)
+            logger.info(f"Initialized connection pool with {self._max_connections} connections")
+    
+    @asynccontextmanager
+    async def _get_connection(self):
+        """Get a connection from the pool"""
+        async with self._pool_lock:
+            if self._connection_pool:
+                conn = self._connection_pool.pop()
             else:
-                # Fallback to sync I/O
-                with open(self.reminders_file, 'w') as f:
-                    json.dump(data, f)
-                    
-            logger.debug(f"Saved {len(self.reminders)} reminders (instance: {id(self)})")
-        except Exception as e:
-            logger.error(f"Failed to save reminders: {e}", exc_info=True)
-    
-    async def _debounced_save_reminders(self):
-        """Save reminders with debouncing to reduce I/O"""
-        if self._reminders_save_pending:
-            return
-            
-        self._reminders_save_pending = True
-        await asyncio.sleep(self._save_delay)
+                # Create temporary connection if pool is exhausted
+                conn = await aiosqlite.connect(self.db_path)
+                conn.row_factory = aiosqlite.Row
+                logger.warning("Connection pool exhausted, creating temporary connection")
         
-        if self._reminders_save_pending:  # Still pending after delay
-            await self._save_reminders_async()
-            self._reminders_save_pending = False
-    
-    async def _save_timezones_async(self):
-        """Save user timezones to disk asynchronously"""
         try:
-            data = {
-                str(uid): tz for uid, tz in self.user_timezones.items()
-            }
+            yield conn
+        finally:
+            async with self._pool_lock:
+                if len(self._connection_pool) < self._max_connections:
+                    self._connection_pool.append(conn)
+                else:
+                    await conn.close()
+    
+    async def _migrate_from_json(self):
+        """Migrate data from old JSON-based system"""
+        old_reminders_file = "/data/reminders.json"
+        old_timezones_file = "/data/user_timezones.json"
+        
+        # Check if we need to migrate
+        async with self._get_connection() as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM reminders")
+            reminder_count = (await cursor.fetchone())[0]
             
-            if AIOFILES_AVAILABLE:
-                async with aiofiles.open(self.timezones_file, 'w') as f:
-                    await f.write(json.dumps(data))
+            cursor = await db.execute("SELECT COUNT(*) FROM user_timezones")
+            timezone_count = (await cursor.fetchone())[0]
+        
+        if reminder_count > 0 or timezone_count > 0:
+            logger.info("Database already contains data, skipping migration")
+            return
+        
+        # Migrate reminders
+        if os.path.exists(old_reminders_file):
+            try:
+                with open(old_reminders_file, 'r') as f:
+                    data = json.load(f)
+                
+                async with self._get_connection() as db:
+                    for ts, (uid, msg, tz) in data.items():
+                        await db.execute("""
+                            INSERT OR IGNORE INTO reminders (timestamp, user_id, message, timezone, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (float(ts), int(uid), msg, tz, time.time()))
+                    await db.commit()
+                
+                logger.info(f"Migrated {len(data)} reminders from JSON to SQLite")
+                
+                # Backup and remove old file
+                os.rename(old_reminders_file, f"{old_reminders_file}.backup")
+                
+            except Exception as e:
+                logger.error(f"Failed to migrate reminders: {e}")
+        
+        # Migrate timezones
+        if os.path.exists(old_timezones_file):
+            try:
+                with open(old_timezones_file, 'r') as f:
+                    data = json.load(f)
+                
+                async with self._get_connection() as db:
+                    for uid, tz in data.items():
+                        await db.execute("""
+                            INSERT OR REPLACE INTO user_timezones (user_id, timezone, updated_at)
+                            VALUES (?, ?, ?)
+                        """, (int(uid), tz, time.time()))
+                    await db.commit()
+                
+                logger.info(f"Migrated {len(data)} user timezones from JSON to SQLite")
+                
+                # Backup and remove old file
+                os.rename(old_timezones_file, f"{old_timezones_file}.backup")
+                
+            except Exception as e:
+                logger.error(f"Failed to migrate timezones: {e}")
+    
+    async def _add_channel_id_column(self):
+        """Add channel_id column to existing reminders table if it doesn't exist"""
+        try:
+            async with self._get_connection() as db:
+                # Check if column exists
+                cursor = await db.execute("PRAGMA table_info(reminders)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                if 'channel_id' not in column_names:
+                    logger.info("Adding channel_id column to reminders table")
+                    await db.execute("ALTER TABLE reminders ADD COLUMN channel_id INTEGER")
+                    await db.commit()
+                    logger.info("Successfully added channel_id column")
+        except Exception as e:
+            logger.error(f"Failed to add channel_id column: {e}")
+    
+    async def _get_cache(self, key: str) -> Optional[any]:
+        """Get item from cache if not expired"""
+        async with self._cache_lock:
+            if key in self._cache:
+                entry = self._cache[key]
+                if time.time() < entry.expires_at:
+                    return entry.data
+                else:
+                    # Remove expired entry
+                    del self._cache[key]
+            return None
+    
+    async def _set_cache(self, key: str, data: any, ttl: int = CACHE_TTL):
+        """Set item in cache with TTL"""
+        async with self._cache_lock:
+            self._cache[key] = CacheEntry(
+                data=data,
+                expires_at=time.time() + ttl
+            )
+    
+    async def _invalidate_cache(self, pattern: str = None):
+        """Invalidate cache entries matching pattern"""
+        async with self._cache_lock:
+            if pattern is None:
+                self._cache.clear()
             else:
-                # Fallback to sync I/O
-                with open(self.timezones_file, 'w') as f:
-                    json.dump(data, f)
-                    
-            logger.debug(f"Saved {len(self.user_timezones)} user timezone preferences")
-        except Exception as e:
-            logger.error(f"Failed to save user timezones: {e}", exc_info=True)
+                keys_to_remove = [k for k in self._cache.keys() if pattern in k]
+                for key in keys_to_remove:
+                    del self._cache[key]
     
-    async def _debounced_save_timezones(self):
-        """Save user timezones with debouncing to reduce I/O"""
-        if self._timezones_save_pending:
-            return
-            
-        self._timezones_save_pending = True
-        await asyncio.sleep(self._save_delay)
-        
-        if self._timezones_save_pending:  # Still pending after delay
-            await self._save_timezones_async()
-            self._timezones_save_pending = False
-    
-    def _save_timezones(self):
-        """Save user timezones to disk"""
-        try:
-            data = {
-                str(uid): tz for uid, tz in self.user_timezones.items()
-            }
-            with open(self.timezones_file, 'w') as f:
-                json.dump(data, f)
-            logger.debug(f"Saved {len(self.user_timezones)} user timezone preferences")
-        except Exception as e:
-            logger.error(f"Failed to save user timezones: {e}", exc_info=True)
-    
-    async def add_reminder(self, user_id: int, reminder_text: str, trigger_time: float, timezone: str) -> Tuple[bool, str]:
-        """
-        Add a new reminder
-        
-        Returns: (success, message)
-        """
+    async def add_reminder(self, user_id: int, reminder_text: str, trigger_time: float, timezone: str, channel_id: int = None) -> Tuple[bool, str]:
+        """Add a new reminder with optional channel context"""
         async with self._lock:
             # Check if time is in the past
             if trigger_time <= time.time():
                 return False, "Cannot set reminders for the past"
             
-            # Check user's reminder count (more efficient)
-            user_reminder_count = sum(1 for _, (uid, _, _) in self.reminders.items() if uid == user_id)
-            if user_reminder_count >= MAX_REMINDERS_PER_USER:
-                return False, f"You already have {MAX_REMINDERS_PER_USER} reminders set"
-            
-            # Check for duplicate at same time
-            if trigger_time in self.reminders and self.reminders[trigger_time][0] == user_id:
-                return False, "You already have a reminder at this exact time"
-            
-            # Add the reminder
-            self.reminders[trigger_time] = (user_id, reminder_text, timezone)
-            
-            # Trigger debounced save
-            asyncio.create_task(self._debounced_save_reminders())
-            
-            return True, "Reminder set successfully"
+            # Check user's reminder count
+            async with self._get_connection() as db:
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM reminders WHERE user_id = ?",
+                    (user_id,)
+                )
+                count = (await cursor.fetchone())[0]
+                
+                if count >= MAX_REMINDERS_PER_USER:
+                    return False, f"You already have {MAX_REMINDERS_PER_USER} reminders set"
+                
+                # Add the reminder using background task for better performance
+                try:
+                    success = await background_task_manager.submit_function(
+                        self._background_save_reminder,
+                        user_id, reminder_text, trigger_time, timezone, channel_id,
+                        task_id=f"save_reminder_{user_id}_{int(trigger_time)}",
+                        priority=TaskPriority.HIGH
+                    )
+                    
+                    if success:
+                        # Signal that a reminder was added for event-driven processing
+                        self._reminder_added_event.set()
+                        return True, "Reminder set successfully"
+                    else:
+                        return False, "Failed to queue reminder for saving"
+                    
+                except Exception as e:
+                    if "UNIQUE constraint failed" in str(e):
+                        return False, "You already have a reminder at this exact time"
+                    logger.error(f"Failed to add reminder: {e}")
+                    return False, "Failed to add reminder"
     
-    async def get_user_reminders(self, user_id: int) -> List[Tuple[float, str, str]]:
-        """Get all reminders for a user sorted by time"""
-        async with self._lock:
-            # More efficient filtering and sorting
-            user_reminders = [
-                (timestamp, message, tz)
-                for timestamp, (uid, message, tz) in self.reminders.items()
-                if uid == user_id
-            ]
+    async def get_user_reminders(self, user_id: int) -> List[Tuple[float, str, str, Optional[int]]]:
+        """Get all reminders for a user sorted by time with channel info"""
+        # Check cache first
+        cache_key = f"user_reminders_{user_id}"
+        cached_result = await self._get_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
+        async with self._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT timestamp, message, timezone, channel_id
+                FROM reminders
+                WHERE user_id = ?
+                ORDER BY timestamp ASC
+            """, (user_id,))
             
-            return sorted(user_reminders, key=lambda x: x[0])
+            reminders = [(row['timestamp'], row['message'], row['timezone'], row['channel_id']) 
+                        for row in await cursor.fetchall()]
+            
+            # Cache the result
+            await self._set_cache(cache_key, reminders)
+            
+            return reminders
     
     async def cancel_reminder(self, user_id: int, timestamp: float) -> Tuple[bool, str]:
         """Cancel a specific reminder"""
         async with self._lock:
-            if timestamp in self.reminders:
-                reminder_uid, message, _ = self.reminders[timestamp]
-                if reminder_uid == user_id:
-                    self.reminders.pop(timestamp)
-                    
-                    # Trigger debounced save
-                    asyncio.create_task(self._debounced_save_reminders())
-                    
+            async with self._get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT message FROM reminders 
+                    WHERE timestamp = ? AND user_id = ?
+                """, (timestamp, user_id))
+                
+                row = await cursor.fetchone()
+                if not row:
+                    return False, "Reminder not found"
+                
+                message = row['message']
+                
+                # Use background task for deletion
+                success = await background_task_manager.submit_function(
+                    self._background_delete_reminder,
+                    timestamp, user_id,
+                    task_id=f"delete_reminder_{user_id}_{int(timestamp)}",
+                    priority=TaskPriority.HIGH
+                )
+                
+                if success:
                     return True, f"Cancelled reminder: {message}"
                 else:
-                    return False, "You can only cancel your own reminders"
-            else:
-                return False, "Reminder not found"
+                    return False, "Failed to queue reminder for deletion"
     
-    async def get_due_reminders(self) -> List[Tuple[float, int, str, str]]:
-        """Get all reminders that are due (past current time)"""
-        async with self._lock:
-            current_time = time.time()
-            due_reminders = []
+    async def get_due_reminders(self) -> List[Tuple[float, int, str, str, Optional[int]]]:
+        """Get all reminders that are due (past current time) with channel info"""
+        current_time = time.time()
+        
+        async with self._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT timestamp, user_id, message, timezone, channel_id
+                FROM reminders
+                WHERE timestamp <= ?
+                ORDER BY timestamp ASC
+            """, (current_time,))
             
-            # Use a more efficient approach with sorted keys if we have many reminders
-            if len(self.reminders) > 100:
-                # For large reminder sets, use sorted approach
-                sorted_timestamps = sorted(self.reminders.keys())
-                for trigger_time in sorted_timestamps:
-                    if trigger_time <= current_time:
-                        user_id, message, timezone = self.reminders[trigger_time]
-                        due_reminders.append((trigger_time, user_id, message, timezone))
-                    else:
-                        # Since timestamps are sorted, we can break early
-                        break
-            else:
-                # For small reminder sets, use the original approach
-                for trigger_time, (user_id, message, timezone) in list(self.reminders.items()):
-                    if trigger_time <= current_time:
-                        due_reminders.append((trigger_time, user_id, message, timezone))
-            
-            return due_reminders
+            return [(row['timestamp'], row['user_id'], row['message'], row['timezone'], row['channel_id'])
+                   for row in await cursor.fetchall()]
     
     async def get_next_reminder_time(self) -> Optional[float]:
         """Get the timestamp of the next upcoming reminder"""
-        async with self._lock:
-            if not self.reminders:
-                return None
+        # Check cache first
+        cached_result = await self._get_cache("next_reminder")
+        if cached_result is not None:
+            return cached_result
+        
+        current_time = time.time()
+        
+        async with self._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT MIN(timestamp) as next_time
+                FROM reminders
+                WHERE timestamp > ?
+            """, (current_time,))
             
-            current_time = time.time()
-            future_reminders = [ts for ts in self.reminders.keys() if ts > current_time]
+            row = await cursor.fetchone()
+            next_time = row['next_time'] if row and row['next_time'] else None
             
-            if not future_reminders:
-                return None
-                
-            return min(future_reminders)
-    
-    async def cleanup_expired_reminders(self) -> int:
-        """Remove expired reminders from memory to prevent memory bloat"""
-        async with self._lock:
-            current_time = time.time()
-            # Keep a 1-hour buffer to account for any delays
-            cutoff_time = current_time - 3600  # 1 hour ago
+            # Cache for a shorter period since this changes frequently
+            await self._set_cache("next_reminder", next_time, ttl=60)
             
-            expired_timestamps = [
-                ts for ts in self.reminders.keys() 
-                if ts < cutoff_time
-            ]
-            
-            for ts in expired_timestamps:
-                self.reminders.pop(ts, None)
-            
-            if expired_timestamps:
-                logger.debug(f"Cleaned up {len(expired_timestamps)} expired reminders from memory")
-                # Trigger a save to persist the cleanup
-                asyncio.create_task(self._debounced_save_reminders())
-            
-            return len(expired_timestamps)
+            return next_time
     
     async def mark_reminder_sent(self, timestamp: float):
         """Remove a reminder after it has been sent"""
         async with self._lock:
-            self.reminders.pop(timestamp, None)
-            
-            # Trigger debounced save
-            asyncio.create_task(self._debounced_save_reminders())
+            # Use background task for deletion
+            await background_task_manager.submit_function(
+                self._background_delete_reminder,
+                timestamp,
+                task_id=f"mark_sent_{int(timestamp)}",
+                priority=TaskPriority.NORMAL
+            )
     
     async def set_user_timezone(self, user_id: int, timezone: str) -> Tuple[bool, str]:
         """Set a user's timezone preference"""
@@ -317,26 +410,46 @@ class ReminderManager:
             try:
                 # Validate timezone
                 pytz.timezone(timezone)
-                self.user_timezones[user_id] = timezone
                 
-                # Trigger debounced save
-                asyncio.create_task(self._debounced_save_timezones())
+                # Use background task for timezone saving
+                success = await background_task_manager.submit_function(
+                    self._background_save_timezone,
+                    user_id, timezone,
+                    task_id=f"save_timezone_{user_id}",
+                    priority=TaskPriority.NORMAL
+                )
                 
-                return True, f"Timezone set to {timezone}"
+                if success:
+                    return True, f"Timezone set to {timezone}"
+                else:
+                    return False, "Failed to save timezone"
+                
             except pytz.exceptions.UnknownTimeZoneError:
                 return False, f"Unknown timezone: {timezone}"
     
     async def get_user_timezone(self, user_id: int) -> str:
         """Get a user's timezone or return default"""
-        async with self._lock:
-            return self.user_timezones.get(user_id, DEFAULT_TIMEZONE)
+        # Check cache first
+        cache_key = f"user_timezone_{user_id}"
+        cached_result = await self._get_cache(cache_key)
+        if cached_result is not None:
+            return cached_result
+        
+        async with self._get_connection() as db:
+            cursor = await db.execute("""
+                SELECT timezone FROM user_timezones WHERE user_id = ?
+            """, (user_id,))
+            
+            row = await cursor.fetchone()
+            timezone = row['timezone'] if row else DEFAULT_TIMEZONE
+            
+            # Cache the result
+            await self._set_cache(cache_key, timezone)
+            
+            return timezone
     
     def parse_natural_time(self, time_str: str, user_timezone: str) -> Optional[datetime]:
-        """
-        Parse natural language time string
-        
-        Returns: datetime object in user's timezone or None if parsing fails
-        """
+        """Parse natural language time string (unchanged from v1)"""
         try:
             local_tz = pytz.timezone(user_timezone)
             now = datetime.now(local_tz)
@@ -485,6 +598,97 @@ class ReminderManager:
             logger.error(f"Error parsing natural time '{time_str}': {e}")
             return None
     
+    async def cleanup_expired_reminders(self) -> int:
+        """Remove expired reminders from database"""
+        current_time = time.time()
+        cutoff_time = current_time - 3600  # 1 hour ago
+        
+        async with self._get_connection() as db:
+            cursor = await db.execute("""
+                DELETE FROM reminders WHERE timestamp < ?
+            """, (cutoff_time,))
+            
+            deleted_count = cursor.rowcount
+            await db.commit()
+            
+            if deleted_count > 0:
+                logger.debug(f"Cleaned up {deleted_count} expired reminders from database")
+                # Invalidate all caches since we can't know which users were affected
+                await self._invalidate_cache()
+            
+            return deleted_count
+    
+    @io_bound
+    async def _background_save_reminder(self, user_id: int, reminder_text: str, 
+                                      trigger_time: float, timezone: str, channel_id: int = None) -> bool:
+        """Background task for saving reminders"""
+        try:
+            async with self._get_connection() as db:
+                await db.execute("""
+                    INSERT INTO reminders (timestamp, user_id, message, timezone, created_at, channel_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (trigger_time, user_id, reminder_text, timezone, time.time(), channel_id))
+                await db.commit()
+                
+                # Invalidate relevant caches
+                await self._invalidate_cache(f"user_reminders_{user_id}")
+                await self._invalidate_cache("next_reminder")
+                
+                return True
+                
+        except Exception as e:
+            logger.error(f"Background save failed for reminder: {e}")
+            return False
+    
+    @io_bound
+    async def _background_delete_reminder(self, timestamp: float, user_id: int = None) -> bool:
+        """Background task for deleting reminders"""
+        try:
+            async with self._get_connection() as db:
+                if user_id:
+                    await db.execute("DELETE FROM reminders WHERE timestamp = ? AND user_id = ?", 
+                                   (timestamp, user_id))
+                else:
+                    await db.execute("DELETE FROM reminders WHERE timestamp = ?", (timestamp,))
+                await db.commit()
+                
+                if user_id:
+                    await self._invalidate_cache(f"user_reminders_{user_id}")
+                await self._invalidate_cache("next_reminder")
+                
+                return True
+                
+        except Exception as e:
+            logger.error(f"Background delete failed for reminder: {e}")
+            return False
+    
+    @io_bound
+    async def _background_cleanup_expired(self) -> int:
+        """Background task for cleaning expired reminders"""
+        try:
+            return await self.cleanup_expired_reminders()
+        except Exception as e:
+            logger.error(f"Background cleanup failed: {e}")
+            return 0
+    
+    @io_bound
+    async def _background_save_timezone(self, user_id: int, timezone: str) -> bool:
+        """Background task for saving user timezone"""
+        try:
+            async with self._get_connection() as db:
+                await db.execute("""
+                    INSERT OR REPLACE INTO user_timezones (user_id, timezone, updated_at)
+                    VALUES (?, ?, ?)
+                """, (user_id, timezone, time.time()))
+                await db.commit()
+                
+                await self._invalidate_cache(f"user_timezone_{user_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Background timezone save failed: {e}")
+            return False
+    
     def add_dm_failed_user(self, user_id: int):
         """Mark a user as having DM failures"""
         self.dm_failed_users.add(user_id)
@@ -492,7 +696,28 @@ class ReminderManager:
     def is_dm_failed_user(self, user_id: int) -> bool:
         """Check if user has DM failures"""
         return user_id in self.dm_failed_users
+    
+    async def get_reminder_event(self) -> asyncio.Event:
+        """Get the event that signals when reminders are added"""
+        return self._reminder_added_event
+    
+    async def wait_for_reminder_change(self):
+        """Wait for a reminder to be added or modified"""
+        await self._reminder_added_event.wait()
+        self._reminder_added_event.clear()
+    
+    async def close(self):
+        """Close all database connections and background tasks"""
+        # Stop background task manager
+        await background_task_manager.stop()
+        
+        # Close database connections
+        async with self._pool_lock:
+            for conn in self._connection_pool:
+                await conn.close()
+            self._connection_pool.clear()
+        logger.info("Closed all database connections and background tasks")
 
 
 # Create singleton instance
-reminder_manager = ReminderManager()
+reminder_manager_v2 = ReminderManagerV2()

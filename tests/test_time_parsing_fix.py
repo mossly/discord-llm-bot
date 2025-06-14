@@ -20,7 +20,7 @@ def test_enhanced_time_parsing():
     print("=" * 60)
     
     # Import the reminder manager class directly
-    from utils.reminder_manager import ReminderManager
+    from utils.reminder_manager import ReminderManagerV2 as ReminderManager
     
     # Create a test instance
     manager = ReminderManager()
@@ -124,7 +124,7 @@ def test_dual_input_concept():
         }
     ]
     
-    from utils.reminder_manager import ReminderManager
+    from utils.reminder_manager import ReminderManagerV2 as ReminderManager
     manager = ReminderManager()
     
     for scenario in test_scenarios:

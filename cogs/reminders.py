@@ -8,7 +8,8 @@ from discord.ext import commands
 import pytz
 from typing import Optional
 from utils.embed_utils import create_error_embed
-from utils.reminder_manager import reminder_manager
+from utils.reminder_manager import reminder_manager_v2
+from utils.background_task_manager import background_task_manager, TaskPriority
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +53,14 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             utc_dt = local_dt.astimezone(pytz.UTC)
             trigger_time = utc_dt.timestamp()
             
-            # Add the reminder
-            success, message = await reminder_manager.add_reminder(
+            # Add the reminder with channel context
+            channel_id = interaction.channel_id if interaction.channel else None
+            success, message = await reminder_manager_v2.add_reminder(
                 interaction.user.id, 
                 self.reminder_text.value, 
                 trigger_time, 
-                self.user_timezone
+                self.user_timezone,
+                channel_id
             )
             
             if success:
@@ -65,10 +68,17 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
                 readable_time = local_dt.strftime("%A, %B %d at %I:%M %p")
                 time_until = self.cog._format_time_until(utc_dt.replace(tzinfo=None))
                 
+                # Show where reminder will be sent
+                location_info = ""
+                if channel_id:
+                    location_info = f"\n📍 **Location:** <#{channel_id}>"
+                else:
+                    location_info = "\n📍 **Location:** Direct Message"
+                
                 embed = self.cog._create_embed(
                     "Reminder Set ✅",
                     f"Your reminder has been set for **{readable_time}** ({time_until}).\n\n"
-                    f"**Reminder:** {self.reminder_text.value}",
+                    f"**Reminder:** {self.reminder_text.value}{location_info}",
                     color=discord.Color.green()
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -126,7 +136,7 @@ class TimezoneView(discord.ui.View):
     )
     async def timezone_select(self, interaction: discord.Interaction, select: discord.ui.Select):
         timezone = select.values[0]
-        success, message = await reminder_manager.set_user_timezone(interaction.user.id, timezone)
+        success, message = await reminder_manager_v2.set_user_timezone(interaction.user.id, timezone)
         
         if success:
             # Show current time in the selected timezone
@@ -165,7 +175,7 @@ class CustomTimezoneModal(ui.Modal, title="Enter Custom Timezone"):
     
     async def on_submit(self, interaction: discord.Interaction):
         timezone = self.timezone_input.value.strip()
-        success, message = await reminder_manager.set_user_timezone(interaction.user.id, timezone)
+        success, message = await reminder_manager_v2.set_user_timezone(interaction.user.id, timezone)
         
         if success:
             try:
@@ -204,7 +214,7 @@ class ReminderListView(discord.ui.View):
     
     async def _get_user_reminders(self):
         """Get reminders for the user"""
-        return await reminder_manager.get_user_reminders(self.user_id)
+        return await reminder_manager_v2.get_user_reminders(self.user_id)
     
     @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, disabled=True)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -243,8 +253,9 @@ class ReminderListView(discord.ui.View):
 class Reminders(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.task = None
-        self.reminder_manager = reminder_manager
+        self.reminder_loop_task = None
+        self.cache_cleanup_task = None
+        self.reminder_manager = reminder_manager_v2
     
     def _create_embed(self, title, description, color=discord.Color.blue()):
         """Create a standardized embed for responses"""
@@ -332,39 +343,26 @@ class Reminders(commands.Cog):
             return f"{months} month{'s' if months != 1 else ''} ago"
     
     async def cog_load(self):
-        self.task = asyncio.create_task(self.reminder_loop())
-        logger.info("Reminder Cog loaded and reminder loop started")
+        await self.reminder_manager.initialize()
+        self.reminder_loop_task = asyncio.create_task(self.event_driven_reminder_loop())
+        self.cache_cleanup_task = asyncio.create_task(self.cache_cleanup_loop())
+        logger.info("Reminders Cog loaded with event-driven architecture")
     
-    async def reminder_loop(self):
-        """Main loop to check and trigger reminders"""
-        logger.info("Reminder loop started")
-        cleanup_counter = 0
-        cleanup_interval = 3600  # Run cleanup every hour (3600 seconds)
+    async def event_driven_reminder_loop(self):
+        """Event-driven reminder loop that responds immediately to changes"""
+        logger.info("Event-driven reminder loop started")
         
         while True:
             try:
-                # Periodic memory cleanup to prevent bloat
-                cleanup_counter += 1
-                if cleanup_counter * 60 >= cleanup_interval:  # Approximate cleanup timing
-                    await self.reminder_manager.cleanup_expired_reminders()
-                    cleanup_counter = 0
-                
-                # Get due reminders (no need to reload every second)
+                # Get due reminders
                 due_reminders = await self.reminder_manager.get_due_reminders()
                 
                 # Process each due reminder
-                for trigger_time, user_id, message, user_tz in due_reminders:
+                for trigger_time, user_id, message, user_tz, channel_id in due_reminders:
                     trigger_readable = datetime.utcfromtimestamp(trigger_time).strftime("%Y-%m-%d %H:%M:%S")
                     logger.info(f"Triggering reminder - User: {user_id}, Reminder time: {trigger_readable} UTC, Text: '{message}'")
                     
                     try:
-                        # Skip if user has DM failures
-                        if self.reminder_manager.is_dm_failed_user(user_id):
-                            logger.warning(f"Skipping DM for user {user_id} (previous failures)")
-                            continue
-                            
-                        user = await self.bot.fetch_user(user_id)
-                        
                         # Format reminder time in user's timezone
                         trigger_time_utc = datetime.utcfromtimestamp(trigger_time).replace(tzinfo=pytz.UTC)
                         user_timezone = pytz.timezone(user_tz)
@@ -381,8 +379,29 @@ class Reminders(commands.Cog):
                             f"**{message}**\n\nSet {time_since} on {readable_set_date}",
                             color=discord.Color.gold()
                         )
-                        await user.send(embed=embed)
-                        logger.info(f"Successfully sent reminder to user {user_id} ({user.name})")
+                        
+                        # Send to channel if available, otherwise DM
+                        if channel_id:
+                            try:
+                                channel = await self.bot.fetch_channel(channel_id)
+                                await channel.send(f"<@{user_id}>", embed=embed)
+                                logger.info(f"Successfully sent reminder to channel {channel_id} for user {user_id}")
+                            except (discord.NotFound, discord.Forbidden) as e:
+                                logger.warning(f"Cannot send to channel {channel_id}, falling back to DM: {e}")
+                                # Fall back to DM
+                                user = await self.bot.fetch_user(user_id)
+                                await user.send(embed=embed)
+                                logger.info(f"Successfully sent reminder via DM to user {user_id} ({user.name})")
+                        else:
+                            # No channel context, send DM
+                            # Skip if user has DM failures
+                            if self.reminder_manager.is_dm_failed_user(user_id):
+                                logger.warning(f"Skipping DM for user {user_id} (previous failures)")
+                                continue
+                                
+                            user = await self.bot.fetch_user(user_id)
+                            await user.send(embed=embed)
+                            logger.info(f"Successfully sent reminder via DM to user {user_id} ({user.name})")
                         
                     except discord.Forbidden:
                         logger.warning(f"Cannot send DM to user {user_id} (forbidden - likely has DMs disabled)")
@@ -394,24 +413,72 @@ class Reminders(commands.Cog):
                     # Mark reminder as sent
                     await self.reminder_manager.mark_reminder_sent(trigger_time)
                 
-                # Smart sleep timing - sleep until next reminder is due
+                # Get next reminder time for smart sleeping
                 next_reminder_time = await self.reminder_manager.get_next_reminder_time()
                 
                 if next_reminder_time is None:
-                    # No reminders scheduled, sleep for a longer period
-                    sleep_duration = 60  # Check every minute for new reminders
+                    # No reminders scheduled, wait for new ones or check periodically
+                    try:
+                        # Wait for either a new reminder or a timeout
+                        await asyncio.wait_for(
+                            self.reminder_manager.wait_for_reminder_change(),
+                            timeout=300  # Check every 5 minutes even if no changes
+                        )
+                        logger.debug("Reminder change detected, checking for new reminders")
+                    except asyncio.TimeoutError:
+                        logger.debug("Timeout waiting for reminder changes, checking for new reminders")
                 else:
                     # Calculate sleep time until next reminder
                     current_time = time.time()
-                    sleep_duration = min(next_reminder_time - current_time, 60)  # Max 1 minute
+                    sleep_duration = min(next_reminder_time - current_time, 300)  # Max 5 minutes
                     sleep_duration = max(sleep_duration, 1)  # Min 1 second
-                
-                logger.debug(f"Reminder loop sleeping for {sleep_duration:.1f} seconds")
-                await asyncio.sleep(sleep_duration)
+                    
+                    if sleep_duration > 60:
+                        # For longer sleeps, also listen for new reminders
+                        try:
+                            await asyncio.wait_for(
+                                self.reminder_manager.wait_for_reminder_change(),
+                                timeout=sleep_duration
+                            )
+                            logger.debug("Reminder change detected during sleep, waking up early")
+                        except asyncio.TimeoutError:
+                            logger.debug(f"Woke up after {sleep_duration:.1f} seconds")
+                    else:
+                        # For short sleeps, just sleep
+                        logger.debug(f"Sleeping for {sleep_duration:.1f} seconds until next reminder")
+                        await asyncio.sleep(sleep_duration)
                 
             except Exception as e:
-                logger.error(f"Error in reminder loop: {e}", exc_info=True)
+                logger.error(f"Error in event-driven reminder loop: {e}", exc_info=True)
                 await asyncio.sleep(10)  # Sleep longer on error to prevent spam
+    
+    async def cache_cleanup_loop(self):
+        """Background task to clean up expired cache entries and database"""
+        while True:
+            try:
+                # Clean up expired reminders every hour using background task manager
+                await asyncio.sleep(3600)  # 1 hour
+                
+                # Submit cleanup as background task
+                await background_task_manager.submit_function(
+                    self.reminder_manager._background_cleanup_expired,
+                    task_id=f"cleanup_expired_{int(time.time())}",
+                    priority=TaskPriority.LOW
+                )
+                
+                # Log background task manager metrics
+                metrics = background_task_manager.get_metrics()
+                active_tasks = len(background_task_manager.get_active_tasks())
+                
+                logger.info(
+                    f"Background task metrics - Active: {active_tasks}, "
+                    f"Total: {metrics['total_tasks']}, "
+                    f"Success rate: {metrics['successful_tasks'] / max(metrics['total_tasks'], 1) * 100:.1f}%"
+                )
+                
+            except Exception as e:
+                logger.error(f"Error in cache cleanup loop: {e}", exc_info=True)
+                await asyncio.sleep(600)  # Wait 10 minutes on error
     
     async def _show_reminder_modal(self, interaction: discord.Interaction, pre_filled_text: str = "", user_timezone: str = None):
         """Show the reminder modal with optional pre-filled text"""
@@ -452,12 +519,14 @@ class Reminders(commands.Cog):
                 utc_dt = target_dt.astimezone(pytz.UTC)
                 trigger_time = utc_dt.timestamp()
                 
-                # Add the reminder
+                # Add the reminder with channel context
+                channel_id = interaction.channel_id if interaction.channel else None
                 success, message = await self.reminder_manager.add_reminder(
                     interaction.user.id, 
                     reminder_text, 
                     trigger_time, 
-                    user_timezone
+                    user_timezone,
+                    channel_id
                 )
                 
                 if success:
@@ -465,10 +534,17 @@ class Reminders(commands.Cog):
                     readable_time = target_dt.strftime("%A, %B %d at %I:%M %p")
                     time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
                     
+                    # Show where reminder will be sent
+                    location_info = ""
+                    if channel_id:
+                        location_info = f"\n📍 **Location:** <#{channel_id}>"
+                    else:
+                        location_info = "\n📍 **Location:** Direct Message"
+                    
                     embed = self._create_embed(
                         "Reminder Set ✅",
                         f"Your reminder has been set for **{readable_time}** ({time_until}).\n\n"
-                        f"**Reminder:** {reminder_text}",
+                        f"**Reminder:** {reminder_text}{location_info}",
                         color=discord.Color.green()
                     )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -505,13 +581,27 @@ class Reminders(commands.Cog):
         
         # Format reminders for display
         reminder_list = []
-        for idx, (timestamp, message, _) in enumerate(user_reminders[:10], 1):  # Show first 10
+        for idx, (timestamp, message, _, channel_id) in enumerate(user_reminders[:10], 1):  # Show first 10
             utc_time = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.UTC)
             local_time = utc_time.astimezone(pytz.timezone(user_timezone))
             readable_time = local_time.strftime("%b %d at %I:%M %p")
             time_until = self._format_time_until(utc_time.replace(tzinfo=None))
             
-            reminder_list.append(f"**{idx}.** {message}\n   📅 {readable_time} ({time_until})")
+            # Show where the reminder will be sent
+            location = ""
+            if channel_id:
+                try:
+                    channel = self.bot.get_channel(channel_id)
+                    if channel:
+                        location = f" 📍 #{channel.name}"
+                    else:
+                        location = " 📍 Channel (deleted)"
+                except:
+                    location = " 📍 Channel"
+            else:
+                location = " 📍 DM"
+            
+            reminder_list.append(f"**{idx}.** {message}\n   📅 {readable_time} ({time_until}){location}")
         
         description = "\n\n".join(reminder_list)
         if len(user_reminders) > 10:
@@ -544,7 +634,7 @@ class Reminders(commands.Cog):
             return
         
         # Get the next reminder (first in sorted list)
-        next_timestamp, next_message, _ = user_reminders[0]
+        next_timestamp, next_message, _, _ = user_reminders[0]
         
         # Get user's timezone
         user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
@@ -616,9 +706,12 @@ class Reminders(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
     
     async def cog_unload(self):
-        logger.info("Reminder Cog unloading...")
-        if self.task:
-            self.task.cancel()
+        logger.info("Reminders Cog unloading...")
+        if self.reminder_loop_task:
+            self.reminder_loop_task.cancel()
+        if self.cache_cleanup_task:
+            self.cache_cleanup_task.cancel()
+        await self.reminder_manager.close()
 
 
 async def setup(bot: commands.Bot):

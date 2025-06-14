@@ -81,6 +81,11 @@ The bot's system prompt is configured through environment variables only:
 
 **Datetime Context**: The bot automatically adds current date/time context to user messages (not system prompts) to provide temporal awareness to the AI.
 
+**Footnote Format**: When the AI needs to include citations or references, it should use the following specific format to avoid conflicts with numbered lists:
+- End the main content with exactly this separator: `---FOOTNOTES---`
+- After the separator, list all footnotes/references
+- This format prevents false positives where numbered lists get incorrectly moved to the footer
+
 ## Code Patterns
 
 ### Cog Structure

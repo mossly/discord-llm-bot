@@ -21,7 +21,8 @@
       "Bash(mv:*)",
       "Bash(render services)",
       "Bash(render services -o json)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(echo:*)"
     ],
     "deny": []
   }
