@@ -13,7 +13,7 @@ from utils.response_formatter import extract_footnotes, build_standardized_foote
 from utils.attachment_handler import process_attachments
 from utils.conversation_logger import conversation_logger
 from utils.quota_validator import quota_validator
-from utils.reminder_manager import reminder_manager
+from utils.reminder_manager import reminder_manager_v2
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def perform_chat_query(
 
     # Prepend user's current local time for LLM context
     try:
-        user_timezone = await reminder_manager.get_user_timezone(int(user_id))
+        user_timezone = await reminder_manager_v2.get_user_timezone(int(user_id))
         local_tz = pytz.timezone(user_timezone)
         current_local_time = datetime.now(local_tz)
         time_prefix = f"[Current time: {current_local_time.strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}]\n\n"

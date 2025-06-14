@@ -743,7 +743,7 @@ This ensures optimal readability while maintaining comprehensive coverage of the
 
 CITATION FORMAT:
 - Inline citations: Use superscript numbers ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹
-- CRITICAL: You MUST end your main content with exactly this separator: ===FOOTNOTES===
+- CRITICAL: You MUST end your main content with exactly this separator: ---FOOTNOTES---
 - After the separator, list footnotes with matching superscripts: ¹ [Title](url) - masked link format
 - This separator is MANDATORY - the system depends on it to properly format your response
 

@@ -10,33 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 def extract_footnotes(content: str) -> tuple[str, str]:
-    """Extract footnotes from content and return (cleaned_content, footnotes)"""
+    """Extract footnotes from content using unique separator
     
-    # First check for the explicit separator used by deep research
-    if '===FOOTNOTES===' in content:
-        parts = content.split('===FOOTNOTES===', 1)
+    Only looks for the specific separator '---FOOTNOTES---' to avoid
+    false positives with numbered lists or other content.
+    """
+    
+    # Use a unique separator that won't be confused with normal content
+    separator = '---FOOTNOTES---'
+    
+    if separator in content:
+        parts = content.split(separator, 1)
         if len(parts) == 2:
             cleaned_content = parts[0].strip()
             footnotes = parts[1].strip()
             return cleaned_content, footnotes
-    
-    # Fallback to older patterns for backward compatibility
-    # Patterns: "References:", "Sources:", "Footnotes:", or lines starting with [1], 1., etc.
-    footnote_patterns = [
-        r'\n\n(References?:.*?)$',
-        r'\n\n(Sources?:.*?)$', 
-        r'\n\n(Footnotes?:.*?)$',
-        r'\n\n(\[[0-9]+\].*?)$',
-        r'\n\n([0-9]+\..*?)$'
-    ]
-    
-    for pattern in footnote_patterns:
-        match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
-        if match:
-            footnotes = match.group(1).strip()
-            # Remove the footnotes from the main content
-            cleaned_content = content[:match.start()] + content[match.end():]
-            return cleaned_content.strip(), footnotes
     
     # No footnotes found
     return content, ""
