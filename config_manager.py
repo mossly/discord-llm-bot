@@ -33,17 +33,10 @@ class ConfigManager:
             'openrouter_api_key': self._get_required_env('OPENROUTER_API_KEY'),
         })
         
-        # System prompts with datetime prefix
-        current_time = datetime.now(timezone.utc).isoformat()
-        datetime_prefix = f"Current date and time: {current_time}\n\n"
-        
-        base_system_prompt = os.getenv('SYSTEM_PROMPT', 'You are a helpful assistant.')
-        base_fun_prompt = os.getenv('FUN_PROMPT', 'Write an amusing and sarcastic!')
-        
+        # System prompts (loaded from environment variables only)
         self._config.update({
-            'system_prompt': datetime_prefix + base_system_prompt,
-            'fun_prompt': datetime_prefix + base_fun_prompt,
-            'system_prompt_file': self._get_system_prompt_from_file(),
+            'system_prompt': os.getenv('SYSTEM_PROMPT', 'You are a helpful assistant.'),
+            'fun_prompt': os.getenv('FUN_PROMPT', 'Write an amusing and sarcastic!'),
         })
         
         # Optional settings
@@ -78,19 +71,6 @@ class ConfigManager:
             raise ValueError(f"Required environment variable {key} is not set")
         return value
     
-    def _get_system_prompt_from_file(self) -> Optional[str]:
-        """Load system prompt from .system_prompt.txt file if it exists"""
-        try:
-            system_prompt_file = '.system_prompt.txt'
-            if os.path.exists(system_prompt_file):
-                with open(system_prompt_file, 'r', encoding='utf-8') as f:
-                    content = f.read().strip()
-                    if content:
-                        logger.info("Loaded system prompt from .system_prompt.txt")
-                        return content
-        except Exception as e:
-            logger.warning(f"Failed to load system prompt from file: {e}")
-        return None
     
     def _parse_admin_ids(self) -> List[str]:
         """Parse admin IDs from environment variable or file"""
@@ -151,14 +131,9 @@ class ConfigManager:
         return user_id in self.get('unlimited_user_ids', [])
     
     def get_system_prompt(self, use_fun: bool = False) -> str:
-        """Get the appropriate system prompt"""
+        """Get the appropriate system prompt from environment variables only"""
         if use_fun:
             return self.get('fun_prompt', 'You are a helpful assistant.')
-        
-        # Prefer file-based system prompt if available
-        file_prompt = self.get('system_prompt_file')
-        if file_prompt:
-            return file_prompt
         
         return self.get('system_prompt', 'You are a helpful assistant.')
     
@@ -230,7 +205,6 @@ class ConfigManager:
         
         # Add boolean flags for optional features
         debug_info['has_duck_proxy'] = bool(self.get('duck_proxy'))
-        debug_info['has_system_prompt_file'] = bool(self.get('system_prompt_file'))
         
         return debug_info
 
