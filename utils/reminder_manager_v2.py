@@ -88,6 +88,9 @@ class ReminderManagerV2:
         
         # Migrate from old JSON-based system if needed
         await self._migrate_from_json()
+        
+        # Add channel_id column if it doesn't exist
+        await self._add_channel_id_column()
     
     async def _init_database(self):
         """Initialize SQLite database with proper schema"""
@@ -100,6 +103,7 @@ class ReminderManagerV2:
                     message TEXT NOT NULL,
                     timezone TEXT NOT NULL,
                     created_at REAL NOT NULL,
+                    channel_id INTEGER,
                     UNIQUE(timestamp, user_id)
                 )
             """)
@@ -211,6 +215,23 @@ class ReminderManagerV2:
             except Exception as e:
                 logger.error(f"Failed to migrate timezones: {e}")
     
+    async def _add_channel_id_column(self):
+        """Add channel_id column to existing reminders table if it doesn't exist"""
+        try:
+            async with self._get_connection() as db:
+                # Check if column exists
+                cursor = await db.execute("PRAGMA table_info(reminders)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                if 'channel_id' not in column_names:
+                    logger.info("Adding channel_id column to reminders table")
+                    await db.execute("ALTER TABLE reminders ADD COLUMN channel_id INTEGER")
+                    await db.commit()
+                    logger.info("Successfully added channel_id column")
+        except Exception as e:
+            logger.error(f"Failed to add channel_id column: {e}")
+    
     async def _get_cache(self, key: str) -> Optional[any]:
         """Get item from cache if not expired"""
         async with self._cache_lock:
@@ -241,8 +262,8 @@ class ReminderManagerV2:
                 for key in keys_to_remove:
                     del self._cache[key]
     
-    async def add_reminder(self, user_id: int, reminder_text: str, trigger_time: float, timezone: str) -> Tuple[bool, str]:
-        """Add a new reminder"""
+    async def add_reminder(self, user_id: int, reminder_text: str, trigger_time: float, timezone: str, channel_id: int = None) -> Tuple[bool, str]:
+        """Add a new reminder with optional channel context"""
         async with self._lock:
             # Check if time is in the past
             if trigger_time <= time.time():
@@ -263,7 +284,7 @@ class ReminderManagerV2:
                 try:
                     success = await background_task_manager.submit_function(
                         self._background_save_reminder,
-                        user_id, reminder_text, trigger_time, timezone,
+                        user_id, reminder_text, trigger_time, timezone, channel_id,
                         task_id=f"save_reminder_{user_id}_{int(trigger_time)}",
                         priority=TaskPriority.HIGH
                     )
@@ -281,8 +302,8 @@ class ReminderManagerV2:
                     logger.error(f"Failed to add reminder: {e}")
                     return False, "Failed to add reminder"
     
-    async def get_user_reminders(self, user_id: int) -> List[Tuple[float, str, str]]:
-        """Get all reminders for a user sorted by time"""
+    async def get_user_reminders(self, user_id: int) -> List[Tuple[float, str, str, Optional[int]]]:
+        """Get all reminders for a user sorted by time with channel info"""
         # Check cache first
         cache_key = f"user_reminders_{user_id}"
         cached_result = await self._get_cache(cache_key)
@@ -291,13 +312,13 @@ class ReminderManagerV2:
         
         async with self._get_connection() as db:
             cursor = await db.execute("""
-                SELECT timestamp, message, timezone
+                SELECT timestamp, message, timezone, channel_id
                 FROM reminders
                 WHERE user_id = ?
                 ORDER BY timestamp ASC
             """, (user_id,))
             
-            reminders = [(row['timestamp'], row['message'], row['timezone']) 
+            reminders = [(row['timestamp'], row['message'], row['timezone'], row['channel_id']) 
                         for row in await cursor.fetchall()]
             
             # Cache the result
@@ -333,19 +354,19 @@ class ReminderManagerV2:
                 else:
                     return False, "Failed to queue reminder for deletion"
     
-    async def get_due_reminders(self) -> List[Tuple[float, int, str, str]]:
-        """Get all reminders that are due (past current time)"""
+    async def get_due_reminders(self) -> List[Tuple[float, int, str, str, Optional[int]]]:
+        """Get all reminders that are due (past current time) with channel info"""
         current_time = time.time()
         
         async with self._get_connection() as db:
             cursor = await db.execute("""
-                SELECT timestamp, user_id, message, timezone
+                SELECT timestamp, user_id, message, timezone, channel_id
                 FROM reminders
                 WHERE timestamp <= ?
                 ORDER BY timestamp ASC
             """, (current_time,))
             
-            return [(row['timestamp'], row['user_id'], row['message'], row['timezone'])
+            return [(row['timestamp'], row['user_id'], row['message'], row['timezone'], row['channel_id'])
                    for row in await cursor.fetchall()]
     
     async def get_next_reminder_time(self) -> Optional[float]:
@@ -599,14 +620,14 @@ class ReminderManagerV2:
     
     @io_bound
     async def _background_save_reminder(self, user_id: int, reminder_text: str, 
-                                      trigger_time: float, timezone: str) -> bool:
+                                      trigger_time: float, timezone: str, channel_id: int = None) -> bool:
         """Background task for saving reminders"""
         try:
             async with self._get_connection() as db:
                 await db.execute("""
-                    INSERT INTO reminders (timestamp, user_id, message, timezone, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (trigger_time, user_id, reminder_text, timezone, time.time()))
+                    INSERT INTO reminders (timestamp, user_id, message, timezone, created_at, channel_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (trigger_time, user_id, reminder_text, timezone, time.time(), channel_id))
                 await db.commit()
                 
                 # Invalidate relevant caches
