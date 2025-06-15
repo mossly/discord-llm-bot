@@ -8,6 +8,7 @@ import logging
 import json
 from typing import List, Dict, Any, Optional
 from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool
+from .tools.task_management_tool import TaskManagementTool
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,12 @@ class ToolCalling(commands.Cog):
         self.registry.register(reminder_tool, enabled=True)
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
+        
+    def register_task_management_tool(self, task_manager):
+        """Register task management tool with the provided task manager"""
+        task_tool = TaskManagementTool(task_manager)
+        self.registry.register(task_tool, enabled=True)
+        logger.info("Registered task management tool")
     
     def get_registry(self) -> ToolRegistry:
         """Get the tool registry"""
@@ -129,6 +136,11 @@ class ToolCalling(commands.Cog):
             
             # Auto-inject user_id for manage_reminders tool and enforce security
             if tool_name == "manage_reminders":
+                # Force the user_id to match the requesting user for security
+                arguments["user_id"] = requesting_user_id or user_id
+                
+            # Auto-inject user_id for task_management tool and enforce security  
+            if tool_name == "task_management":
                 # Force the user_id to match the requesting user for security
                 arguments["user_id"] = requesting_user_id or user_id
             

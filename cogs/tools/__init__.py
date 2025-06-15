@@ -62,6 +62,13 @@ except ImportError:
     REMINDER_TOOL_AVAILABLE = False
     ReminderTool = None
 
+try:
+    from .task_management_tool import TaskManagementTool
+    TASK_MANAGEMENT_AVAILABLE = True
+except ImportError:
+    TASK_MANAGEMENT_AVAILABLE = False
+    TaskManagementTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -87,3 +94,6 @@ if DISCORD_USER_LOOKUP_AVAILABLE:
 
 if REMINDER_TOOL_AVAILABLE:
     __all__.append('ReminderTool')
+
+if TASK_MANAGEMENT_AVAILABLE:
+    __all__.append('TaskManagementTool')
