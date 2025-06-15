@@ -40,10 +40,16 @@ class TaskManagementTool(BaseTool):
                         "update_task", 
                         "delete_task",
                         "complete_task",
+                        "assign_task",
                         "list_user_tasks",
                         "get_overdue_tasks",
                         "get_upcoming_tasks",
-                        "search_tasks"
+                        "search_tasks",
+                        "bulk_complete",
+                        "bulk_delete",
+                        "create_subtask",
+                        "get_subtasks",
+                        "get_task_assignments"
                     ],
                     "description": "The action to perform on tasks"
                 },
@@ -100,6 +106,37 @@ class TaskManagementTool(BaseTool):
                 "search_query": {
                     "type": "string",
                     "description": "Search query for task titles and descriptions"
+                },
+                "assigned_user_id": {
+                    "type": "integer",
+                    "description": "User ID to assign task to"
+                },
+                "responsibility_type": {
+                    "type": "string",
+                    "enum": ["SPECIFIC_USER", "ANY_USER", "ALL_USERS"],
+                    "description": "Type of responsibility for task assignment"
+                },
+                "task_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Array of task IDs for bulk operations"
+                },
+                "parent_task_id": {
+                    "type": "integer",
+                    "description": "Parent task ID for creating subtasks"
+                },
+                "recurrence_type": {
+                    "type": "string",
+                    "enum": ["NONE", "DAILY", "WEEKLY", "MONTHLY"],
+                    "description": "Recurrence pattern for the task"
+                },
+                "recurrence_interval": {
+                    "type": "integer",
+                    "description": "Interval for recurrence (e.g., every 2 weeks)"
+                },
+                "recurrence_end_date": {
+                    "type": "string",
+                    "description": "End date for recurrence in ISO format"
                 }
             },
             "required": ["action", "user_id"]
@@ -133,6 +170,18 @@ class TaskManagementTool(BaseTool):
                 return await self._get_upcoming_tasks(**kwargs)
             elif action == "search_tasks":
                 return await self._search_tasks(**kwargs)
+            elif action == "assign_task":
+                return await self._assign_task(**kwargs)
+            elif action == "bulk_complete":
+                return await self._bulk_complete(**kwargs)
+            elif action == "bulk_delete":
+                return await self._bulk_delete(**kwargs)
+            elif action == "create_subtask":
+                return await self._create_subtask(**kwargs)
+            elif action == "get_subtasks":
+                return await self._get_subtasks(**kwargs)
+            elif action == "get_task_assignments":
+                return await self._get_task_assignments(**kwargs)
             else:
                 return {"error": f"Unknown action: {action}"}
                 
@@ -168,6 +217,21 @@ class TaskManagementTool(BaseTool):
             if due_date_str:
                 due_date = self._parse_due_date(due_date_str, timezone)
                 
+            # Parse recurrence settings
+            recurrence_type = RecurrenceType.NONE
+            recurrence_interval = 1
+            recurrence_end_date = None
+            
+            if kwargs.get("recurrence_type"):
+                try:
+                    recurrence_type = RecurrenceType[kwargs["recurrence_type"]]
+                    recurrence_interval = kwargs.get("recurrence_interval", 1)
+                    if kwargs.get("recurrence_end_date"):
+                        end_date_parsed = self._parse_due_date(kwargs["recurrence_end_date"], timezone)
+                        recurrence_end_date = end_date_parsed
+                except KeyError:
+                    pass  # Keep default values
+            
             # Create task object
             task = Task(
                 title=title,
@@ -177,7 +241,11 @@ class TaskManagementTool(BaseTool):
                 category=category,
                 created_by=user_id,
                 channel_id=channel_id,
-                timezone=timezone
+                timezone=timezone,
+                recurrence_type=recurrence_type,
+                recurrence_interval=recurrence_interval,
+                recurrence_end_date=recurrence_end_date,
+                parent_task_id=kwargs.get("parent_task_id")
             )
             
             # Create task in database
@@ -559,3 +627,201 @@ class TaskManagementTool(BaseTool):
         except Exception as e:
             logger.error(f"Error parsing due date '{date_str}': {e}")
             return None
+    
+    async def _assign_task(self, **kwargs) -> Dict[str, Any]:
+        """Assign a task to a user"""
+        try:
+            task_id = kwargs.get("task_id")
+            assigned_user_id = kwargs.get("assigned_user_id")
+            user_id = kwargs["user_id"]  # The user making the assignment
+            
+            if not task_id or not assigned_user_id:
+                return {"error": "Task ID and assigned_user_id are required"}
+            
+            # Parse responsibility type
+            responsibility_type_str = kwargs.get("responsibility_type", "SPECIFIC_USER")
+            try:
+                from utils.task_manager import ResponsibilityType
+                responsibility_type = ResponsibilityType[responsibility_type_str]
+            except KeyError:
+                responsibility_type = ResponsibilityType.SPECIFIC_USER
+            
+            # Check if task exists
+            task = await self.task_manager.get_task(task_id)
+            if not task:
+                return {"error": f"Task with ID {task_id} not found"}
+            
+            # Assign the task
+            success = await self.task_manager.assign_task(
+                task_id, assigned_user_id, user_id, responsibility_type
+            )
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": f"Task '{task.title}' assigned to user {assigned_user_id}",
+                    "task": self._task_to_dict(task)
+                }
+            else:
+                return {"error": "Failed to assign task"}
+                
+        except Exception as e:
+            logger.error(f"Error assigning task: {e}")
+            return {"error": f"Failed to assign task: {str(e)}"}
+    
+    async def _bulk_complete(self, **kwargs) -> Dict[str, Any]:
+        """Complete multiple tasks at once"""
+        try:
+            task_ids = kwargs.get("task_ids", [])
+            user_id = kwargs["user_id"]
+            
+            if not task_ids:
+                return {"error": "task_ids array is required"}
+            
+            completed_tasks = []
+            failed_tasks = []
+            
+            for task_id in task_ids:
+                try:
+                    success = await self.task_manager.complete_task(task_id, user_id)
+                    if success:
+                        task = await self.task_manager.get_task(task_id)
+                        if task:
+                            completed_tasks.append(self._task_to_dict(task))
+                    else:
+                        failed_tasks.append(task_id)
+                except Exception as e:
+                    logger.error(f"Error completing task {task_id}: {e}")
+                    failed_tasks.append(task_id)
+            
+            return {
+                "success": True,
+                "completed_count": len(completed_tasks),
+                "failed_count": len(failed_tasks),
+                "completed_tasks": completed_tasks,
+                "failed_task_ids": failed_tasks,
+                "message": f"Completed {len(completed_tasks)} tasks, {len(failed_tasks)} failed"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in bulk complete: {e}")
+            return {"error": f"Failed to complete tasks: {str(e)}"}
+    
+    async def _bulk_delete(self, **kwargs) -> Dict[str, Any]:
+        """Delete multiple tasks at once"""
+        try:
+            task_ids = kwargs.get("task_ids", [])
+            user_id = kwargs["user_id"]
+            
+            if not task_ids:
+                return {"error": "task_ids array is required"}
+            
+            deleted_tasks = []
+            failed_tasks = []
+            
+            for task_id in task_ids:
+                try:
+                    # Get task info before deleting
+                    task = await self.task_manager.get_task(task_id)
+                    if task and (task.created_by == user_id):  # Only allow deleting own tasks
+                        success = await self.task_manager.delete_task(task_id)
+                        if success:
+                            deleted_tasks.append({"id": task_id, "title": task.title})
+                        else:
+                            failed_tasks.append(task_id)
+                    else:
+                        failed_tasks.append(task_id)  # No permission or not found
+                except Exception as e:
+                    logger.error(f"Error deleting task {task_id}: {e}")
+                    failed_tasks.append(task_id)
+            
+            return {
+                "success": True,
+                "deleted_count": len(deleted_tasks),
+                "failed_count": len(failed_tasks),
+                "deleted_tasks": deleted_tasks,
+                "failed_task_ids": failed_tasks,
+                "message": f"Deleted {len(deleted_tasks)} tasks, {len(failed_tasks)} failed"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in bulk delete: {e}")
+            return {"error": f"Failed to delete tasks: {str(e)}"}
+    
+    async def _create_subtask(self, **kwargs) -> Dict[str, Any]:
+        """Create a subtask under a parent task"""
+        try:
+            parent_task_id = kwargs.get("parent_task_id")
+            if not parent_task_id:
+                return {"error": "parent_task_id is required for creating subtasks"}
+            
+            # Verify parent task exists
+            parent_task = await self.task_manager.get_task(parent_task_id)
+            if not parent_task:
+                return {"error": f"Parent task with ID {parent_task_id} not found"}
+            
+            # Set parent_task_id and call regular create_task
+            kwargs["parent_task_id"] = parent_task_id
+            result = await self._create_task(**kwargs)
+            
+            if result.get("success"):
+                result["message"] = f"Subtask '{kwargs.get('title')}' created under task '{parent_task.title}'"
+                result["parent_task"] = self._task_to_dict(parent_task)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error creating subtask: {e}")
+            return {"error": f"Failed to create subtask: {str(e)}"}
+    
+    async def _get_subtasks(self, **kwargs) -> Dict[str, Any]:
+        """Get all subtasks for a parent task"""
+        try:
+            parent_task_id = kwargs.get("task_id")  # Using task_id as parent_task_id
+            user_id = kwargs["user_id"]
+            
+            if not parent_task_id:
+                return {"error": "task_id (parent task ID) is required"}
+            
+            # Get all user tasks and filter for subtasks
+            all_tasks = await self.task_manager.get_user_tasks(user_id, limit=200)
+            subtasks = [task for task in all_tasks if task.parent_task_id == parent_task_id]
+            
+            # Get parent task info
+            parent_task = await self.task_manager.get_task(parent_task_id)
+            
+            return {
+                "success": True,
+                "parent_task": self._task_to_dict(parent_task) if parent_task else None,
+                "subtask_count": len(subtasks),
+                "subtasks": [self._task_to_dict(task) for task in subtasks]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting subtasks: {e}")
+            return {"error": f"Failed to get subtasks: {str(e)}"}
+    
+    async def _get_task_assignments(self, **kwargs) -> Dict[str, Any]:
+        """Get assignment information for a task"""
+        try:
+            task_id = kwargs.get("task_id")
+            if not task_id:
+                return {"error": "task_id is required"}
+            
+            # Get task info
+            task = await self.task_manager.get_task(task_id)
+            if not task:
+                return {"error": f"Task with ID {task_id} not found"}
+            
+            # This would require a new method in TaskManager to get assignments
+            # For now, return basic task info with assignment placeholder
+            return {
+                "success": True,
+                "task": self._task_to_dict(task),
+                "message": "Assignment details functionality to be implemented",
+                "assignments": []  # Placeholder - would need TaskManager.get_task_assignments()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting task assignments: {e}")
+            return {"error": f"Failed to get task assignments: {str(e)}"}
