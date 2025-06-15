@@ -10,6 +10,7 @@ from typing import Optional
 from utils.embed_utils import create_error_embed
 from utils.reminder_manager import reminder_manager_v2
 from utils.background_task_manager import background_task_manager, TaskPriority
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -491,172 +492,15 @@ class Reminders(commands.Cog):
         
         await interaction.response.send_modal(modal)
     
-    reminder = app_commands.Group(name="reminder", description="Manage your reminders")
+    # Manual reminder commands removed - use /reminder natural language interface instead
+    # 
+    # Example usage:
+    # /reminder set a reminder to call mom tomorrow at 3pm
+    # /reminder show me my reminders
+    # /reminder cancel the reminder about the dentist appointment
+    # /reminder what's my next reminder?
     
-    @reminder.command(name="add", description="Add a reminder with natural language time")
-    @app_commands.describe(
-        reminder_text="What you want to be reminded about",
-        time="When you want to be reminded (e.g., 'tomorrow at 3pm', 'in 2 hours', 'Friday 9am')"
-    )
-    async def add_reminder(self, interaction: discord.Interaction, reminder_text: str, time: str = None):
-        """Add a reminder with natural language time parsing"""
-        logger.info(f"User {interaction.user.id} ({interaction.user.name}) is adding a reminder with text: '{reminder_text}' and time: '{time}'")
-        
-        # Get user's timezone
-        user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
-        
-        # If no time provided, show the modal
-        if not time:
-            await self._show_reminder_modal(interaction, reminder_text, user_timezone)
-            return
-        
-        # Try to parse the natural language time
-        try:
-            target_dt = self.reminder_manager.parse_natural_time(time, user_timezone)
-            
-            if target_dt:
-                # Convert to UTC timestamp
-                utc_dt = target_dt.astimezone(pytz.UTC)
-                trigger_time = utc_dt.timestamp()
-                
-                # Add the reminder with channel context
-                channel_id = interaction.channel_id if interaction.channel else None
-                success, message = await self.reminder_manager.add_reminder(
-                    interaction.user.id, 
-                    reminder_text, 
-                    trigger_time, 
-                    user_timezone,
-                    channel_id
-                )
-                
-                if success:
-                    # Format for display
-                    readable_time = target_dt.strftime("%A, %B %d at %I:%M %p")
-                    time_until = self._format_time_until(utc_dt.replace(tzinfo=None))
-                    
-                    # Show where reminder will be sent
-                    location_info = ""
-                    if channel_id:
-                        location_info = f"\n📍 **Location:** <#{channel_id}>"
-                    else:
-                        location_info = "\n📍 **Location:** Direct Message"
-                    
-                    embed = self._create_embed(
-                        "Reminder Set ✅",
-                        f"Your reminder has been set for **{readable_time}** ({time_until}).\n\n"
-                        f"**Reminder:** {reminder_text}{location_info}",
-                        color=discord.Color.green()
-                    )
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-                else:
-                    embed = self._create_embed("Error", message, color=discord.Color.red())
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
-            else:
-                # If we couldn't parse the time, show the modal
-                await self._show_reminder_modal(interaction, reminder_text, user_timezone)
-                
-        except Exception as e:
-            logger.error(f"Error processing natural language time: {e}", exc_info=True)
-            await self._show_reminder_modal(interaction, reminder_text, user_timezone)
-    
-    @reminder.command(name="list", description="List all your reminders")
-    async def list_reminders(self, interaction: discord.Interaction):
-        """List all reminders for the user"""
-        logger.info(f"User {interaction.user.id} listing reminders")
-        
-        user_reminders = await self.reminder_manager.get_user_reminders(interaction.user.id)
-        
-        if not user_reminders:
-            logger.info(f"No reminders found for user {interaction.user.id}")
-            embed = self._create_embed(
-                "No Reminders",
-                "You don't have any reminders set. Use `/reminder add` to create one!",
-                color=discord.Color.blue()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        # Get user's timezone
-        user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
-        
-        # Format reminders for display
-        reminder_list = []
-        for idx, (timestamp, message, _, channel_id) in enumerate(user_reminders[:10], 1):  # Show first 10
-            utc_time = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.UTC)
-            local_time = utc_time.astimezone(pytz.timezone(user_timezone))
-            readable_time = local_time.strftime("%b %d at %I:%M %p")
-            time_until = self._format_time_until(utc_time.replace(tzinfo=None))
-            
-            # Show where the reminder will be sent
-            location = ""
-            if channel_id:
-                try:
-                    channel = self.bot.get_channel(channel_id)
-                    if channel:
-                        location = f" 📍 #{channel.name}"
-                    else:
-                        location = " 📍 Channel (deleted)"
-                except:
-                    location = " 📍 Channel"
-            else:
-                location = " 📍 DM"
-            
-            reminder_list.append(f"**{idx}.** {message}\n   📅 {readable_time} ({time_until}){location}")
-        
-        description = "\n\n".join(reminder_list)
-        if len(user_reminders) > 10:
-            description += f"\n\n*...and {len(user_reminders) - 10} more*"
-        
-        embed = self._create_embed(
-            f"Your Reminders ({len(user_reminders)} total)",
-            description,
-            color=discord.Color.blue()
-        )
-        embed.set_footer(text=f"Timezone: {user_timezone}")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @reminder.command(name="next", description="Show your next upcoming reminder")
-    async def next_reminder(self, interaction: discord.Interaction):
-        """Show the user's next upcoming reminder"""
-        logger.info(f"User {interaction.user.id} checking next reminder")
-        
-        user_reminders = await self.reminder_manager.get_user_reminders(interaction.user.id)
-        
-        if not user_reminders:
-            logger.info(f"No reminders found for user {interaction.user.id}")
-            embed = self._create_embed(
-                "No Reminders",
-                "You don't have any reminders set. Use `/reminder add` to create one!",
-                color=discord.Color.blue()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        # Get the next reminder (first in sorted list)
-        next_timestamp, next_message, _, _ = user_reminders[0]
-        
-        # Get user's timezone
-        user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
-        
-        # Format the reminder
-        utc_time = datetime.utcfromtimestamp(next_timestamp).replace(tzinfo=pytz.UTC)
-        local_time = utc_time.astimezone(pytz.timezone(user_timezone))
-        readable_time = local_time.strftime("%A, %B %d at %I:%M %p")
-        time_until = self._format_time_until(utc_time.replace(tzinfo=None))
-        
-        embed = self._create_embed(
-            "Your Next Reminder ⏰",
-            f"**{next_message}**\n\n"
-            f"📅 {readable_time}\n"
-            f"⏱️ {time_until}",
-            color=discord.Color.blue()
-        )
-        embed.set_footer(text=f"You have {len(user_reminders)} total reminder{'s' if len(user_reminders) != 1 else ''}")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    timezone = app_commands.Group(name="timezone", description="Manage your timezone settings", parent=reminder)
+    timezone = app_commands.Group(name="timezone", description="Manage your timezone settings")
     
     @timezone.command(name="set", description="Set your timezone preferences using a dropdown menu")
     async def set_timezone(self, interaction: discord.Interaction):
@@ -704,6 +548,124 @@ class Reminders(commands.Cog):
                 color=discord.Color.red()
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @app_commands.command(name="reminder", description="Natural language reminder management with AI assistant")
+    @app_commands.describe(
+        prompt="Your reminder-related request or question",
+        model="AI model to use (optional)"
+    )
+    async def reminder_chat(
+        self, 
+        interaction: discord.Interaction, 
+        prompt: str,
+        model: Optional[str] = None
+    ):
+        """Reminder-focused AI chat interface"""
+        await interaction.response.defer(thinking=True)
+        
+        try:
+            # Get user's current timezone and add to context
+            user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
+            local_tz = pytz.timezone(user_timezone)
+            current_time = datetime.now(local_tz).strftime("%A, %B %d, %Y at %I:%M %p %Z")
+            
+            # Get user's reminders for context
+            user_reminders = await self.reminder_manager.get_user_reminders(interaction.user.id)
+            
+            # Create reminder context
+            reminder_context = []
+            if user_reminders:
+                reminder_context.append(f"\nCurrent Reminders ({len(user_reminders)} total):")
+                for idx, (timestamp, message, _, channel_id) in enumerate(user_reminders[:5], 1):
+                    utc_time = datetime.utcfromtimestamp(timestamp).replace(tzinfo=pytz.UTC)
+                    local_time = utc_time.astimezone(local_tz)
+                    readable_time = local_time.strftime("%a %m/%d at %I:%M %p")
+                    location = f" (#{self.bot.get_channel(channel_id).name})" if channel_id and self.bot.get_channel(channel_id) else " (DM)" if not channel_id else " (channel)"
+                    reminder_context.append(f"  {idx}. '{message}' - {readable_time}{location}")
+                
+                if len(user_reminders) > 5:
+                    reminder_context.append(f"  ...and {len(user_reminders) - 5} more")
+            else:
+                reminder_context.append("\nCurrent Reminders: None set")
+            
+            reminder_context_str = "\n".join(reminder_context)
+            
+            # Create reminder-specific system prompt
+            reminder_system_prompt = f"""You are a personal reminder assistant. You help users manage their reminders through natural language conversation.
+
+AVAILABLE TOOL:
+**manage_reminders**: Complete reminder management (set, list, cancel, search, update, cancel multiple, get next)
+
+FUNCTIONALITY:
+- Set reminders with natural language time ("tomorrow at 3pm", "in 2 hours", "Friday morning")
+- List, search, and cancel existing reminders
+- Update reminder text or time
+- Cancel multiple reminders at once
+- Get next upcoming reminder
+- Support for both channel and DM delivery
+
+IMPORTANT GUIDELINES:
+- Parse natural time expressions intelligently using user's timezone
+- Always confirm reminder details (time, text, location) when setting
+- When listing reminders, show them in a readable format with relative times
+- For updates, clearly explain what changed
+- Be helpful with time zone awareness - user's current time is provided
+- Keep reminders simple and focused on one-shot notifications
+- Default to current channel for new reminders unless user specifies DM
+
+USER CONTEXT:
+- User: {interaction.user.name} (ID: {interaction.user.id})
+- Channel: {getattr(interaction.channel, 'name', 'DM')} (ID: {interaction.channel_id})
+- User's current time: {current_time}
+- User's timezone: {user_timezone}{reminder_context_str}
+
+Remember: You have access to the user's current reminders above. When they reference reminders by content or position, match them to existing reminders."""
+
+            # Get AI commands cog to process the request
+            ai_commands = self.bot.get_cog("AICommands")
+            if not ai_commands:
+                embed = discord.Embed(
+                    title="❌ Error", 
+                    description="AI commands system not available.", 
+                    color=0xff0000
+                )
+                await interaction.followup.send(embed=embed)
+                return
+            
+            # Create a custom system prompt by temporarily modifying the environment
+            import os
+            original_system_prompt = os.environ.get('SYSTEM_PROMPT', '')
+            os.environ['SYSTEM_PROMPT'] = reminder_system_prompt
+            
+            try:
+                # Process through AI with reminder management focus
+                username = interaction.user.name
+                formatted_prompt = f"{username}: {prompt}"
+                
+                # Use the AI processing with reminder management focus
+                await ai_commands._process_ai_request(
+                    formatted_prompt, 
+                    model or "gemini-2.5-flash-preview",  # Default model
+                    interaction=interaction, 
+                    attachments=[], 
+                    fun=False, 
+                    web_search=False, 
+                    deep_research=False, 
+                    tool_calling=True,  # Enable tools for reminder management
+                    max_tokens=4000
+                )
+            finally:
+                # Restore original system prompt
+                os.environ['SYSTEM_PROMPT'] = original_system_prompt
+                
+        except Exception as e:
+            logger.error(f"Error in reminder chat: {e}")
+            embed = discord.Embed(
+                title="❌ Error", 
+                description="An error occurred while processing your reminder request.", 
+                color=0xff0000
+            )
+            await interaction.followup.send(embed=embed)
     
     async def cog_unload(self):
         logger.info("Reminders Cog unloading...")
