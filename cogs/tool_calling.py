@@ -142,7 +142,12 @@ class ToolCalling(commands.Cog):
             # Auto-inject user_id for task_management tool and enforce security  
             if tool_name == "task_management":
                 # Force the user_id to match the requesting user for security
-                arguments["user_id"] = requesting_user_id or user_id
+                # Ensure it's an integer
+                user_id_to_use = requesting_user_id or user_id
+                try:
+                    arguments["user_id"] = int(user_id_to_use)
+                except (ValueError, TypeError):
+                    arguments["user_id"] = int(user_id)
             
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             
