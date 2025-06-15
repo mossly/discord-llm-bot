@@ -16,91 +16,93 @@ class TaskManagementTool(BaseTool):
     def __init__(self, task_manager: TaskManager):
         super().__init__()
         self.task_manager = task_manager
-        self.name = "task_management"
-        self.description = "Manage tasks including creating, viewing, updating, and completing tasks for users"
+        self._name = "task_management"
+        self._description = "Manage tasks including creating, viewing, updating, and completing tasks for users"
         
-    def get_schema(self) -> Dict[str, Any]:
+    @property
+    def name(self) -> str:
+        return self._name
+        
+    @property
+    def description(self) -> str:
+        return self._description
+        
+    @property
+    def parameters(self) -> Dict[str, Any]:
         return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "action": {
-                            "type": "string",
-                            "enum": [
-                                "create_task",
-                                "get_task",
-                                "update_task", 
-                                "delete_task",
-                                "complete_task",
-                                "list_user_tasks",
-                                "get_overdue_tasks",
-                                "get_upcoming_tasks",
-                                "search_tasks"
-                            ],
-                            "description": "The action to perform on tasks"
-                        },
-                        "user_id": {
-                            "type": "integer",
-                            "description": "Discord user ID for the task operation"
-                        },
-                        "task_id": {
-                            "type": "integer",
-                            "description": "Task ID for operations on specific tasks"
-                        },
-                        "title": {
-                            "type": "string",
-                            "description": "Task title (required for create_task)"
-                        },
-                        "description": {
-                            "type": "string", 
-                            "description": "Task description (optional)"
-                        },
-                        "due_date": {
-                            "type": "string",
-                            "description": "Due date in ISO format or natural language (e.g., 'tomorrow 3pm')"
-                        },
-                        "priority": {
-                            "type": "string",
-                            "enum": ["LOW", "NORMAL", "HIGH", "CRITICAL"],
-                            "description": "Task priority level"
-                        },
-                        "category": {
-                            "type": "string",
-                            "description": "Task category (e.g., 'Work', 'Personal')"
-                        },
-                        "status": {
-                            "type": "string",
-                            "enum": ["TODO", "IN_PROGRESS", "COMPLETED", "OVERDUE", "CANCELLED"],
-                            "description": "Task status"
-                        },
-                        "channel_id": {
-                            "type": "integer",
-                            "description": "Discord channel ID where task was created"
-                        },
-                        "timezone": {
-                            "type": "string",
-                            "description": "User's timezone (default: UTC)"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of tasks to return (default: 10)"
-                        },
-                        "hours_ahead": {
-                            "type": "integer",
-                            "description": "Hours to look ahead for upcoming tasks (default: 24)"
-                        },
-                        "search_query": {
-                            "type": "string",
-                            "description": "Search query for task titles and descriptions"
-                        }
-                    },
-                    "required": ["action", "user_id"]
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "create_task",
+                        "get_task",
+                        "update_task", 
+                        "delete_task",
+                        "complete_task",
+                        "list_user_tasks",
+                        "get_overdue_tasks",
+                        "get_upcoming_tasks",
+                        "search_tasks"
+                    ],
+                    "description": "The action to perform on tasks"
+                },
+                "user_id": {
+                    "type": "integer",
+                    "description": "Discord user ID for the task operation"
+                },
+                "task_id": {
+                    "type": "integer",
+                    "description": "Task ID for operations on specific tasks"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Task title (required for create_task)"
+                },
+                "description": {
+                    "type": "string", 
+                    "description": "Task description (optional)"
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "Due date in ISO format or natural language (e.g., 'tomorrow 3pm')"
+                },
+                "priority": {
+                    "type": "string",
+                    "enum": ["LOW", "NORMAL", "HIGH", "CRITICAL"],
+                    "description": "Task priority level"
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Task category (e.g., 'Work', 'Personal')"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["TODO", "IN_PROGRESS", "COMPLETED", "OVERDUE", "CANCELLED"],
+                    "description": "Task status"
+                },
+                "channel_id": {
+                    "type": "integer",
+                    "description": "Discord channel ID where task was created"
+                },
+                "timezone": {
+                    "type": "string",
+                    "description": "User's timezone (default: UTC)"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of tasks to return (default: 10)"
+                },
+                "hours_ahead": {
+                    "type": "integer",
+                    "description": "Hours to look ahead for upcoming tasks (default: 24)"
+                },
+                "search_query": {
+                    "type": "string",
+                    "description": "Search query for task titles and descriptions"
                 }
-            }
+            },
+            "required": ["action", "user_id"]
         }
     
     async def execute(self, **kwargs) -> Dict[str, Any]:

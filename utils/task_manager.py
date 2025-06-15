@@ -107,18 +107,29 @@ class TaskManager:
         if self._initialized:
             return
             
-        # Ensure data directory exists
-        os.makedirs("/data", exist_ok=True)
-        
-        # Initialize connection pool
-        for _ in range(5):
-            conn = await aiosqlite.connect(self.db_path)
-            await self.connection_pool.put(conn)
+        try:
+            # Ensure data directory exists
+            os.makedirs("/data", exist_ok=True)
             
-        # Create database schema
-        await self._create_tables()
-        self._initialized = True
-        logger.info("TaskManager initialized successfully")
+            # Initialize connection pool
+            for _ in range(5):
+                conn = await aiosqlite.connect(self.db_path)
+                await self.connection_pool.put(conn)
+                
+            # Create database schema
+            await self._create_tables()
+            self._initialized = True
+            logger.info("TaskManager initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize TaskManager: {e}")
+            # Cleanup any partial connections
+            while not self.connection_pool.empty():
+                try:
+                    conn = self.connection_pool.get_nowait()
+                    await conn.close()
+                except:
+                    pass
+            raise
         
     async def _get_connection(self) -> aiosqlite.Connection:
         """Get a database connection from the pool"""
@@ -614,10 +625,17 @@ class TaskManager:
     async def cleanup(self):
         """Cleanup resources"""
         if self._initialized:
-            # Close all connections in the pool
-            while not self.connection_pool.empty():
-                conn = await self.connection_pool.get()
-                await conn.close()
-                
-            self._initialized = False
-            logger.info("TaskManager cleanup completed")
+            try:
+                # Close all connections in the pool
+                while not self.connection_pool.empty():
+                    try:
+                        conn = self.connection_pool.get_nowait()
+                        await conn.close()
+                    except:
+                        pass
+                        
+                self._initialized = False
+                logger.info("TaskManager cleanup completed")
+            except Exception as e:
+                logger.error(f"Error during TaskManager cleanup: {e}")
+                self._initialized = False
