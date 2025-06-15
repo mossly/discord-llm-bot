@@ -9,6 +9,10 @@ import json
 from typing import List, Dict, Any, Optional
 from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool
 from .tools.task_management_tool import TaskManagementTool
+from .tools.recurrence_tools import (
+    WeekdayRecurrenceTool, SpecificDaysRecurrenceTool, MonthlyPositionRecurrenceTool,
+    MultipleTimesPerPeriodTool, CustomIntervalRecurrenceTool
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +65,24 @@ class ToolCalling(commands.Cog):
         """Register task management tool with the provided task manager"""
         task_tool = TaskManagementTool(task_manager)
         self.registry.register(task_tool, enabled=True)
-        logger.info("Registered task management tool")
+        
+        # Register specialized recurrence tools
+        weekday_tool = WeekdayRecurrenceTool(task_manager)
+        self.registry.register(weekday_tool, enabled=True)
+        
+        specific_days_tool = SpecificDaysRecurrenceTool(task_manager)
+        self.registry.register(specific_days_tool, enabled=True)
+        
+        monthly_position_tool = MonthlyPositionRecurrenceTool(task_manager)
+        self.registry.register(monthly_position_tool, enabled=True)
+        
+        multiple_times_tool = MultipleTimesPerPeriodTool(task_manager)
+        self.registry.register(multiple_times_tool, enabled=True)
+        
+        custom_interval_tool = CustomIntervalRecurrenceTool(task_manager)
+        self.registry.register(custom_interval_tool, enabled=True)
+        
+        logger.info("Registered task management and 5 specialized recurrence tools")
     
     def get_registry(self) -> ToolRegistry:
         """Get the tool registry"""

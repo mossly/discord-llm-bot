@@ -37,6 +37,16 @@ class RecurrenceType(Enum):
     DAILY = "DAILY"
     WEEKLY = "WEEKLY"
     MONTHLY = "MONTHLY"
+    YEARLY = "YEARLY"
+    WEEKDAYS = "WEEKDAYS"  # Monday-Friday only
+    WEEKENDS = "WEEKENDS"  # Saturday-Sunday only
+    SPECIFIC_DAYS = "SPECIFIC_DAYS"  # Specific days of week (e.g., Mon, Wed, Fri)
+    MONTHLY_POSITION = "MONTHLY_POSITION"  # First Monday, Last Friday, etc.
+    QUARTERLY = "QUARTERLY"  # Every 3 months
+    BIWEEKLY = "BIWEEKLY"  # Every 2 weeks
+    CUSTOM_INTERVAL = "CUSTOM_INTERVAL"  # Custom day intervals
+    MULTIPLE_TIMES_WEEK = "MULTIPLE_TIMES_WEEK"  # X times per week
+    MULTIPLE_TIMES_MONTH = "MULTIPLE_TIMES_MONTH"  # X times per month
     CUSTOM = "CUSTOM"
 
 @dataclass
@@ -58,6 +68,14 @@ class Task:
     recurrence_type: RecurrenceType = RecurrenceType.NONE
     recurrence_interval: int = 1  # Every N days/weeks/months
     recurrence_end_date: Optional[float] = None
+    
+    # Advanced recurrence settings
+    recurrence_days_of_week: Optional[str] = None  # JSON: [0,1,2,3,4] for Mon-Fri
+    recurrence_day_of_month: Optional[int] = None  # 1-31 for specific day of month
+    recurrence_week_of_month: Optional[int] = None  # 1-5 for "first week", "last week" = -1
+    recurrence_times_per_period: Optional[int] = None  # For "3 times per week"
+    recurrence_skip_holidays: bool = False  # Skip weekends/holidays
+    recurrence_custom_rule: Optional[str] = None  # JSON rule for complex patterns
     
     # Notification settings
     notify_24h: bool = True
@@ -161,6 +179,12 @@ class TaskManager:
                     recurrence_type TEXT DEFAULT 'NONE',
                     recurrence_interval INTEGER DEFAULT 1,
                     recurrence_end_date REAL,
+                    recurrence_days_of_week TEXT,
+                    recurrence_day_of_month INTEGER,
+                    recurrence_week_of_month INTEGER,
+                    recurrence_times_per_period INTEGER,
+                    recurrence_skip_holidays BOOLEAN DEFAULT 0,
+                    recurrence_custom_rule TEXT,
                     notify_24h BOOLEAN DEFAULT 1,
                     notify_6h BOOLEAN DEFAULT 1,
                     notify_1h BOOLEAN DEFAULT 1,
@@ -248,6 +272,12 @@ class TaskManager:
             recurrence_type=RecurrenceType(row['recurrence_type']),
             recurrence_interval=row['recurrence_interval'],
             recurrence_end_date=row['recurrence_end_date'],
+            recurrence_days_of_week=row.get('recurrence_days_of_week'),
+            recurrence_day_of_month=row.get('recurrence_day_of_month'),
+            recurrence_week_of_month=row.get('recurrence_week_of_month'),
+            recurrence_times_per_period=row.get('recurrence_times_per_period'),
+            recurrence_skip_holidays=bool(row.get('recurrence_skip_holidays', False)),
+            recurrence_custom_rule=row.get('recurrence_custom_rule'),
             notify_24h=bool(row['notify_24h']),
             notify_6h=bool(row['notify_6h']),
             notify_1h=bool(row['notify_1h']),
@@ -280,14 +310,18 @@ class TaskManager:
                     title, description, due_date, priority, status, category,
                     created_at, updated_at, created_by, channel_id, timezone,
                     recurrence_type, recurrence_interval, recurrence_end_date,
+                    recurrence_days_of_week, recurrence_day_of_month, recurrence_week_of_month,
+                    recurrence_times_per_period, recurrence_skip_holidays, recurrence_custom_rule,
                     notify_24h, notify_6h, notify_1h, notify_overdue,
                     overdue_escalation_hours, parent_task_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task.title, task.description, task.due_date, task.priority.value,
                 task.status.value, task.category, task.created_at, task.updated_at,
                 task.created_by, task.channel_id, task.timezone,
                 task.recurrence_type.value, task.recurrence_interval, task.recurrence_end_date,
+                task.recurrence_days_of_week, task.recurrence_day_of_month, task.recurrence_week_of_month,
+                task.recurrence_times_per_period, task.recurrence_skip_holidays, task.recurrence_custom_rule,
                 task.notify_24h, task.notify_6h, task.notify_1h, task.notify_overdue,
                 task.overdue_escalation_hours, task.parent_task_id
             ))
@@ -346,6 +380,8 @@ class TaskManager:
                     title = ?, description = ?, due_date = ?, priority = ?,
                     status = ?, category = ?, updated_at = ?, timezone = ?,
                     recurrence_type = ?, recurrence_interval = ?, recurrence_end_date = ?,
+                    recurrence_days_of_week = ?, recurrence_day_of_month = ?, recurrence_week_of_month = ?,
+                    recurrence_times_per_period = ?, recurrence_skip_holidays = ?, recurrence_custom_rule = ?,
                     notify_24h = ?, notify_6h = ?, notify_1h = ?, notify_overdue = ?,
                     overdue_escalation_hours = ?, completed_at = ?, completed_by = ?
                 WHERE id = ?
@@ -353,6 +389,8 @@ class TaskManager:
                 task.title, task.description, task.due_date, task.priority.value,
                 task.status.value, task.category, task.updated_at, task.timezone,
                 task.recurrence_type.value, task.recurrence_interval, task.recurrence_end_date,
+                task.recurrence_days_of_week, task.recurrence_day_of_month, task.recurrence_week_of_month,
+                task.recurrence_times_per_period, task.recurrence_skip_holidays, task.recurrence_custom_rule,
                 task.notify_24h, task.notify_6h, task.notify_1h, task.notify_overdue,
                 task.overdue_escalation_hours, task.completed_at, task.completed_by,
                 task.id
