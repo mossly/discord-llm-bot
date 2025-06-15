@@ -378,10 +378,11 @@ class BulkTaskSelect(discord.ui.Select):
         )
 
 class TaskListView(discord.ui.View):
-    def __init__(self, tasks: List[Task], user_id: int, page: int = 0):
+    def __init__(self, tasks: List[Task], user_id: int, task_manager, page: int = 0):
         super().__init__(timeout=300)
         self.tasks = tasks
         self.user_id = user_id
+        self.task_manager = task_manager
         self.page = page
         self.per_page = 5
         
@@ -433,8 +434,30 @@ class TaskListView(discord.ui.View):
             await interaction.response.send_message("You can only interact with your own task list.", ephemeral=True)
             return
             
-        # This will be handled by the cog to refresh the task list
-        await interaction.response.send_message("Refreshing task list...", ephemeral=True)
+        # Defer the response first
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Reload tasks from database
+            self.tasks = await self.task_manager.get_user_tasks(self.user_id, limit=100)
+            
+            # Reset to first page if current page is now out of bounds
+            total_pages = max(1, (len(self.tasks) + self.per_page - 1) // self.per_page)
+            if self.page >= total_pages:
+                self.page = 0
+                
+            self.update_buttons()
+            
+            # Update the embed with refreshed data
+            embed = self.create_task_list_embed()
+            await interaction.edit_original_response(content=None, embed=embed, view=self)
+            
+            # Send confirmation message
+            await interaction.followup.send("✅ Task list refreshed!", ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error refreshing task list: {e}")
+            await interaction.followup.send("❌ Failed to refresh task list.", ephemeral=True)
         
     def create_task_list_embed(self) -> discord.Embed:
         current_tasks = self.get_current_tasks()
@@ -740,7 +763,7 @@ class Tasks(commands.Cog):
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
                 
-            view = TaskListView(tasks, interaction.user.id)
+            view = TaskListView(tasks, interaction.user.id, self.task_manager)
             embed = view.create_task_list_embed()
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             
@@ -1006,7 +1029,7 @@ class Tasks(commands.Cog):
                 return
                 
             # Create task list view for overdue tasks
-            view = TaskListView(overdue_tasks, interaction.user.id)
+            view = TaskListView(overdue_tasks, interaction.user.id, self.task_manager)
             embed = view.create_task_list_embed()
             embed.title = "⚠️ Overdue Tasks"
             embed.color = 0xdc3545  # Red for overdue
@@ -1057,7 +1080,7 @@ class Tasks(commands.Cog):
             upcoming_tasks.sort(key=lambda t: t.due_date or 0)
             
             # Create task list view for upcoming tasks
-            view = TaskListView(upcoming_tasks, interaction.user.id)
+            view = TaskListView(upcoming_tasks, interaction.user.id, self.task_manager)
             embed = view.create_task_list_embed()
             embed.title = f"📅 Upcoming Tasks ({hours}h)"
             embed.color = 0xff9500  # Orange for upcoming
