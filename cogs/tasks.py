@@ -619,7 +619,7 @@ class Tasks(commands.Cog):
         self._user_timezones[user_id] = timezone
         return timezone
         
-    @app_commands.command(name="add", description="Create a new task")
+    @task.command(name="add", description="Create a new task")
     async def add_task(self, interaction: discord.Interaction):
         """Create a new task using a modal form"""
         user_timezone = await self._get_user_timezone(interaction.user.id)
@@ -679,7 +679,7 @@ class Tasks(commands.Cog):
         modal.on_submit = modal_callback
         await interaction.response.send_modal(modal)
         
-    @app_commands.command(name="list", description="View your tasks")
+    @task.command(name="list", description="View your tasks")
     @app_commands.describe(
         status="Filter tasks by status",
         category="Filter tasks by category"
@@ -746,7 +746,7 @@ class Tasks(commands.Cog):
             embed = create_error_embed("Failed to retrieve tasks. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
-    @app_commands.command(name="complete", description="Mark a task as completed")
+    @task.command(name="complete", description="Mark a task as completed")
     @app_commands.describe(task_id="The ID of the task to complete")
     async def complete_task(self, interaction: discord.Interaction, task_id: int):
         """Mark a task as completed"""
@@ -796,7 +796,7 @@ class Tasks(commands.Cog):
             embed = create_error_embed("Failed to complete task. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
-    @app_commands.command(name="delete", description="Delete a task")
+    @task.command(name="delete", description="Delete a task")
     @app_commands.describe(task_id="The ID of the task to delete")
     async def delete_task(self, interaction: discord.Interaction, task_id: int):
         """Delete a task"""
@@ -832,7 +832,7 @@ class Tasks(commands.Cog):
             embed = create_error_embed("Failed to delete task. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
             
-    @app_commands.command(name="details", description="View detailed information about a task")
+    @task.command(name="details", description="View detailed information about a task")
     @app_commands.describe(task_id="The ID of the task to view")
     async def task_details(self, interaction: discord.Interaction, task_id: int):
         """Show detailed information about a task"""
@@ -934,59 +934,10 @@ class Tasks(commands.Cog):
             embed = create_error_embed("Failed to retrieve task details. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# Create the task command group
-@commands.hybrid_group(name="task", description="Task management commands")
-async def task_group(ctx):
-    """Task management commands"""
-    if ctx.invoked_subcommand is None:
-        embed = discord.Embed(
-            title="📋 Task Management",
-            description="Available commands:",
-            color=0x3498db
-        )
-        embed.add_field(
-            name="/task add",
-            value="Create a new task",
-            inline=False
-        )
-        embed.add_field(
-            name="/task list [status] [category]", 
-            value="View your tasks with optional filtering",
-            inline=False
-        )
-        embed.add_field(
-            name="/task complete <task_id>",
-            value="Mark a task as completed",
-            inline=False
-        )
-        embed.add_field(
-            name="/task delete <task_id>",
-            value="Delete a task",
-            inline=False
-        )
-        embed.add_field(
-            name="/task details <task_id>",
-            value="View detailed task information",
-            inline=False
-        )
-        embed.add_field(
-            name="/task bulk",
-            value="Bulk operations on multiple tasks",
-            inline=False
-        )
-        embed.add_field(
-            name="/task overdue",
-            value="View all overdue tasks",
-            inline=False
-        )
-        embed.add_field(
-            name="/task upcoming",
-            value="View tasks due soon",
-            inline=False
-        )
-        await ctx.send(embed=embed, ephemeral=True)
+    # Task command group
+    task = app_commands.Group(name="task", description="Task management commands")
     
-    @app_commands.command(name="bulk", description="Perform bulk operations on tasks")
+    @task.command(name="bulk", description="Perform bulk operations on tasks")
     async def bulk_tasks(self, interaction: discord.Interaction):
         """Show bulk task management interface"""
         try:
@@ -1028,7 +979,7 @@ async def task_group(ctx):
             embed = create_error_embed("Failed to load bulk task interface. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
     
-    @app_commands.command(name="overdue", description="View all overdue tasks")
+    @task.command(name="overdue", description="View all overdue tasks")
     async def overdue_tasks(self, interaction: discord.Interaction):
         """Show all overdue tasks"""
         try:
@@ -1067,7 +1018,7 @@ async def task_group(ctx):
             embed = create_error_embed("Failed to retrieve overdue tasks. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
     
-    @app_commands.command(name="upcoming", description="View tasks due in the next 24 hours")
+    @task.command(name="upcoming", description="View tasks due in the next 24 hours")
     @app_commands.describe(hours="Number of hours to look ahead (default: 24)")
     async def upcoming_tasks(self, interaction: discord.Interaction, hours: int = 24):
         """Show tasks due in the next N hours"""
@@ -1119,17 +1070,4 @@ async def task_group(ctx):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
-    cog = Tasks(bot)
-    
-    # Add commands to the cog
-    cog.add_command = task_group
-    task_group.add_command(cog.add_task)
-    task_group.add_command(cog.list_tasks)
-    task_group.add_command(cog.complete_task)
-    task_group.add_command(cog.delete_task)
-    task_group.add_command(cog.task_details)
-    task_group.add_command(cog.bulk_tasks)
-    task_group.add_command(cog.overdue_tasks)
-    task_group.add_command(cog.upcoming_tasks)
-    
-    await bot.add_cog(cog)
+    await bot.add_cog(Tasks(bot))
