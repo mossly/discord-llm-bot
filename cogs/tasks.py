@@ -197,7 +197,7 @@ class Tasks(commands.Cog):
             logger.error(f"Error generating task context for user {user_id}: {e}")
             return "\nCurrent Task Context: Error loading tasks."
     
-    @app_commands.command(name="task", description="Natural language task management with AI assistant")
+    @app_commands.command(name="task-chat", description="Natural language task management with AI assistant")
     @app_commands.describe(
         prompt="Your task-related request or question",
         model="AI model to use (optional)"
