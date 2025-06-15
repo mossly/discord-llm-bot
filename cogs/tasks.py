@@ -513,6 +513,9 @@ class Tasks(commands.Cog):
         self.task_scheduler = None  # Will be initialized in cog_load
         self._user_timezones = {}  # Cache for user timezones
         
+    # Task command group
+    task = app_commands.Group(name="task", description="Task management commands")
+        
     async def cog_load(self):
         """Initialize the task manager when the cog loads"""
         await self.background_task_manager.start()
@@ -933,9 +936,6 @@ class Tasks(commands.Cog):
             logger.error(f"Error showing task details for {task_id}: {e}")
             embed = create_error_embed("Failed to retrieve task details. Please try again.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # Task command group
-    task = app_commands.Group(name="task", description="Task management commands")
     
     @task.command(name="bulk", description="Perform bulk operations on tasks")
     async def bulk_tasks(self, interaction: discord.Interaction):
