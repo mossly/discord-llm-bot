@@ -29,6 +29,9 @@ class TaskScheduler:
         # Last notification times to prevent spam
         self.last_notifications: Dict[str, float] = {}
         
+        # Emergency spam prevention - mark all existing unsent notifications as sent on startup
+        asyncio.create_task(self._emergency_cleanup_notifications())
+        
         # Notification intervals in seconds
         self.notification_intervals = {
             "24h": 24 * 3600,
@@ -223,7 +226,18 @@ class TaskScheduler:
                 notifications = await cursor.fetchall()
                 
                 for notification in notifications:
+                    # Check if we've recently sent this notification type for this task
+                    notification_key = f"{notification['task_id']}_{notification['notification_type']}"
+                    last_sent = self.last_notifications.get(notification_key, 0)
+                    
+                    # Don't send the same notification type for the same task within 1 hour
+                    if current_time - last_sent < 3600:
+                        # Mark as sent to prevent future attempts
+                        await self._mark_notification_sent(notification['id'])
+                        continue
+                    
                     await self._send_notification(notification)
+                    self.last_notifications[notification_key] = current_time
                     
             finally:
                 await self.task_manager._return_connection(conn)
@@ -391,6 +405,33 @@ class TaskScheduler:
                 await self.task_manager._return_connection(conn)
         except Exception as e:
             logger.error(f"Error marking notification {notification_id} as sent: {e}")
+            
+    async def _emergency_cleanup_notifications(self):
+        """Emergency cleanup to stop notification spam on startup"""
+        try:
+            # Wait a moment for initialization
+            await asyncio.sleep(2)
+            
+            conn = await self.task_manager._get_connection()
+            try:
+                # Mark all old unsent notifications as sent to prevent spam
+                current_time = time.time()
+                cursor = await conn.execute('''
+                    UPDATE task_notifications 
+                    SET sent = 1, sent_at = ?
+                    WHERE sent = 0 AND scheduled_time < ?
+                ''', (current_time, current_time - 3600))  # Mark notifications older than 1 hour as sent
+                
+                rows_affected = cursor.rowcount
+                await conn.commit()
+                
+                if rows_affected > 0:
+                    logger.info(f"Emergency cleanup: marked {rows_affected} old notifications as sent to prevent spam")
+                    
+            finally:
+                await self.task_manager._return_connection(conn)
+        except Exception as e:
+            logger.error(f"Error in emergency notification cleanup: {e}")
             
     async def _update_overdue_tasks(self):
         """Update task status for overdue tasks and schedule overdue notifications"""
