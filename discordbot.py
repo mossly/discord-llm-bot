@@ -25,7 +25,24 @@ async def on_ready():
     logging.info(f"{bot.user.name} has connected to Discord!")
     for guild in bot.guilds:
         logging.info(f"Bot is in server: {guild.name} (id: {guild.id})")
-    await bot.tree.sync()
+    
+    try:
+        synced = await bot.tree.sync()
+        logging.info(f"Synced {len(synced)} command(s) to Discord")
+    except Exception as e:
+        logging.error(f"Failed to sync commands: {e}")
+
+@bot.command(name="sync")
+@commands.is_owner()
+async def sync_commands(ctx):
+    """Manually sync slash commands with Discord"""
+    try:
+        synced = await bot.tree.sync()
+        await ctx.send(f"Synced {len(synced)} command(s)")
+        logging.info(f"Manual sync: {len(synced)} command(s) synced")
+    except Exception as e:
+        await ctx.send(f"Failed to sync commands: {e}")
+        logging.error(f"Manual sync failed: {e}")
 
 @bot.event
 async def on_message(message):
