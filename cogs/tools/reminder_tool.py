@@ -132,6 +132,12 @@ class ReminderTool(BaseTool):
         if not time_str:
             return {"success": False, "message": "time is required for set action"}
         
+        # Ensure background task manager is running
+        from utils.background_task_manager import background_task_manager
+        if not background_task_manager.running:
+            logger.info("Background task manager not running, starting it")
+            await background_task_manager.start()
+        
         # Parse channel_id if provided
         channel_id = None
         if channel_id_str:
