@@ -7,9 +7,9 @@ from typing import Dict, Optional
 logger = logging.getLogger(__name__)
 
 class UserQuotaManager:
-    def __init__(self, quota_file: str = "/data/user_quotas.json"):
-        # Ensure /data directory exists
-        os.makedirs("/data", exist_ok=True)
+    def __init__(self, quota_file: str = "./data/user_quotas.json"):
+        # Ensure ./data directory exists
+        os.makedirs("./data", exist_ok=True)
         self.quota_file = quota_file
         self.quotas = self._load_quotas()
         self.default_monthly_quota = 1.0  # $1 per month default

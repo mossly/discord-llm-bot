@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 MAX_REMINDERS_PER_USER = 25
 MIN_REMINDER_INTERVAL = 60  # Minimum 60 seconds between reminders
 DEFAULT_TIMEZONE = "Pacific/Auckland"  # New Zealand timezone (GMT+13)
-DB_PATH = "/data/reminders.db"
+DB_PATH = "./data/reminders.db"
 CACHE_TTL = 300  # 5 minutes cache TTL
 
 
@@ -74,7 +74,7 @@ class ReminderManagerV2:
             self._max_connections = 5
             
             # Ensure data directory exists
-            os.makedirs("/data", exist_ok=True)
+            os.makedirs("./data", exist_ok=True)
             
             logger.info(f"Initializing ReminderManagerV2 instance {id(self)}")
     
@@ -156,8 +156,8 @@ class ReminderManagerV2:
     
     async def _migrate_from_json(self):
         """Migrate data from old JSON-based system"""
-        old_reminders_file = "/data/reminders.json"
-        old_timezones_file = "/data/user_timezones.json"
+        old_reminders_file = "./data/reminders.json"
+        old_timezones_file = "./data/user_timezones.json"
         
         # Check if we need to migrate
         async with self._get_connection() as db:

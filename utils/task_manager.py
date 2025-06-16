@@ -114,7 +114,7 @@ class TaskNotification:
 class TaskManager:
     def __init__(self, background_task_manager: BackgroundTaskManager):
         self.background_task_manager = background_task_manager
-        self.db_path = "/data/tasks.db"
+        self.db_path = "./data/tasks.db"
         self.connection_pool = asyncio.Queue(maxsize=5)
         self._initialized = False
         self._cache = {}
@@ -127,7 +127,7 @@ class TaskManager:
             
         try:
             # Ensure data directory exists
-            os.makedirs("/data", exist_ok=True)
+            os.makedirs("./data", exist_ok=True)
             
             # Initialize connection pool
             for _ in range(5):
