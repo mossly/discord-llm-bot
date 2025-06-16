@@ -27,8 +27,7 @@ class Tasks(commands.Cog):
         self.task_scheduler = None  # Will be initialized in cog_load
         self._user_timezones = {}  # Cache for user timezones
         
-    # Task command group
-    task = app_commands.Group(name="task", description="Task management commands")
+    # Manual task command group removed - use /task natural language interface instead
         
     async def cog_load(self):
         """Initialize the task manager when the cog loads"""
@@ -197,7 +196,7 @@ class Tasks(commands.Cog):
             logger.error(f"Error generating task context for user {user_id}: {e}")
             return "\nCurrent Task Context: Error loading tasks."
     
-    @app_commands.command(name="task-chat", description="Natural language task management with AI assistant")
+    @app_commands.command(name="task", description="Natural language task management with AI assistant")
     @app_commands.describe(
         prompt="Your task-related request or question",
         model="AI model to use (optional)"
