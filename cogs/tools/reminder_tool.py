@@ -83,11 +83,12 @@ class ReminderTool(BaseTool):
             "required": ["action", "user_id"]
         }
     
-    async def execute(self, **kwargs) -> Dict[str, Any]:
+    async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the reminder tool based on the action specified"""
         try:
-            # Handle both old and new parameter styles
-            parameters = kwargs
+            # Debug logging to track parameter issues
+            logger.info(f"Reminder tool parameters: {parameters}")
+            
             action = parameters.get("action")
             user_id_str = parameters.get("user_id")
             
@@ -126,11 +127,19 @@ class ReminderTool(BaseTool):
         time_str = parameters.get("time")
         channel_id_str = parameters.get("channel_id")
         
+        # Check for common parameter mistakes
+        if parameters.get("timestamp") and not time_str:
+            logger.warning(f"AI incorrectly passed 'timestamp' instead of 'time' for set action: {parameters}")
+            return {
+                "success": False, 
+                "message": "For setting reminders, use 'time' parameter with natural language (e.g. 'in 5 minutes'), not 'timestamp'. The 'timestamp' parameter is only for canceling reminders."
+            }
+        
         if not reminder_text:
             return {"success": False, "message": "reminder_text is required for set action"}
         
         if not time_str:
-            return {"success": False, "message": "time is required for set action"}
+            return {"success": False, "message": "time is required for set action (use natural language like 'in 5 minutes', 'tomorrow at 3pm')"}
         
         # Ensure background task manager is running
         from utils.background_task_manager import background_task_manager
