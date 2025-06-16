@@ -13,7 +13,7 @@ class FunPrompt(commands.Cog):
         self.rusk_lore = os.getenv("RUSK_LORE", "Default Rusk lore text")
 
     def _save_fun_prompt(self) -> str:
-        data_folder = "/data"
+        data_folder = "./data"
         if not os.path.exists(data_folder):
             os.makedirs(data_folder, exist_ok=True)
         file_path = os.path.join(data_folder, "fun.txt")
@@ -23,7 +23,7 @@ class FunPrompt(commands.Cog):
         return file_path
 
     def _save_rusk_lore(self) -> str:
-        data_folder = "/data"
+        data_folder = "./data"
         if not os.path.exists(data_folder):
             os.makedirs(data_folder, exist_ok=True)
         file_path = os.path.join(data_folder, "rusk_lore.json")

@@ -9,9 +9,9 @@ from collections import defaultdict
 logger = logging.getLogger(__name__)
 
 class ConversationHistoryManager:
-    def __init__(self, history_file: str = "/data/conversation_history.json", max_history_size: int = 100000):
+    def __init__(self, history_file: str = "./data/conversation_history.json", max_history_size: int = 100000):
         # Ensure data directory exists
-        os.makedirs("/data", exist_ok=True)
+        os.makedirs("./data", exist_ok=True)
         self.history_file = history_file
         self.max_history_size = max_history_size  # Max number of conversations to store
         self.conversations = self._load_conversations()
