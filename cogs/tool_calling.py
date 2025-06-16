@@ -202,7 +202,15 @@ class ToolCalling(commands.Cog):
                     if len(result['results']) > 3:
                         logger.info(f"  ... and {len(result['results']) - 3} more results")
             else:
-                logger.info(f"Tool '{tool_name}' executed successfully, found {len(result.get('results', []))} results")
+                # Only log "found X results" for tools that actually return results arrays
+                if 'results' in result:
+                    logger.info(f"Tool '{tool_name}' executed successfully, found {len(result.get('results', []))} results")
+                else:
+                    # For other tools (like reminder management), just log success
+                    if result.get('success'):
+                        logger.info(f"Tool '{tool_name}' executed successfully")
+                    else:
+                        logger.info(f"Tool '{tool_name}' executed with result: {result.get('message', 'Unknown result')}")
             
             # Format result
             results.append({

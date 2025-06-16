@@ -488,11 +488,11 @@ class ReminderManagerV2:
                 remaining = remaining.replace("about ", "").replace("around ", "").strip()
                 
                 # Handle informal patterns like "a minute", "a few minutes"
-                if remaining in ["a minute", "1 minute"]:
+                if remaining in ["a minute", "1 minute", "one minute"]:
                     return now + timedelta(minutes=1)
                 elif remaining in ["a few minutes", "few minutes"]:
                     return now + timedelta(minutes=3)
-                elif remaining in ["a second", "1 second"]:
+                elif remaining in ["a second", "1 second", "one second"]:
                     return now + timedelta(seconds=1)
                 elif remaining in ["a few seconds", "few seconds"]:
                     return now + timedelta(seconds=5)
@@ -501,7 +501,18 @@ class ReminderManagerV2:
                 parts = remaining.split()
                 if len(parts) >= 2:
                     try:
-                        amount = int(parts[0])
+                        # Convert word numbers to integers
+                        word_to_number = {
+                            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+                            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+                            'eleven': 11, 'twelve': 12, 'fifteen': 15, 'twenty': 20,
+                            'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60
+                        }
+                        
+                        if parts[0].lower() in word_to_number:
+                            amount = word_to_number[parts[0].lower()]
+                        else:
+                            amount = int(parts[0])
                         unit = parts[1].rstrip('s').lower()
                         
                         # Handle common abbreviations and variations
