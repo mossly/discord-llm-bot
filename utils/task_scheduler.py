@@ -395,12 +395,19 @@ class TaskScheduler:
         try:
             conn = await self.task_manager._get_connection()
             try:
-                await conn.execute('''
+                cursor = await conn.execute('''
                     UPDATE task_notifications 
                     SET sent = 1, sent_at = ?
                     WHERE id = ?
                 ''', (time.time(), notification_id))
                 await conn.commit()
+                
+                # Verify the update worked
+                if cursor.rowcount > 0:
+                    logger.debug(f"Successfully marked notification {notification_id} as sent")
+                else:
+                    logger.warning(f"Failed to mark notification {notification_id} as sent - no rows affected")
+                    
             finally:
                 await self.task_manager._return_connection(conn)
         except Exception as e:
@@ -414,19 +421,35 @@ class TaskScheduler:
             
             conn = await self.task_manager._get_connection()
             try:
-                # Mark all old unsent notifications as sent to prevent spam
+                # Mark ALL unsent notifications as sent to prevent spam
                 current_time = time.time()
                 cursor = await conn.execute('''
                     UPDATE task_notifications 
                     SET sent = 1, sent_at = ?
-                    WHERE sent = 0 AND scheduled_time < ?
-                ''', (current_time, current_time - 3600))  # Mark notifications older than 1 hour as sent
+                    WHERE sent = 0
+                ''', (current_time,))  # Mark ALL unsent notifications as sent
                 
                 rows_affected = cursor.rowcount
                 await conn.commit()
                 
                 if rows_affected > 0:
-                    logger.info(f"Emergency cleanup: marked {rows_affected} old notifications as sent to prevent spam")
+                    logger.info(f"Emergency cleanup: marked {rows_affected} unsent notifications as sent to stop spam")
+                
+                # Also delete duplicate notifications for the same task/type
+                await conn.execute('''
+                    DELETE FROM task_notifications
+                    WHERE id NOT IN (
+                        SELECT MIN(id) 
+                        FROM task_notifications 
+                        GROUP BY task_id, notification_type
+                    )
+                ''')
+                
+                duplicate_rows = cursor.rowcount
+                await conn.commit()
+                
+                if duplicate_rows > 0:
+                    logger.info(f"Emergency cleanup: deleted {duplicate_rows} duplicate notifications")
                     
             finally:
                 await self.task_manager._return_connection(conn)
