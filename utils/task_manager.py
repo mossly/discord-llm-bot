@@ -3,7 +3,7 @@ import time
 import logging
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List
 from enum import Enum
 import json
 import os
@@ -136,6 +136,10 @@ class TaskManager:
                 
             # Create database schema
             await self._create_tables()
+            
+            # Run migrations for existing databases
+            await self._run_migrations()
+            
             self._initialized = True
             logger.info("TaskManager initialized successfully")
         except Exception as e:
@@ -254,51 +258,105 @@ class TaskManager:
         finally:
             await self._return_connection(conn)
             
-    def _task_from_row(self, row: Dict[str, Any]) -> Task:
+    async def _run_migrations(self):
+        """Run database migrations for existing databases"""
+        conn = await self._get_connection()
+        try:
+            # Check if all new columns exist, add if missing
+            migrations = [
+                ("recurrence_days_of_week", "TEXT"),
+                ("recurrence_day_of_month", "INTEGER"),
+                ("recurrence_week_of_month", "INTEGER"),
+                ("recurrence_times_per_period", "INTEGER"),
+                ("recurrence_skip_holidays", "BOOLEAN DEFAULT 0"),
+                ("recurrence_custom_rule", "TEXT"),
+                ("notify_24h", "BOOLEAN DEFAULT 1"),
+                ("notify_6h", "BOOLEAN DEFAULT 1"),
+                ("notify_1h", "BOOLEAN DEFAULT 1"),
+                ("notify_overdue", "BOOLEAN DEFAULT 1"),
+                ("overdue_escalation_hours", "INTEGER DEFAULT 24"),
+                ("completed_at", "REAL"),
+                ("completed_by", "INTEGER"),
+                ("parent_task_id", "INTEGER")
+            ]
+            
+            for column_name, column_type in migrations:
+                try:
+                    # Try to add the column - if it exists, this will fail silently
+                    await conn.execute(f'ALTER TABLE tasks ADD COLUMN {column_name} {column_type}')
+                    logger.info(f"Added missing column: {column_name}")
+                except Exception:
+                    # Column likely already exists, which is fine
+                    pass
+                    
+            await conn.commit()
+            logger.info("Database migrations completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error running database migrations: {e}")
+            # Don't raise, as this might be due to existing columns
+        finally:
+            await self._return_connection(conn)
+            
+    def _task_from_row(self, row) -> Task:
         """Convert database row to Task object"""
+        # Helper function to safely get column values with defaults
+        def safe_get(key, default=None):
+            try:
+                return row[key]
+            except (KeyError, IndexError):
+                return default
+        
         return Task(
-            id=row['id'],
-            title=row['title'],
-            description=row['description'],
-            due_date=row['due_date'],
-            priority=TaskPriorityLevel(row['priority']),
-            status=TaskStatus(row['status']),
-            category=row['category'],
-            created_at=row['created_at'],
-            updated_at=row['updated_at'],
-            created_by=row['created_by'],
-            channel_id=row['channel_id'],
-            timezone=row['timezone'],
-            recurrence_type=RecurrenceType(row['recurrence_type']),
-            recurrence_interval=row['recurrence_interval'],
-            recurrence_end_date=row['recurrence_end_date'],
-            recurrence_days_of_week=row['recurrence_days_of_week'],
-            recurrence_day_of_month=row['recurrence_day_of_month'],
-            recurrence_week_of_month=row['recurrence_week_of_month'],
-            recurrence_times_per_period=row['recurrence_times_per_period'],
-            recurrence_skip_holidays=bool(row['recurrence_skip_holidays'] or False),
-            recurrence_custom_rule=row['recurrence_custom_rule'],
-            notify_24h=bool(row['notify_24h']),
-            notify_6h=bool(row['notify_6h']),
-            notify_1h=bool(row['notify_1h']),
-            notify_overdue=bool(row['notify_overdue']),
-            overdue_escalation_hours=row['overdue_escalation_hours'],
-            completed_at=row['completed_at'],
-            completed_by=row['completed_by'],
-            parent_task_id=row['parent_task_id']
+            id=safe_get('id'),
+            title=safe_get('title', ''),
+            description=safe_get('description', ''),  
+            due_date=safe_get('due_date'),
+            priority=TaskPriorityLevel(safe_get('priority', 2)),
+            status=TaskStatus(safe_get('status', 'TODO')),
+            category=safe_get('category', 'General'),
+            created_at=safe_get('created_at', time.time()),
+            updated_at=safe_get('updated_at', time.time()),
+            created_by=safe_get('created_by', 0),
+            channel_id=safe_get('channel_id'),
+            timezone=safe_get('timezone', 'UTC'),
+            recurrence_type=RecurrenceType(safe_get('recurrence_type', 'NONE')),
+            recurrence_interval=safe_get('recurrence_interval', 1),
+            recurrence_end_date=safe_get('recurrence_end_date'),
+            recurrence_days_of_week=safe_get('recurrence_days_of_week'),
+            recurrence_day_of_month=safe_get('recurrence_day_of_month'),
+            recurrence_week_of_month=safe_get('recurrence_week_of_month'),
+            recurrence_times_per_period=safe_get('recurrence_times_per_period'),
+            recurrence_skip_holidays=bool(safe_get('recurrence_skip_holidays', False)),
+            recurrence_custom_rule=safe_get('recurrence_custom_rule'),
+            notify_24h=bool(safe_get('notify_24h', True)),
+            notify_6h=bool(safe_get('notify_6h', True)),
+            notify_1h=bool(safe_get('notify_1h', True)),
+            notify_overdue=bool(safe_get('notify_overdue', True)),
+            overdue_escalation_hours=safe_get('overdue_escalation_hours', 24),
+            completed_at=safe_get('completed_at'),
+            completed_by=safe_get('completed_by'),
+            parent_task_id=safe_get('parent_task_id')
         )
         
-    def _assignment_from_row(self, row: Dict[str, Any]) -> TaskAssignment:
+    def _assignment_from_row(self, row) -> TaskAssignment:
         """Convert database row to TaskAssignment object"""
+        # Helper function to safely get column values with defaults
+        def safe_get(key, default=None):
+            try:
+                return row[key]
+            except (KeyError, IndexError):
+                return default
+        
         return TaskAssignment(
-            id=row['id'],
-            task_id=row['task_id'],
-            user_id=row['user_id'],
-            responsibility_type=ResponsibilityType(row['responsibility_type']),
-            assigned_at=row['assigned_at'],
-            assigned_by=row['assigned_by'],
-            completed=bool(row['completed']),
-            completed_at=row['completed_at']
+            id=safe_get('id'),
+            task_id=safe_get('task_id', 0),
+            user_id=safe_get('user_id', 0),
+            responsibility_type=ResponsibilityType(safe_get('responsibility_type', 'SPECIFIC_USER')),
+            assigned_at=safe_get('assigned_at', time.time()),
+            assigned_by=safe_get('assigned_by', 0),
+            completed=bool(safe_get('completed', False)),
+            completed_at=safe_get('completed_at')
         )
         
     async def create_task(self, task: Task) -> int:

@@ -22,7 +22,8 @@
       "Bash(render services)",
       "Bash(render services -o json)",
       "mcp__ide__getDiagnostics",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(render ssh srv-cgdpib7ekgjpv7sspsf0)"
     ],
     "deny": []
   }
