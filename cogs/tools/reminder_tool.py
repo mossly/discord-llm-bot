@@ -83,9 +83,12 @@ class ReminderTool(BaseTool):
             "required": ["action", "user_id"]
         }
     
-    async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute the reminder tool based on the action specified"""
         try:
+            # Convert kwargs to parameters dict for consistency
+            parameters = kwargs
+            
             # Debug logging to track parameter issues
             logger.info(f"Reminder tool parameters: {parameters}")
             
