@@ -70,7 +70,8 @@ class TimezoneManager:
         if cached_result is not None:
             return cached_result
         
-        async with await self._get_connection() as db:
+        db = await self._get_connection()
+        try:
             cursor = await db.execute("""
                 SELECT timezone FROM user_timezones WHERE user_id = ?
             """, (user_id,))
@@ -82,6 +83,8 @@ class TimezoneManager:
             await self._set_cache(cache_key, timezone)
             
             return timezone
+        finally:
+            await db.close()
     
     async def set_user_timezone(self, user_id: int, timezone: str) -> tuple[bool, str]:
         """Set a user's timezone preference"""
@@ -89,7 +92,8 @@ class TimezoneManager:
             # Validate timezone
             pytz.timezone(timezone)
             
-            async with await self._get_connection() as db:
+            db = await self._get_connection()
+            try:
                 await db.execute("""
                     INSERT OR REPLACE INTO user_timezones (user_id, timezone, updated_at)
                     VALUES (?, ?, ?)
@@ -100,6 +104,8 @@ class TimezoneManager:
                 await self._invalidate_cache(f"user_timezone_{user_id}")
                 
                 return True, f"Timezone set to {timezone}"
+            finally:
+                await db.close()
         except pytz.exceptions.UnknownTimeZoneError:
             return False, f"Unknown timezone: {timezone}"
         except Exception as e:
