@@ -115,7 +115,7 @@ class TaskNotification:
 class TaskManager:
     def __init__(self, background_task_manager: BackgroundTaskManager):
         self.background_task_manager = background_task_manager
-        self.db_path = "./data/tasks.db"
+        self.db_path = "/data/tasks.db"
         self.connection_pool = asyncio.Queue(maxsize=5)
         self._initialized = False
         self._cache = {}
