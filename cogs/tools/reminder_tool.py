@@ -182,9 +182,16 @@ class ReminderTool(BaseTool):
         if success:
             readable_time = target_dt.strftime("%A, %B %d at %I:%M %p")
             location = f" in <#{channel_id}>" if channel_id else " via DM"
+            
+            # Check if user is using default timezone and add helpful message
+            from utils.reminder_manager import DEFAULT_TIMEZONE
+            message_text = f"Reminder set for {readable_time}{location}: {reminder_text}"
+            if user_timezone == DEFAULT_TIMEZONE:
+                message_text += f"\n\n💡 *Tip: You're using the default timezone ({DEFAULT_TIMEZONE}). Set your local timezone with `/reminder timezone set` for more accurate times.*"
+            
             return {
                 "success": True,
-                "message": f"Reminder set for {readable_time}{location}: {reminder_text}",
+                "message": message_text,
                 "timestamp": trigger_time,
                 "readable_time": readable_time
             }
