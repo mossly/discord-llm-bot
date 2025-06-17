@@ -236,7 +236,7 @@ The system now supports advanced time expressions for due dates:
 - All previous patterns: "tomorrow at 3pm", "in 2 hours", "Friday morning"
 
 AVAILABLE TOOLS:
-1. **task_management**: Basic CRUD operations (create, read, update, delete, list, search, bulk operations)
+1. **task_management**: Basic CRUD operations (create, read, update, delete, list_user_tasks/list_all/list, search, bulk operations)
 2. **weekday_recurrence**: Creates tasks that repeat Monday-Friday only (skips weekends)
 3. **specific_days_recurrence**: Creates tasks for specific days (e.g., "Mon, Wed, Fri" or "Tue, Thu")
 4. **monthly_position_recurrence**: Creates tasks for positions in month (e.g., "first Monday", "last Friday", "second Tuesday")
