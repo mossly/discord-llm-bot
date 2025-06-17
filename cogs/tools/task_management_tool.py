@@ -58,7 +58,7 @@ class TaskManagementTool(BaseTool):
                 },
                 "user_id": {
                     "type": "integer",
-                    "description": "Discord user ID for the task operation"
+                    "description": "Discord user ID for the task operation (auto-provided, don't specify)"
                 },
                 "task_id": {
                     "type": "integer",
@@ -142,7 +142,7 @@ class TaskManagementTool(BaseTool):
                     "description": "End date for recurrence in ISO format"
                 }
             },
-            "required": ["action", "user_id"]
+            "required": ["action"]
         }
     
     async def execute(self, **kwargs) -> Dict[str, Any]:
