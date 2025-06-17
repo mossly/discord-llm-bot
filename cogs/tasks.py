@@ -215,7 +215,25 @@ class Tasks(commands.Cog):
             task_context = await self._get_task_context_for_user(interaction.user.id)
             
             # Create task-specific system prompt
-            task_system_prompt = f"""You are a personal task management assistant with powerful recurrence capabilities. You help users manage their tasks through natural language conversation.
+            task_system_prompt = f"""You are a personal task management assistant with powerful recurrence capabilities. You help users manage WORK TASKS and PROJECT TRACKING through natural language conversation.
+
+WHAT TASKS ARE FOR:
+- Work items that need tracking: "Create presentation for client meeting"
+- Projects with due dates and priorities: "Finish quarterly report by Friday"
+- Recurring work patterns: "Review weekly metrics every Monday"
+- Items that need status updates and completion tracking
+- Complex workflows with assignments and collaboration
+
+WHAT TASKS ARE NOT FOR:
+- Simple time-based notifications: "Remind me to call mom"
+- One-time personal alerts that don't need tracking
+- Basic reminders without status or completion tracking
+
+ENHANCED TIME PARSING:
+The system now supports advanced time expressions for due dates:
+- "6pm tonight", "tonight at 6pm", "midnight tonight"  
+- "3pm today", "today at 3pm"
+- All previous patterns: "tomorrow at 3pm", "in 2 hours", "Friday morning"
 
 AVAILABLE TOOLS:
 1. **task_management**: Basic CRUD operations (create, read, update, delete, list, search, bulk operations)
@@ -241,6 +259,14 @@ NATURAL LANGUAGE EXAMPLES:
 - "Exercise 3 times per week" → multiple_times_period_recurrence
 - "Check security every 15 days" → custom_interval_recurrence
 - "Daily standup at 9am" → task_management (simple daily)
+
+AUTOMATIC NOTIFICATIONS:
+Tasks automatically create backup reminders for reliable notifications at:
+- 24 hours before due date
+- 6 hours before due date  
+- 1 hour before due date
+- When overdue
+These reminders are managed automatically - you don't need to create them separately.
 
 IMPORTANT GUIDELINES:
 - Choose the MOST SPECIFIC tool for the user's request
@@ -277,7 +303,7 @@ Remember: You have access to the user's current tasks above. When they reference
                 username = interaction.user.name
                 formatted_prompt = f"{username}: {prompt}"
                 
-                # Use the AI processing with task management focus
+                # Use the AI processing with task management focus and restricted tools
                 await ai_commands._process_ai_request(
                     formatted_prompt, 
                     model or "gemini-2.5-flash-preview",  # Default model
@@ -287,7 +313,15 @@ Remember: You have access to the user's current tasks above. When they reference
                     web_search=False, 
                     deep_research=False, 
                     tool_calling=True,  # Enable tools for task management
-                    max_tokens=4000
+                    max_tokens=4000,
+                    allowed_tools=[
+                        "task_management", 
+                        "weekday_recurrence", 
+                        "specific_days_recurrence", 
+                        "monthly_position_recurrence", 
+                        "multiple_times_period_recurrence", 
+                        "custom_interval_recurrence"
+                    ]  # Restrict to only task management tools
                 )
             finally:
                 # Restore original system prompt

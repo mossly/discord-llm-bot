@@ -8,6 +8,7 @@ import uuid
 import re
 from datetime import datetime
 import pytz
+from typing import Optional
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 from utils.response_formatter import extract_footnotes, build_standardized_footer
 from utils.attachment_handler import process_attachments
@@ -216,7 +217,8 @@ async def perform_chat_query_with_tools(
     max_tokens: int = 8000,
     max_iterations: int = 10,
     interaction=None,
-    username: str = None
+    username: str = None,
+    allowed_tools: Optional[list] = None
 ) -> tuple[str, float, str]:
     """Enhanced chat query with tool calling support"""
     start_time = time.time()
@@ -269,6 +271,10 @@ async def perform_chat_query_with_tools(
     
     tool_registry = tool_cog.get_registry()
     available_tools = tool_registry.get_all_schemas(enabled_only=True)
+    
+    # Filter tools if allowed_tools is specified
+    if allowed_tools is not None:
+        available_tools = [tool for tool in available_tools if tool.get("function", {}).get("name") in allowed_tools]
     
     # Generate session ID for tool usage tracking
     session_id = str(uuid.uuid4())

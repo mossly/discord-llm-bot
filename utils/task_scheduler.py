@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from .task_manager import TaskManager, Task, TaskStatus, TaskNotification
 from .background_task_manager import BackgroundTaskManager, TaskPriority
+from .reminder_manager import reminder_manager_v2
 from utils.embed_utils import create_error_embed, send_embed
 
 logger = logging.getLogger(__name__)
@@ -175,7 +176,7 @@ class TaskScheduler:
                 await self._create_notification(task.id, "1h", notify_time)
                 
     async def _create_notification(self, task_id: int, notification_type: str, scheduled_time: float):
-        """Create a notification record in the database"""
+        """Create a notification record in the database and corresponding reminder"""
         try:
             conn = await self.task_manager._get_connection()
             try:
@@ -200,9 +201,63 @@ class TaskScheduler:
                 
             finally:
                 await self.task_manager._return_connection(conn)
+            
+            # Also create a corresponding reminder for reliable delivery
+            await self._create_task_reminder(task_id, notification_type, scheduled_time)
                 
         except Exception as e:
             logger.error(f"Error creating notification for task {task_id}: {e}")
+    
+    async def _create_task_reminder(self, task_id: int, notification_type: str, scheduled_time: float):
+        """Create a reminder for the task notification to ensure reliable delivery"""
+        try:
+            # Get the task to create appropriate reminder text
+            task = await self.task_manager.get_task(task_id)
+            if not task:
+                return
+            
+            # Create reminder text based on notification type
+            reminder_texts = {
+                "24h": f"Task reminder: '{task.title}' is due in 24 hours",
+                "6h": f"Task reminder: '{task.title}' is due in 6 hours", 
+                "1h": f"Task reminder: '{task.title}' is due in 1 hour",
+                "overdue": f"Task overdue: '{task.title}' was due and needs attention"
+            }
+            
+            reminder_text = reminder_texts.get(notification_type, f"Task notification: '{task.title}'")
+            
+            # Get the first assigned user (or creator if no assignments)
+            user_ids = []
+            if task.assignments:
+                user_ids = [assignment.user_id for assignment in task.assignments]
+            elif task.created_by:
+                user_ids = [task.created_by]
+            
+            # Create reminders for all relevant users
+            for user_id in user_ids:
+                try:
+                    # Get user's timezone (fallback to UTC)
+                    user_timezone = await reminder_manager_v2.get_user_timezone(user_id)
+                    
+                    # Create the reminder with channel context if available
+                    success, message = await reminder_manager_v2.add_reminder(
+                        user_id=user_id,
+                        reminder_text=reminder_text,
+                        trigger_time=scheduled_time,
+                        timezone=user_timezone,
+                        channel_id=task.channel_id
+                    )
+                    
+                    if success:
+                        logger.debug(f"Created backup reminder for task {task_id} notification ({notification_type}) for user {user_id}")
+                    else:
+                        logger.warning(f"Failed to create backup reminder for task {task_id}: {message}")
+                        
+                except Exception as e:
+                    logger.error(f"Error creating reminder for task {task_id}, user {user_id}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in _create_task_reminder for task {task_id}: {e}")
             
     async def _send_due_notifications(self):
         """Send notifications that are due"""
@@ -514,7 +569,7 @@ class TaskScheduler:
         await self._create_notification(task_id, notification_type, current_time)
         
     async def cancel_task_notifications(self, task_id: int):
-        """Cancel all pending notifications for a task"""
+        """Cancel all pending notifications for a task and corresponding reminders"""
         try:
             conn = await self.task_manager._get_connection()
             try:
@@ -531,9 +586,53 @@ class TaskScheduler:
                     
             finally:
                 await self.task_manager._return_connection(conn)
+            
+            # Also cancel corresponding reminders
+            await self._cancel_task_reminders(task_id)
                 
         except Exception as e:
             logger.error(f"Error cancelling notifications for task {task_id}: {e}")
+    
+    async def _cancel_task_reminders(self, task_id: int):
+        """Cancel reminders associated with a task"""
+        try:
+            # Get the task to find associated reminders
+            task = await self.task_manager.get_task(task_id)
+            if not task:
+                return
+            
+            # Get all users who might have reminders for this task
+            user_ids = []
+            if task.assignments:
+                user_ids = [assignment.user_id for assignment in task.assignments]
+            elif task.created_by:
+                user_ids = [task.created_by]
+            
+            # Search for and cancel reminders that mention this task
+            for user_id in user_ids:
+                try:
+                    user_reminders = await reminder_manager_v2.get_user_reminders(user_id)
+                    task_reminders = []
+                    
+                    # Find reminders that reference this task
+                    for timestamp, message, timezone, channel_id in user_reminders:
+                        # Check if the reminder message contains the task title or is a task reminder
+                        if (task.title.lower() in message.lower() or 
+                            message.startswith("Task reminder:") or 
+                            message.startswith("Task overdue:")):
+                            task_reminders.append(timestamp)
+                    
+                    # Cancel matching reminders
+                    for timestamp in task_reminders:
+                        success, cancel_message = await reminder_manager_v2.cancel_reminder(user_id, timestamp)
+                        if success:
+                            logger.debug(f"Cancelled task reminder for user {user_id}: {cancel_message}")
+                        
+                except Exception as e:
+                    logger.error(f"Error cancelling reminders for task {task_id}, user {user_id}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in _cancel_task_reminders for task {task_id}: {e}")
             
     async def reschedule_task_notifications(self, task: Task):
         """Reschedule notifications for a task (e.g., when due date changes)"""

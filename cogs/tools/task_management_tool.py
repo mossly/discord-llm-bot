@@ -7,6 +7,7 @@ import pytz
 
 from .base_tool import BaseTool
 from utils.task_manager import TaskManager, Task, TaskStatus, TaskPriorityLevel, RecurrenceType
+from utils.time_parser import time_parser
 
 logger = logging.getLogger(__name__)
 
@@ -571,57 +572,37 @@ class TaskManagementTool(BaseTool):
         return task_dict
     
     def _parse_due_date(self, date_str: str, timezone: str = "UTC") -> Optional[float]:
-        """Parse natural language or ISO date string into timestamp"""
+        """Parse natural language or ISO date string into timestamp using unified time parser"""
         if not date_str:
             return None
             
-        # This is a simplified parser - could be enhanced with more sophisticated NLP
-        date_str = date_str.lower().strip()
-        tz = pytz.timezone(timezone)
-        now = datetime.now(tz)
+        date_str = date_str.strip()
         
         try:
             # Try to parse as ISO format first
             try:
                 dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 if dt.tzinfo is None:
+                    tz = pytz.timezone(timezone)
                     dt = tz.localize(dt)
                 return dt.timestamp()
             except ValueError:
                 pass
-                
-            # Handle simple natural language cases
-            if "tomorrow" in date_str:
-                target = now + timedelta(days=1)
-                target = target.replace(hour=9, minute=0, second=0, microsecond=0)  # Default 9 AM
-            elif "today" in date_str:
-                target = now.replace(hour=17, minute=0, second=0, microsecond=0)  # Default 5 PM
-            elif "next week" in date_str:
-                target = now + timedelta(weeks=1)
-                target = target.replace(hour=9, minute=0, second=0, microsecond=0)
-            elif "in" in date_str and ("hour" in date_str or "day" in date_str):
-                # Parse "in X hours" or "in X days"
-                parts = date_str.split()
-                try:
-                    num = int(parts[1])
-                    if "hour" in date_str:
-                        target = now + timedelta(hours=num)
-                    elif "day" in date_str:
-                        target = now + timedelta(days=num)
-                        target = target.replace(hour=9, minute=0, second=0, microsecond=0)
-                    else:
-                        return None
-                except (ValueError, IndexError):
-                    return None
-            else:
-                # Default to tomorrow 9 AM if we can't parse
-                target = now + timedelta(days=1)
-                target = target.replace(hour=9, minute=0, second=0, microsecond=0)
-                
-            # Make sure the date is in the future
-            if target <= now:
-                target = now + timedelta(hours=1)
-                
+            
+            # Use unified time parser for natural language
+            parsed_dt = time_parser.parse_natural_time(date_str, timezone)
+            if parsed_dt:
+                # Ensure the date is in the future
+                now = datetime.now(parsed_dt.tzinfo)
+                if parsed_dt <= now:
+                    parsed_dt = now + timedelta(hours=1)
+                return parsed_dt.timestamp()
+            
+            # If unified parser fails, fallback to default
+            tz = pytz.timezone(timezone)
+            now = datetime.now(tz)
+            target = now + timedelta(days=1)
+            target = target.replace(hour=9, minute=0, second=0, microsecond=0)
             return target.timestamp()
             
         except Exception as e:

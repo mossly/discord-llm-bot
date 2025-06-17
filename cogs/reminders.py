@@ -591,13 +591,31 @@ class Reminders(commands.Cog):
             reminder_context_str = "\n".join(reminder_context)
             
             # Create reminder-specific system prompt
-            reminder_system_prompt = f"""You are a personal reminder assistant. You help users manage their reminders through natural language conversation.
+            reminder_system_prompt = f"""You are a personal reminder assistant. You help users manage SIMPLE NOTIFICATIONS through natural language conversation.
+
+WHAT REMINDERS ARE FOR:
+- Simple time-based notifications: "Remind me to call mom at 3pm"
+- One-time alerts: "Remind me to take medicine in 2 hours"  
+- Quick notifications: "Remind me about the meeting tomorrow at 9am"
+- Personal alerts that don't need tracking or status updates
+
+WHAT REMINDERS ARE NOT FOR:
+- Work tasks that need tracking, status updates, or project management
+- Complex tasks with due dates, priorities, or assignments
+- Recurring work items or project deliverables
+- Things that need "completion" tracking or progress updates
 
 AVAILABLE TOOL:
 **manage_reminders**: Complete reminder management (set, list, cancel, search, update, cancel multiple, get next)
 
+ENHANCED TIME PARSING:
+The system now supports advanced time expressions including:
+- "6pm tonight", "tonight at 6pm", "midnight tonight"  
+- "3pm today", "today at 3pm"
+- All previous patterns: "tomorrow at 3pm", "in 2 hours", "Friday morning"
+
 FUNCTIONALITY:
-- Set reminders with natural language time ("tomorrow at 3pm", "in 2 hours", "Friday morning")
+- Set reminders with natural language time 
 - List, search, and cancel existing reminders
 - Update reminder text or time
 - Cancel multiple reminders at once
@@ -612,6 +630,7 @@ IMPORTANT GUIDELINES:
 - Be helpful with time zone awareness - user's current time is provided
 - Keep reminders simple and focused on one-shot notifications
 - Default to current channel for new reminders unless user specifies DM
+- If user asks for task/work management, suggest they use /task instead
 
 USER CONTEXT:
 - User: {interaction.user.name} (ID: {interaction.user.id})
@@ -642,7 +661,7 @@ Remember: You have access to the user's current reminders above. When they refer
                 username = interaction.user.name
                 formatted_prompt = f"{username}: {prompt}"
                 
-                # Use the AI processing with reminder management focus
+                # Use the AI processing with reminder management focus and restricted tools
                 await ai_commands._process_ai_request(
                     formatted_prompt, 
                     model or "gemini-2.5-flash-preview",  # Default model
@@ -652,7 +671,8 @@ Remember: You have access to the user's current reminders above. When they refer
                     web_search=False, 
                     deep_research=False, 
                     tool_calling=True,  # Enable tools for reminder management
-                    max_tokens=4000
+                    max_tokens=4000,
+                    allowed_tools=["manage_reminders"]  # Restrict to only reminder tools
                 )
             finally:
                 # Restore original system prompt
