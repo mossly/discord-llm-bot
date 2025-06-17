@@ -389,7 +389,7 @@ async def perform_chat_query_with_tools_enhanced(
             logger.error(f"Error processing image: {e}")
             conversation_messages.append({"role": "user", "content": request.prompt})
     else:
-        conversation_messages.append({"role": "user", "content": prompt})
+        conversation_messages.append({"role": "user", "content": request.prompt})
     
     # Tool calling loop
     total_cost = 0
