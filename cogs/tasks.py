@@ -286,6 +286,8 @@ IMPORTANT GUIDELINES:
 - Be proactive about suggesting better organization patterns
 - Ask clarifying questions when recurrence pattern is ambiguous
 - Provide clear confirmation of the recurrence pattern created
+- **EXECUTE ACTIONS DIRECTLY** - Don't ask for confirmation, just create the task/reminders immediately
+- Only ask clarifying questions if the request is genuinely ambiguous or missing critical information
 
 CURRENT USER CONTEXT:
 User: {interaction.user.name} (ID: {interaction.user.id})
