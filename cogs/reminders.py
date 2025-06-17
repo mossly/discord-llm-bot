@@ -559,6 +559,10 @@ WHAT REMINDERS ARE NOT FOR:
 - Recurring work items or project deliverables
 - Things that need "completion" tracking or progress updates
 
+WHEN TO SUGGEST TASKS INSTEAD:
+If users request something that needs tracking or has work-related context, suggest:
+"This sounds like a task that needs tracking. Use /task to create a proper task with due dates and notifications, or I can help you set a simple reminder instead."
+
 AVAILABLE TOOL:
 **manage_reminders**: Complete reminder management (set, list, cancel, search, update, cancel multiple, get next)
 

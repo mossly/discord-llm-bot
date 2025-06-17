@@ -268,6 +268,17 @@ Tasks automatically create backup reminders for reliable notifications at:
 - When overdue
 These reminders are managed automatically - you don't need to create them separately.
 
+CUSTOM REMINDER TIMES:
+When users request specific reminder times (e.g., "remind me at 8pm and 10pm"):
+1. Create the task with the due date using task_management
+2. Create SEPARATE reminders using manage_reminders for each custom time
+3. Link the reminders to the task by mentioning the task in the reminder text
+
+Example: "Set task due midnight, remind at 8pm and 10pm"
+- Create task: "Clear rat trap" due "midnight tonight"  
+- Create reminder: "Reminder: Clear rat trap task due at midnight" for "8pm tonight"
+- Create reminder: "Reminder: Clear rat trap task due at midnight" for "10pm tonight"
+
 IMPORTANT GUIDELINES:
 - Choose the MOST SPECIFIC tool for the user's request
 - When users mention complex recurrence, use specialized tools to hide the complexity
