@@ -3,56 +3,19 @@ from discord.ext import commands
 from discord import app_commands
 from typing import Optional
 import logging
-from user_quotas import quota_manager
+from utils.quota_validator import quota_manager
 from utils.embed_utils import create_error_embed, create_success_embed
+from config_manager import config
 
 logger = logging.getLogger(__name__)
 
 class QuotaManagement(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Load admin IDs from environment variable and file
-        self.admin_ids = self._load_admin_ids()
-    
-    def _load_admin_ids(self) -> set:
-        """Load admin IDs from environment variable or file"""
-        import os
-        admin_ids = set()
-        
-        # Try environment variable first (comma-separated list)
-        env_admins = os.getenv('BOT_ADMIN_IDS', '')
-        if env_admins:
-            try:
-                admin_ids.update(int(uid.strip()) for uid in env_admins.split(',') if uid.strip())
-                logger.info(f"Loaded {len(admin_ids)} admin users from BOT_ADMIN_IDS environment variable")
-            except ValueError:
-                logger.warning("Invalid admin IDs in BOT_ADMIN_IDS environment variable")
-        
-        # Try loading from admin_ids.txt file
-        try:
-            if os.path.exists('admin_ids.txt'):
-                with open('admin_ids.txt', 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#'):
-                            try:
-                                admin_ids.add(int(line))
-                            except ValueError:
-                                logger.warning(f"Invalid admin ID in admin_ids.txt: {line}")
-                logger.info(f"Loaded additional admin users from admin_ids.txt")
-        except IOError:
-            logger.warning("Could not read admin_ids.txt file")
-        
-        if admin_ids:
-            logger.info(f"Total admin users configured: {len(admin_ids)}")
-        else:
-            logger.warning("No admin users configured! Set BOT_ADMIN_IDS environment variable or create admin_ids.txt")
-        
-        return admin_ids
     
     def is_admin(self, user_id: int) -> bool:
-        """Check if user is an admin"""
-        return user_id in self.admin_ids
+        """Check if user is an admin using config manager"""
+        return config.is_admin(str(user_id))
     
     @app_commands.command(name="quota", description="Check your current usage quota")
     async def check_quota(self, interaction: discord.Interaction):
