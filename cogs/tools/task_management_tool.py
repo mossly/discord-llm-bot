@@ -195,6 +195,7 @@ class TaskManagementTool(BaseTool):
     async def _create_task(self, **kwargs) -> Dict[str, Any]:
         """Create a new task"""
         try:
+            logger.info(f"Creating task with parameters: {kwargs}")
             user_id = kwargs["user_id"]
             title = kwargs.get("title")
             
@@ -206,8 +207,12 @@ class TaskManagementTool(BaseTool):
             category = kwargs.get("category", "General")
             channel_id = kwargs.get("channel_id")
             # Get user's timezone from shared timezone manager
-            from utils.timezone_manager import timezone_manager
-            timezone = kwargs.get("timezone") or await timezone_manager.get_user_timezone(user_id)
+            try:
+                from utils.timezone_manager import timezone_manager
+                timezone = kwargs.get("timezone") or await timezone_manager.get_user_timezone(user_id)
+            except Exception as e:
+                logger.error(f"Error getting user timezone: {e}")
+                timezone = "Pacific/Auckland"  # Fallback to default
             
             # Parse priority
             priority_str = kwargs.get("priority", "NORMAL")
@@ -254,7 +259,9 @@ class TaskManagementTool(BaseTool):
             )
             
             # Create task in database
+            logger.info(f"Creating task in database: {task}")
             task_id = await self.task_manager.create_task(task)
+            logger.info(f"Task created with ID: {task_id}")
             
             # Get the created task to return full details
             created_task = await self.task_manager.get_task(task_id)
