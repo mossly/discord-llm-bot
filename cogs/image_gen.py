@@ -11,7 +11,7 @@ import io
 from utils.embed_utils import create_error_embed
 import os
 import base64
-from user_quotas import quota_manager
+from utils.quota_validator import quota_manager
 
 logger = logging.getLogger(__name__)
 

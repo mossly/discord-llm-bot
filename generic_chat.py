@@ -41,11 +41,50 @@ async def perform_chat_query(
     interaction=None,
     username: str = None
 ) -> tuple[str, float, str]:
+    """Legacy function signature - maintained for backward compatibility"""
+    from utils.chat_data_classes import ChatRequest, APIConfig, ToolConfig
+    
+    # Convert legacy parameters to new data classes
+    api_config = APIConfig(
+        api=api,
+        model=model or "gemini-2.5-flash-preview",
+        max_tokens=max_tokens
+    )
+    
+    tool_config = ToolConfig(
+        use_tools=False,  # This function doesn't use tools
+        deep_research=False
+    )
+    
+    request = ChatRequest(
+        prompt=prompt,
+        user_id=user_id,
+        channel=channel,
+        api_config=api_config,
+        tool_config=tool_config,
+        image_url=image_url,
+        reference_message=reference_message,
+        use_fun=use_fun,
+        web_search=web_search,
+        interaction=interaction,
+        username=username,
+        reply_footer=reply_footer
+    )
+    
+    return await perform_chat_query_enhanced(request, api_cog, duck_cog)
+
+
+async def perform_chat_query_enhanced(
+    request: 'ChatRequest',
+    api_cog,
+    duck_cog=None
+) -> tuple[str, float, str]:
+    """Enhanced chat query using structured request object"""
     start_time = time.time()
-    original_prompt = prompt
+    original_prompt = request.prompt
     
     ddg_summary = None
-    if duck_cog and web_search:
+    if duck_cog and request.web_search:
         try:
             search_query = await duck_cog.extract_search_query(original_prompt)
             if search_query:
@@ -54,26 +93,26 @@ async def perform_chat_query(
                     summary_result = await duck_cog.summarize_search_results(ddg_summary)
                     summary = summary_result[0] if isinstance(summary_result, tuple) else summary_result
                     if summary:
-                        prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary
+                        request.prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary
         except Exception as e:
             logger.exception("Error during DuckDuckGo search: %s", e)
     
     if ddg_summary:
         summary_text = ddg_summary[0] if isinstance(ddg_summary, tuple) else ddg_summary
-        prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
+        request.prompt = original_prompt + "\n\nSummary of Relevant Web Search Results:\n" + summary_text
 
     # Prepend user's current local time for LLM context
     try:
-        user_timezone = await reminder_manager_v2.get_user_timezone(int(user_id))
+        user_timezone = await reminder_manager_v2.get_user_timezone(int(request.user_id))
         local_tz = pytz.timezone(user_timezone)
         current_local_time = datetime.now(local_tz)
         time_prefix = f"[Current time: {current_local_time.strftime('%Y-%m-%d %H:%M:%S %Z (%z)')}]\n\n"
-        prompt = time_prefix + prompt
+        request.prompt = time_prefix + request.prompt
     except Exception as e:
-        logger.warning(f"Failed to add timezone context for user {user_id}: {e}")
+        logger.warning(f"Failed to add timezone context for user {request.user_id}: {e}")
 
     # Check user quota before making API call
-    can_proceed, quota_error = quota_validator.check_user_quota(user_id)
+    can_proceed, quota_error = quota_validator.check_user_quota(request.user_id)
     if not can_proceed:
         return quota_error, 0, "Quota check failed"
 
@@ -87,15 +126,15 @@ async def perform_chat_query(
             with attempt:
                 try:
                     result, stats = await api_cog.send_request(
-                        model=model,
-                        message_content=prompt,
-                        reference_message=reference_message,
-                        image_url=image_url,
-                        api=api,
-                        use_emojis=True if use_fun else False,
-                        emoji_channel=channel,
-                        use_fun=use_fun,
-                        max_tokens=max_tokens
+                        model=request.api_config.model,
+                        message_content=request.prompt,
+                        reference_message=request.reference_message,
+                        image_url=request.image_url,
+                        api=request.api_config.api,
+                        use_emojis=True if request.use_fun else False,
+                        emoji_channel=request.channel,
+                        use_fun=request.use_fun,
+                        max_tokens=request.api_config.max_tokens
                     )
                     break
                 except openai.APIStatusError as e:
@@ -113,24 +152,24 @@ async def perform_chat_query(
                             # Use 90% of affordable tokens to leave some buffer
                             new_max_tokens = int(affordable_tokens * 0.9)
                             
-                            logger.warning(f"OpenRouter quota error: requested {max_tokens}, can afford {affordable_tokens}, retrying with {new_max_tokens}")
+                            logger.warning(f"OpenRouter quota error: requested {request.api_config.max_tokens}, can afford {affordable_tokens}, retrying with {new_max_tokens}")
                             
                             # Retry with reduced tokens
                             result, stats = await api_cog.send_request(
-                                model=model,
-                                message_content=prompt,
-                                reference_message=reference_message,
-                                image_url=image_url,
-                                api=api,
-                                use_emojis=True if use_fun else False,
-                                emoji_channel=channel,
-                                use_fun=use_fun,
+                                model=request.api_config.model,
+                                message_content=request.prompt,
+                                reference_message=request.reference_message,
+                                image_url=request.image_url,
+                                api=request.api_config.api,
+                                use_emojis=True if request.use_fun else False,
+                                emoji_channel=request.channel,
+                                use_fun=request.use_fun,
                                 max_tokens=new_max_tokens
                             )
                             # Add note about reduced tokens to stats
                             if stats:
                                 stats['reduced_tokens'] = True
-                                stats['original_max_tokens'] = max_tokens
+                                stats['original_max_tokens'] = request.api_config.max_tokens
                                 stats['reduced_max_tokens'] = new_max_tokens
                             break
                         else:
@@ -155,7 +194,7 @@ async def perform_chat_query(
             
             if total_cost is not None and total_cost > 0:
                 # Track usage in user quota system
-                quota_validator.track_usage(user_id, total_cost)
+                quota_validator.track_usage(request.user_id, total_cost)
         else:
             logger.warning("No generation stats received from API")
         
@@ -163,29 +202,29 @@ async def perform_chat_query(
         cleaned_content, footnotes = extract_footnotes(result)
         
         # Apply emoji format substitution if emojis are enabled
-        if use_fun and channel and channel.guild:
-            cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, channel.guild)
+        if request.use_fun and request.channel and request.channel.guild:
+            cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, request.channel.guild)
         
         # Build standardized footer
         footer = build_standardized_footer(
-            model_name=reply_footer,
+            model_name=request.reply_footer,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=total_cost,
             elapsed_time=elapsed,
             footnotes=footnotes,
-            use_fun=use_fun
+            use_fun=request.use_fun
         )
         
         # Log conversation to history
         await conversation_logger.log_conversation(
-            user_id=user_id,
+            user_id=request.user_id,
             user_message=original_prompt,
             bot_response=cleaned_content,
-            model=model or "unknown",
-            channel=channel,
-            interaction=interaction,
-            username=username,
+            model=request.api_config.model or "unknown",
+            channel=request.channel,
+            interaction=request.interaction,
+            username=request.username,
             cost=total_cost,
             input_tokens=input_tokens,
             output_tokens=output_tokens
@@ -220,129 +259,123 @@ async def perform_chat_query_with_tools(
     username: str = None,
     allowed_tools: Optional[list] = None
 ) -> tuple[str, float, str]:
+    """Legacy function signature - maintained for backward compatibility"""
+    from utils.chat_data_classes import ChatRequest, APIConfig, ToolConfig
+    
+    # Convert legacy parameters to new data classes
+    api_config = APIConfig(
+        api=api,
+        model=model or "gemini-2.5-flash-preview",
+        max_tokens=max_tokens
+    )
+    
+    tool_config = ToolConfig(
+        use_tools=use_tools,
+        force_tools=force_tools,
+        allowed_tools=allowed_tools,
+        max_iterations=max_iterations,
+        deep_research=deep_research
+    )
+    
+    request = ChatRequest(
+        prompt=prompt,
+        user_id=user_id,
+        channel=channel,
+        api_config=api_config,
+        tool_config=tool_config,
+        image_url=image_url,
+        reference_message=reference_message,
+        use_fun=use_fun,
+        web_search=False,  # Handled by tools now
+        interaction=interaction,
+        username=username,
+        reply_footer=reply_footer
+    )
+    
+    return await perform_chat_query_with_tools_enhanced(request, api_cog, tool_cog, duck_cog)
+
+
+async def perform_chat_query_with_tools_enhanced(
+    request: 'ChatRequest',
+    api_cog,
+    tool_cog,
+    duck_cog=None
+) -> tuple[str, float, str]:
     """Enhanced chat query with tool calling support"""
     start_time = time.time()
     
     # Check user quota before starting
-    can_proceed, quota_error = quota_validator.check_user_quota(user_id)
+    can_proceed, quota_error = quota_validator.check_user_quota(request.user_id)
     if not can_proceed:
         return quota_error, 0, "Quota check failed"
     
     # If tools are disabled, use the standard flow
-    if not use_tools:
-        return await perform_chat_query(
-            prompt=prompt,
-            api_cog=api_cog,
-            channel=channel,
-            user_id=user_id,
-            duck_cog=duck_cog,
-            image_url=image_url,
-            reference_message=reference_message,
-            model=model,
-            reply_footer=reply_footer,
-            api=api,
-            use_fun=use_fun,
-            web_search=False,  # Handled by tools now
-            max_tokens=max_tokens,
-            interaction=interaction,
-            username=username
-        )
+    if not request.tool_config.use_tools:
+        return await perform_chat_query_enhanced(request, api_cog, duck_cog)
     
     # Get tool registry
     if not tool_cog:
         logger.warning("Tool cog not available, falling back to standard query")
-        return await perform_chat_query(
-            prompt=prompt,
-            api_cog=api_cog,
-            channel=channel,
-            user_id=user_id,
-            duck_cog=duck_cog,
-            image_url=image_url,
-            reference_message=reference_message,
-            model=model,
-            reply_footer=reply_footer,
-            api=api,
-            use_fun=use_fun,
-            web_search=False,
-            max_tokens=max_tokens,
-            interaction=interaction,
-            username=username
-        )
+        return await perform_chat_query_enhanced(request, api_cog, duck_cog)
     
     tool_registry = tool_cog.get_registry()
     available_tools = tool_registry.get_all_schemas(enabled_only=True)
     
     # Filter tools if allowed_tools is specified
-    if allowed_tools is not None:
-        available_tools = [tool for tool in available_tools if tool.get("function", {}).get("name") in allowed_tools]
+    if request.tool_config.allowed_tools is not None:
+        available_tools = [tool for tool in available_tools if tool.get("function", {}).get("name") in request.tool_config.allowed_tools]
     
     # Generate session ID for tool usage tracking
     session_id = str(uuid.uuid4())
     tool_cog.start_session(session_id)
     
     # Set Discord context for context-aware tools
-    if channel:
-        tool_cog.set_discord_context(channel)
+    if request.channel:
+        tool_cog.set_discord_context(request.channel)
     
     if not available_tools:
         logger.warning("No tools available, falling back to standard query")
         tool_cog.end_session(session_id)  # Clean up session
-        return await perform_chat_query(
-            prompt=prompt,
-            api_cog=api_cog,
-            channel=channel,
-            user_id=user_id,
-            duck_cog=duck_cog,
-            image_url=image_url,
-            reference_message=reference_message,
-            model=model,
-            reply_footer=reply_footer,
-            api=api,
-            use_fun=use_fun,
-            web_search=False,
-            max_tokens=max_tokens,
-            interaction=interaction,
-            username=username
-        )
+        return await perform_chat_query_enhanced(request, api_cog, duck_cog)
     
     # Build initial conversation with Discord context
-    base_system_prompt = api_cog.FUN_SYSTEM_PROMPT if use_fun else api_cog.SYSTEM_PROMPT
+    base_system_prompt = api_cog.FUN_SYSTEM_PROMPT if request.use_fun else api_cog.SYSTEM_PROMPT
     
     # Add Discord context to system prompt
     discord_context = ""
-    if channel:
+    if request.channel:
         discord_context += f"\nCurrent Discord Context:\n"
-        if channel.guild:
-            discord_context += f"Server ID: {channel.guild.id}\n"
-            discord_context += f"Server Name: {channel.guild.name}\n"
+        if request.channel.guild:
+            discord_context += f"Server ID: {request.channel.guild.id}\n"
+            discord_context += f"Server Name: {request.channel.guild.name}\n"
         else:
             discord_context += f"Context: Direct Message\n"
-        discord_context += f"Channel ID: {channel.id}\n"
-        if hasattr(channel, 'name') and channel.name:
-            discord_context += f"Channel Name: {channel.name}\n"
-        discord_context += f"Channel Type: {channel.type}\n\n"
+        discord_context += f"Channel ID: {request.channel.id}\n"
+        if hasattr(request.channel, 'name') and request.channel.name:
+            discord_context += f"Channel Name: {request.channel.name}\n"
+        discord_context += f"Channel Type: {request.channel.type}\n\n"
     
     system_prompt = base_system_prompt + discord_context
     conversation_messages = [
         {"role": "system", "content": system_prompt}
     ]
     
-    if reference_message:
-        conversation_messages.append({"role": "user", "content": reference_message})
+    if request.reference_message:
+        conversation_messages.append({"role": "user", "content": request.reference_message})
     
     # Add the user's message
-    if image_url:
-        content_list = [{"type": "text", "text": prompt}]
+    if request.image_url:
+        content_list = [{"type": "text", "text": request.prompt}]
         # Add image handling similar to send_request
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(image_url) as response:
+                async with session.get(request.image_url) as response:
                     if response.status == 200:
                         image_bytes = await response.read()
                         mime_type = 'image/jpeg'  # Default
-                        if image_url.lower().endswith('.png'):
+                        if request.image_url.lower().endswith('.png'):
                             mime_type = 'image/png'
-                        elif image_url.lower().endswith('.webp'):
+                        elif request.image_url.lower().endswith('.webp'):
                             mime_type = 'image/webp'
                         
                         import base64
@@ -354,7 +387,7 @@ async def perform_chat_query_with_tools(
             conversation_messages.append({"role": "user", "content": content_list})
         except Exception as e:
             logger.error(f"Error processing image: {e}")
-            conversation_messages.append({"role": "user", "content": prompt})
+            conversation_messages.append({"role": "user", "content": request.prompt})
     else:
         conversation_messages.append({"role": "user", "content": prompt})
     
@@ -363,22 +396,22 @@ async def perform_chat_query_with_tools(
     total_input_tokens = 0
     total_output_tokens = 0
     
-    for iteration in range(max_iterations):
+    for iteration in range(request.tool_config.max_iterations):
         try:
             # Determine tool choice
-            if iteration == 0 and force_tools:
+            if iteration == 0 and request.tool_config.force_tools:
                 tool_choice = "required"
             else:
                 tool_choice = "auto"
             
             # Make API call with tools
             response = await api_cog.send_request_with_tools(
-                model=model,
+                model=request.api_config.model,
                 messages=conversation_messages,
                 tools=available_tools,
                 tool_choice=tool_choice,
-                api=api,
-                max_tokens=max_tokens
+                api=request.api_config.api,
+                max_tokens=request.api_config.max_tokens
             )
             
             if "error" in response:
@@ -404,7 +437,7 @@ async def perform_chat_query_with_tools(
                 
                 # Track usage
                 if iteration_cost > 0:
-                    quota_validator.track_usage(user_id, iteration_cost)
+                    quota_validator.track_usage(request.user_id, iteration_cost)
             
             # Add assistant message to history
             assistant_content = response.get("content")
@@ -422,11 +455,11 @@ async def perform_chat_query_with_tools(
                 # Execute tools with user context for security
                 tool_results = await tool_cog.process_tool_calls(
                     tool_calls,
-                    user_id,
-                    channel,
+                    request.user_id,
+                    request.channel,
                     session_id,
-                    model,
-                    requesting_user_id=user_id  # Pass the actual Discord user making the request
+                    request.api_config.model,
+                    requesting_user_id=request.user_id  # Pass the actual Discord user making the request
                 )
                 
                 # Add tool results to conversation
@@ -446,35 +479,35 @@ async def perform_chat_query_with_tools(
                 
                 # Add tool costs to user quota
                 if tool_usage["cost"] > 0:
-                    quota_validator.track_usage(user_id, tool_usage["cost"])
+                    quota_validator.track_usage(request.user_id, tool_usage["cost"])
                 
                 # Extract footnotes from response and clean content
                 final_content = assistant_content or "I couldn't generate a response."
                 cleaned_content, footnotes = extract_footnotes(final_content)
                 
                 # Apply emoji format substitution if emojis are enabled
-                if use_fun and channel and channel.guild:
-                    cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, channel.guild)
+                if request.use_fun and request.channel and request.channel.guild:
+                    cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, request.channel.guild)
                 
                 footer = build_standardized_footer(
-                    model_name=reply_footer,
+                    model_name=request.reply_footer,
                     input_tokens=final_input_tokens,
                     output_tokens=final_output_tokens,
                     cost=final_cost,
                     elapsed_time=elapsed,
                     footnotes=footnotes,
-                    use_fun=use_fun
+                    use_fun=request.use_fun
                 )
                 
                 # Log conversation to history
                 await conversation_logger.log_conversation(
-                    user_id=user_id,
-                    user_message=prompt,
+                    user_id=request.user_id,
+                    user_message=request.prompt,
                     bot_response=cleaned_content,
-                    model=model or "unknown",
-                    channel=channel,
-                    interaction=interaction,
-                    username=username,
+                    model=request.api_config.model or "unknown",
+                    channel=request.channel,
+                    interaction=request.interaction,
+                    username=request.username,
                     cost=final_cost,
                     input_tokens=final_input_tokens,
                     output_tokens=final_output_tokens
@@ -491,21 +524,7 @@ async def perform_chat_query_with_tools(
             if iteration == 0:
                 # First iteration failed, fall back to standard query
                 tool_cog.end_session(session_id)  # Clean up session
-                return await perform_chat_query(
-                    prompt=prompt,
-                    api_cog=api_cog,
-                    channel=channel,
-                    user_id=user_id,
-                    duck_cog=duck_cog,
-                    image_url=image_url,
-                    reference_message=reference_message,
-                    model=model,
-                    reply_footer=reply_footer,
-                    api=api,
-                    use_fun=use_fun,
-                    web_search=False,
-                    max_tokens=max_tokens
-                )
+                return await perform_chat_query_enhanced(request, api_cog, duck_cog)
     
     # Max iterations reached - send message to model to generate final output
     elapsed = round(time.time() - start_time, 2)
@@ -519,12 +538,12 @@ async def perform_chat_query_with_tools(
     # Make final API call without tools
     try:
         final_response = await api_cog.send_request_with_tools(
-            model=model,
+            model=request.api_config.model,
             messages=conversation_messages,
             tools=None,  # No tools for final response
             tool_choice="none",
-            api=api,
-            max_tokens=max_tokens
+            api=request.api_config.api,
+            max_tokens=request.api_config.max_tokens
         )
         
         if "error" in final_response:
@@ -547,7 +566,7 @@ async def perform_chat_query_with_tools(
             total_cost += iteration_cost
             
             if iteration_cost > 0:
-                quota_validator.track_usage(user_id, iteration_cost)
+                quota_validator.track_usage(request.user_id, iteration_cost)
         
         elapsed = round(time.time() - start_time, 2)
         
@@ -559,35 +578,35 @@ async def perform_chat_query_with_tools(
         
         # Add tool costs to user quota
         if tool_usage["cost"] > 0:
-            quota_validator.track_usage(user_id, tool_usage["cost"])
+            quota_validator.track_usage(request.user_id, tool_usage["cost"])
         
         # Extract footnotes from response and clean content
         raw_content = final_response.get("content", "I couldn't generate a response.")
         cleaned_content, footnotes = extract_footnotes(raw_content)
         
         # Apply emoji format substitution if emojis are enabled
-        if use_fun and channel and channel.guild:
-            cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, channel.guild)
+        if request.use_fun and request.channel and request.channel.guild:
+            cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, request.channel.guild)
         
         footer = build_standardized_footer(
-            model_name=reply_footer,
+            model_name=request.reply_footer,
             input_tokens=final_input_tokens,
             output_tokens=final_output_tokens,
             cost=final_cost,
             elapsed_time=elapsed,
             footnotes=footnotes,
-            use_fun=use_fun
+            use_fun=request.use_fun
         )
         
         # Log conversation to history
         await conversation_logger.log_conversation(
-            user_id=user_id,
-            user_message=prompt,
+            user_id=request.user_id,
+            user_message=request.prompt,
             bot_response=cleaned_content,
-            model=model or "unknown",
-            channel=channel,
-            interaction=interaction,
-            username=username,
+            model=request.api_config.model or "unknown",
+            channel=request.channel,
+            interaction=request.interaction,
+            username=request.username,
             cost=final_cost,
             input_tokens=final_input_tokens,
             output_tokens=final_output_tokens
@@ -609,15 +628,15 @@ async def perform_chat_query_with_tools(
         
         # Add tool costs to user quota
         if tool_usage["cost"] > 0:
-            quota_validator.track_usage(user_id, tool_usage["cost"])
+            quota_validator.track_usage(request.user_id, tool_usage["cost"])
         
         footer = build_standardized_footer(
-            model_name=reply_footer,
+            model_name=request.reply_footer,
             input_tokens=final_input_tokens,
             output_tokens=final_output_tokens,
             cost=final_cost,
             elapsed_time=elapsed,
-            use_fun=use_fun
+            use_fun=request.use_fun
         )
         
         # Clean up session
