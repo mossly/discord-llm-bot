@@ -150,7 +150,7 @@ class AICommands(commands.Cog):
         
         return False
     
-    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, deep_research: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000, create_thread: bool = False):
+    async def _process_ai_request(self, prompt, model_key, ctx=None, interaction=None, attachments=None, reference_message=None, image_url=None, reply_msg: Optional[discord.Message] = None, fun: bool = False, web_search: bool = False, deep_research: bool = False, tool_calling: bool = True, reply_user=None, max_tokens: int = 8000, create_thread: bool = False, allowed_tools: Optional[list] = None):
         # Debug logging for thread conversations
         if reply_msg and not ctx and not interaction:
             logger.info(f"_process_ai_request called for thread conversation - reply_msg.channel: {reply_msg.channel}, type: {type(reply_msg.channel) if reply_msg.channel else 'None'}")
@@ -294,7 +294,8 @@ class AICommands(commands.Cog):
                     max_tokens=max_tokens,
                     interaction=interaction,
                     deep_research=deep_research,
-                    username=username
+                    username=username,
+                    allowed_tools=allowed_tools
                 )
             else:
                 # Fall back to standard query
