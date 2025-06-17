@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_REMINDERS_PER_USER = 25
 MIN_REMINDER_INTERVAL = 60  # Minimum 60 seconds between reminders
-DEFAULT_TIMEZONE = "Pacific/Auckland"  # New Zealand timezone (GMT+13)
+DEFAULT_TIMEZONE = "UTC"  # Default to UTC if user hasn't set timezone
 DB_PATH = "./data/reminders.db"
 CACHE_TTL = 300  # 5 minutes cache TTL
 
