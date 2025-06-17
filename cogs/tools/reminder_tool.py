@@ -187,7 +187,7 @@ class ReminderTool(BaseTool):
             from utils.reminder_manager import DEFAULT_TIMEZONE
             message_text = f"Reminder set for {readable_time}{location}: {reminder_text}"
             if user_timezone == DEFAULT_TIMEZONE:
-                message_text += f"\n\n💡 *Tip: You're using the default timezone ({DEFAULT_TIMEZONE}). Set your local timezone with `/reminder timezone set` for more accurate times.*"
+                message_text += f"\n\n💡 *Tip: You're using the default timezone ({DEFAULT_TIMEZONE}). Set your local timezone with `/timezone set` for more accurate times.*"
             
             return {
                 "success": True,

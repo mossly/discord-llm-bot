@@ -11,6 +11,7 @@ import aiosqlite
 from datetime import datetime, timedelta
 import pytz
 from .background_task_manager import BackgroundTaskManager, TaskPriority
+from .timezone_manager import timezone_manager
 
 logger = logging.getLogger(__name__)
 

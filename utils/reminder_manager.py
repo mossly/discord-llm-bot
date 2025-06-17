@@ -16,13 +16,14 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from .background_task_manager import background_task_manager, io_bound, TaskPriority
 from .time_parser import time_parser
+from .timezone_manager import timezone_manager, DEFAULT_TIMEZONE as SHARED_DEFAULT_TIMEZONE
 
 logger = logging.getLogger(__name__)
 
 # Constants
 MAX_REMINDERS_PER_USER = 25
 MIN_REMINDER_INTERVAL = 60  # Minimum 60 seconds between reminders
-DEFAULT_TIMEZONE = "UTC"  # Default to UTC if user hasn't set timezone
+# DEFAULT_TIMEZONE now imported from shared timezone_manager
 DB_PATH = "./data/reminders.db"
 CACHE_TTL = 300  # 5 minutes cache TTL
 
@@ -407,48 +408,12 @@ class ReminderManagerV2:
             )
     
     async def set_user_timezone(self, user_id: int, timezone: str) -> Tuple[bool, str]:
-        """Set a user's timezone preference"""
-        async with self._lock:
-            try:
-                # Validate timezone
-                pytz.timezone(timezone)
-                
-                # Use background task for timezone saving
-                success = await background_task_manager.submit_function(
-                    self._background_save_timezone,
-                    user_id, timezone,
-                    task_id=f"save_timezone_{user_id}",
-                    priority=TaskPriority.NORMAL
-                )
-                
-                if success:
-                    return True, f"Timezone set to {timezone}"
-                else:
-                    return False, "Failed to save timezone"
-                
-            except pytz.exceptions.UnknownTimeZoneError:
-                return False, f"Unknown timezone: {timezone}"
+        """Set a user's timezone preference - delegates to shared timezone manager"""
+        return await timezone_manager.set_user_timezone(user_id, timezone)
     
     async def get_user_timezone(self, user_id: int) -> str:
-        """Get a user's timezone or return default"""
-        # Check cache first
-        cache_key = f"user_timezone_{user_id}"
-        cached_result = await self._get_cache(cache_key)
-        if cached_result is not None:
-            return cached_result
-        
-        async with self._get_connection() as db:
-            cursor = await db.execute("""
-                SELECT timezone FROM user_timezones WHERE user_id = ?
-            """, (user_id,))
-            
-            row = await cursor.fetchone()
-            timezone = row['timezone'] if row else DEFAULT_TIMEZONE
-            
-            # Cache the result
-            await self._set_cache(cache_key, timezone)
-            
-            return timezone
+        """Get a user's timezone or return default - delegates to shared timezone manager"""
+        return await timezone_manager.get_user_timezone(user_id)
     
     def parse_natural_time(self, time_str: str, user_timezone: str) -> Optional[datetime]:
         """Parse natural language time string using unified time parser"""
@@ -527,23 +492,7 @@ class ReminderManagerV2:
             logger.error(f"Background cleanup failed: {e}")
             return 0
     
-    @io_bound
-    async def _background_save_timezone(self, user_id: int, timezone: str) -> bool:
-        """Background task for saving user timezone"""
-        try:
-            async with self._get_connection() as db:
-                await db.execute("""
-                    INSERT OR REPLACE INTO user_timezones (user_id, timezone, updated_at)
-                    VALUES (?, ?, ?)
-                """, (user_id, timezone, time.time()))
-                await db.commit()
-                
-                await self._invalidate_cache(f"user_timezone_{user_id}")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Background timezone save failed: {e}")
-            return False
+    # _background_save_timezone method removed - now using shared timezone_manager
     
     def add_dm_failed_user(self, user_id: int):
         """Mark a user as having DM failures"""
