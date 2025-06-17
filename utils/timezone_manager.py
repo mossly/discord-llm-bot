@@ -4,7 +4,6 @@ Provides centralized timezone storage and retrieval
 """
 
 import logging
-import aiofiles
 import aiosqlite
 import pytz
 import time
