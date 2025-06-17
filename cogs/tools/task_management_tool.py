@@ -43,6 +43,8 @@ class TaskManagementTool(BaseTool):
                         "complete_task",
                         "assign_task",
                         "list_user_tasks",
+                        "list_all",
+                        "list",
                         "get_overdue_tasks",
                         "get_upcoming_tasks",
                         "search_tasks",
@@ -163,7 +165,7 @@ class TaskManagementTool(BaseTool):
                 return await self._delete_task(**kwargs)
             elif action == "complete_task":
                 return await self._complete_task(**kwargs)
-            elif action == "list_user_tasks":
+            elif action in ["list_user_tasks", "list_all", "list"]:
                 return await self._list_user_tasks(**kwargs)
             elif action == "get_overdue_tasks":
                 return await self._get_overdue_tasks(**kwargs)
