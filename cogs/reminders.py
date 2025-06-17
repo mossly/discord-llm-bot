@@ -110,7 +110,8 @@ class ReminderModal(ui.Modal, title="Set a Reminder"):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-class TimezoneView(discord.ui.View):
+# TimezoneView removed - timezone management moved to centralized /timezone commands
+class _RemovedTimezoneView:
     def __init__(self, cog):
         super().__init__(timeout=300)
         self.cog = cog
@@ -500,54 +501,7 @@ class Reminders(commands.Cog):
     # /reminder cancel the reminder about the dentist appointment
     # /reminder what's my next reminder?
     
-    timezone = app_commands.Group(name="timezone", description="Manage your timezone settings")
-    
-    @timezone.command(name="set", description="Set your timezone preferences using a dropdown menu")
-    async def set_timezone(self, interaction: discord.Interaction):
-        """Set your timezone preferences using a dropdown menu"""
-        logger.info(f"User {interaction.user.id} is setting their timezone")
-        
-        current_tz = await self.reminder_manager.get_user_timezone(interaction.user.id)
-        
-        # Display current timezone and the dropdown menu
-        embed = self._create_embed(
-            "Set Your Timezone",
-            f"Your timezone is currently set to: **{current_tz}**\n\n"
-            f"Please select your timezone from the dropdown menu below, or use the 'Custom Timezone' button if yours is not listed.",
-            color=discord.Color.blue()
-        )
-        
-        view = TimezoneView(self)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    
-    @timezone.command(name="show", description="Show your current timezone setting")
-    async def show_timezone(self, interaction: discord.Interaction):
-        """Show the user's current timezone setting"""
-        logger.info(f"User {interaction.user.id} checking their timezone")
-        
-        user_timezone = await self.reminder_manager.get_user_timezone(interaction.user.id)
-        
-        try:
-            # Format the current time in the user's timezone
-            local_tz = pytz.timezone(user_timezone)
-            local_time = datetime.now(local_tz).strftime("%Y-%m-%d %H:%M:%S")
-            
-            embed = self._create_embed(
-                "Your Timezone",
-                f"Your timezone is currently set to: **{user_timezone}**\n\n"
-                f"Current time in your timezone: **{local_time}**\n\n"
-                f"You can change this with `/reminder timezone set`",
-                color=discord.Color.blue()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        except Exception as e:
-            logger.error(f"Error showing timezone: {e}", exc_info=True)
-            embed = self._create_embed(
-                "Error",
-                f"An error occurred while processing your timezone. Your current setting is: {user_timezone}",
-                color=discord.Color.red()
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+    # timezone commands removed - now available as centralized /timezone commands
     
     @app_commands.command(name="reminder", description="Natural language reminder management with AI assistant")
     @app_commands.describe(

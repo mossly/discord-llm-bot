@@ -205,7 +205,9 @@ class TaskManagementTool(BaseTool):
             description = kwargs.get("description", "")
             category = kwargs.get("category", "General")
             channel_id = kwargs.get("channel_id")
-            timezone = kwargs.get("timezone", "UTC")
+            # Get user's timezone from shared timezone manager
+            from utils.timezone_manager import timezone_manager
+            timezone = kwargs.get("timezone") or await timezone_manager.get_user_timezone(user_id)
             
             # Parse priority
             priority_str = kwargs.get("priority", "NORMAL")
