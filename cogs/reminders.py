@@ -423,7 +423,7 @@ class Reminders(commands.Cog):
                         # Wait for either a new reminder or a timeout
                         await asyncio.wait_for(
                             self.reminder_manager.wait_for_reminder_change(),
-                            timeout=300  # Check every 5 minutes even if no changes
+                            timeout=30  # Check every 30 seconds even if no changes
                         )
                         logger.debug("Reminder change detected, checking for new reminders")
                     except asyncio.TimeoutError:
@@ -431,10 +431,10 @@ class Reminders(commands.Cog):
                 else:
                     # Calculate sleep time until next reminder
                     current_time = time.time()
-                    sleep_duration = min(next_reminder_time - current_time, 300)  # Max 5 minutes
+                    sleep_duration = min(next_reminder_time - current_time, 60)  # Max 60 seconds
                     sleep_duration = max(sleep_duration, 1)  # Min 1 second
                     
-                    if sleep_duration > 60:
+                    if sleep_duration > 5:
                         # For longer sleeps, also listen for new reminders
                         try:
                             await asyncio.wait_for(

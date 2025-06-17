@@ -282,6 +282,9 @@ class ReminderManagerV2:
                 
                 # Add the reminder using background task for better performance
                 try:
+                    # Signal that a reminder was added immediately for event-driven processing
+                    self._reminder_added_event.set()
+                    
                     success = await background_task_manager.submit_function(
                         self._background_save_reminder,
                         user_id, reminder_text, trigger_time, timezone, channel_id,
@@ -290,8 +293,6 @@ class ReminderManagerV2:
                     )
                     
                     if success:
-                        # Signal that a reminder was added for event-driven processing
-                        self._reminder_added_event.set()
                         return True, "Reminder set successfully"
                     else:
                         return False, "Failed to queue reminder for saving"
