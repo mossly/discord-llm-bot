@@ -9,33 +9,133 @@ from discord import app_commands
 import logging
 import pytz
 from datetime import datetime
+from collections import defaultdict
 from utils.timezone_manager import timezone_manager
 
 logger = logging.getLogger(__name__)
 
 
-class TimezoneDropdown(discord.ui.Select):
-    """Dropdown for selecting timezones"""
+class ContinentDropdown(discord.ui.Select):
+    """First dropdown for selecting continent/region"""
     
     def __init__(self):
-        # Common timezones
-        timezone_options = [
-            discord.SelectOption(label="Pacific/Auckland (GMT+13)", value="Pacific/Auckland", description="New Zealand", emoji="🇳🇿"),
-            discord.SelectOption(label="Australia/Sydney (GMT+11)", value="Australia/Sydney", description="Australia East", emoji="🇦🇺"),
-            discord.SelectOption(label="Asia/Tokyo (GMT+9)", value="Asia/Tokyo", description="Japan", emoji="🇯🇵"),
-            discord.SelectOption(label="Asia/Shanghai (GMT+8)", value="Asia/Shanghai", description="China", emoji="🇨🇳"),
-            discord.SelectOption(label="Asia/Kolkata (GMT+5:30)", value="Asia/Kolkata", description="India", emoji="🇮🇳"),
-            discord.SelectOption(label="Europe/London (GMT+0)", value="Europe/London", description="UK", emoji="🇬🇧"),
-            discord.SelectOption(label="Europe/Paris (GMT+1)", value="Europe/Paris", description="France/Germany", emoji="🇫🇷"),
-            discord.SelectOption(label="America/New_York (GMT-5)", value="America/New_York", description="US East", emoji="🇺🇸"),
-            discord.SelectOption(label="America/Chicago (GMT-6)", value="America/Chicago", description="US Central", emoji="🇺🇸"),
-            discord.SelectOption(label="America/Denver (GMT-7)", value="America/Denver", description="US Mountain", emoji="🇺🇸"),
-            discord.SelectOption(label="America/Los_Angeles (GMT-8)", value="America/Los_Angeles", description="US West", emoji="🇺🇸"),
-            discord.SelectOption(label="UTC (GMT+0)", value="UTC", description="Coordinated Universal Time", emoji="🌍"),
-        ]
+        # Group timezones by continent/region
+        all_timezones = sorted(pytz.all_timezones)
+        continents = set()
+        
+        for tz in all_timezones:
+            if '/' in tz:
+                continent = tz.split('/')[0]
+                continents.add(continent)
+            else:
+                # Handle special cases like UTC, GMT, etc.
+                if tz in ['UTC', 'GMT', 'Universal']:
+                    continents.add('UTC')
+        
+        continent_options = []
+        for continent in sorted(continents):
+            emoji_map = {
+                'Africa': '🌍',
+                'America': '🌎', 
+                'Antarctica': '🐧',
+                'Arctic': '🧊',
+                'Asia': '🌏',
+                'Atlantic': '🌊',
+                'Australia': '🇦🇺',
+                'Europe': '🇪🇺',
+                'Indian': '🏝️',
+                'Pacific': '🏖️',
+                'UTC': '🌍',
+                'US': '🇺🇸'
+            }
+            
+            continent_options.append(
+                discord.SelectOption(
+                    label=continent,
+                    value=continent,
+                    emoji=emoji_map.get(continent, '🌐')
+                )
+            )
         
         super().__init__(
-            placeholder="Select your timezone...",
+            placeholder="1️⃣ First, select a continent/region...",
+            options=continent_options[:25],  # Discord limit
+            max_values=1
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        selected_continent = self.values[0]
+        
+        # Create timezone dropdown for selected continent
+        timezone_dropdown = TimezoneDropdown(selected_continent)
+        view = TimezoneSelectionView()
+        view.clear_items()
+        view.add_item(ContinentDropdown())  # Keep continent selector
+        view.add_item(timezone_dropdown)
+        
+        embed = discord.Embed(
+            title="🌍 Set Your Timezone - Step 2",
+            description=f"You selected **{selected_continent}**. Now choose your specific timezone:",
+            color=0x0099FF
+        )
+        
+        await interaction.response.edit_message(embed=embed, view=view)
+
+
+class TimezoneDropdown(discord.ui.Select):
+    """Second dropdown for selecting specific timezone within continent"""
+    
+    def __init__(self, continent: str):
+        self.continent = continent
+        
+        # Get all timezones for the selected continent
+        all_timezones = sorted(pytz.all_timezones)
+        timezone_options = []
+        
+        if continent == 'UTC':
+            # Special handling for UTC and similar
+            utc_zones = ['UTC', 'GMT', 'Universal']
+            for tz in utc_zones:
+                if tz in all_timezones:
+                    timezone_options.append(
+                        discord.SelectOption(
+                            label=tz,
+                            value=tz,
+                            description="Coordinated Universal Time"
+                        )
+                    )
+        else:
+            # Filter timezones by continent
+            for tz in all_timezones:
+                if tz.startswith(f"{continent}/"):
+                    city = tz.split('/', 1)[1].replace('_', ' ')
+                    # Show current UTC offset
+                    try:
+                        tz_obj = pytz.timezone(tz)
+                        now = datetime.now(tz_obj)
+                        offset = now.strftime('%z')
+                        if offset:
+                            # Format offset as +/-HH:MM
+                            offset_formatted = f"UTC{offset[:3]}:{offset[3:]}"
+                        else:
+                            offset_formatted = ""
+                    except:
+                        offset_formatted = ""
+                    
+                    label = f"{city} {offset_formatted}".strip()
+                    timezone_options.append(
+                        discord.SelectOption(
+                            label=label[:100],  # Discord limit
+                            value=tz,
+                            description=tz[:100]  # Show full timezone name
+                        )
+                    )
+        
+        # Limit to Discord's 25 option maximum
+        timezone_options = timezone_options[:25]
+        
+        super().__init__(
+            placeholder=f"2️⃣ Select timezone in {continent}...",
             options=timezone_options,
             max_values=1
         )
@@ -46,21 +146,29 @@ class TimezoneDropdown(discord.ui.Select):
         
         if success:
             # Show current time in the selected timezone
-            tz = pytz.timezone(timezone)
-            current_time = datetime.now(tz).strftime("%I:%M %p on %A, %B %d")
-            
-            embed = discord.Embed(
-                title="✅ Timezone Updated",
-                description=(
-                    f"Your timezone has been set to **{timezone}**\n"
-                    f"Current time in your timezone: **{current_time}**"
-                ),
-                color=0x00FF00
-            )
+            try:
+                tz = pytz.timezone(timezone)
+                current_time = datetime.now(tz).strftime("%I:%M %p on %A, %B %d")
+                
+                embed = discord.Embed(
+                    title="✅ Timezone Updated Successfully",
+                    description=(
+                        f"Your timezone has been set to **{timezone}**\n\n"
+                        f"🕐 Current time in your timezone: **{current_time}**\n\n"
+                        f"This timezone will be used for both reminders and tasks."
+                    ),
+                    color=0x00FF00
+                )
+            except Exception as e:
+                embed = discord.Embed(
+                    title="✅ Timezone Updated",
+                    description=f"Your timezone has been set to **{timezone}**",
+                    color=0x00FF00
+                )
         else:
             embed = discord.Embed(
-                title="❌ Error",
-                description=message,
+                title="❌ Error Setting Timezone",
+                description=f"Failed to set timezone: {message}",
                 color=0xFF0000
             )
         
@@ -114,14 +222,14 @@ class CustomTimezoneModal(discord.ui.Modal):
         await interaction.response.edit_message(embed=embed, view=None)
 
 
-class TimezoneView(discord.ui.View):
-    """View containing timezone dropdown and custom button"""
+class TimezoneSelectionView(discord.ui.View):
+    """View containing the two-step timezone selection process"""
     
     def __init__(self):
-        super().__init__(timeout=60)
-        self.add_item(TimezoneDropdown())
+        super().__init__(timeout=120)  # Longer timeout for two-step process
+        self.add_item(ContinentDropdown())
     
-    @discord.ui.button(label="Custom Timezone", style=discord.ButtonStyle.secondary, emoji="⚙️")
+    @discord.ui.button(label="Enter Custom Timezone", style=discord.ButtonStyle.secondary, emoji="⚙️", row=2)
     async def custom_timezone(self, interaction: discord.Interaction, button: discord.ui.Button):
         modal = CustomTimezoneModal()
         await interaction.response.send_modal(modal)
@@ -143,16 +251,18 @@ class TimezoneManagement(commands.Cog):
         current_tz = await timezone_manager.get_user_timezone(interaction.user.id)
         
         embed = discord.Embed(
-            title="🌍 Set Your Timezone",
+            title="🌍 Set Your Timezone - Step 1",
             description=(
                 f"Your timezone is currently set to: **{current_tz}**\n\n"
-                f"Please select your timezone from the dropdown menu below, or use the 'Custom Timezone' button if yours is not listed.\n\n"
+                f"Choose your timezone in two easy steps:\n"
+                f"1️⃣ Select your continent/region\n"
+                f"2️⃣ Select your specific timezone\n\n"
                 f"This setting will be used for both reminders and tasks."
             ),
             color=0x0099FF
         )
         
-        await interaction.response.send_message(embed=embed, view=TimezoneView(), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=TimezoneSelectionView(), ephemeral=True)
     
     @timezone.command(name="show", description="Show your current timezone setting")
     async def show_timezone(self, interaction: discord.Interaction):
