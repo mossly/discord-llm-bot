@@ -217,6 +217,13 @@ class Tasks(commands.Cog):
             # Create task-specific system prompt
             task_system_prompt = f"""You are a personal task management assistant with powerful recurrence capabilities. You help users manage WORK TASKS and PROJECT TRACKING through natural language conversation.
 
+CRITICAL INSTRUCTIONS:
+- When users ask "what tasks do I have?" or "show my tasks" → IMMEDIATELY use task_management tool with action "list_user_tasks"
+- When users ask about specific tasks → IMMEDIATELY use task_management tool with action "search_tasks" 
+- When users want to create tasks → IMMEDIATELY use appropriate tool to create the task
+- NEVER confuse tasks with reminders - these are separate systems
+- ALWAYS use tools to perform actions - do not provide text-only responses for task operations
+
 WHAT TASKS ARE FOR:
 - Work items that need tracking: "Create presentation for client meeting"
 - Projects with due dates and priorities: "Finish quarterly report by Friday"
@@ -242,6 +249,14 @@ AVAILABLE TOOLS:
 4. **monthly_position_recurrence**: Creates tasks for positions in month (e.g., "first Monday", "last Friday", "second Tuesday")
 5. **multiple_times_period_recurrence**: Creates tasks that occur multiple times per week/month (e.g., "3 times per week")
 6. **custom_interval_recurrence**: Creates tasks with custom day intervals (e.g., "every 10 days", "every 45 days")
+
+IMMEDIATE ACTION TRIGGERS:
+- "what tasks" / "my tasks" / "show tasks" → task_management: list_user_tasks
+- "create task" / "add task" / "new task" → task_management: create_task
+- "complete task" / "mark done" → task_management: complete_task
+- "update task" / "change task" → task_management: update_task
+- "delete task" / "remove task" → task_management: delete_task
+- "find task" / "search task" → task_management: search_tasks
 
 TOOL SELECTION GUIDELINES:
 - For "weekday only" or "business days": Use **weekday_recurrence**
