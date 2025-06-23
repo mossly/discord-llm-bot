@@ -323,7 +323,10 @@ async def perform_chat_query_with_tools_enhanced(
     
     # Filter tools if allowed_tools is specified
     if request.tool_config.allowed_tools is not None:
+        logger.info(f"Tool filtering - Allowed tools: {request.tool_config.allowed_tools}")
+        logger.info(f"Tool filtering - Available tool names: {[tool.get('function', {}).get('name') for tool in available_tools]}")
         available_tools = [tool for tool in available_tools if tool.get("function", {}).get("name") in request.tool_config.allowed_tools]
+        logger.info(f"Tool filtering - Filtered to {len(available_tools)} tools: {[tool.get('function', {}).get('name') for tool in available_tools]}")
     
     # Generate session ID for tool usage tracking
     session_id = str(uuid.uuid4())
