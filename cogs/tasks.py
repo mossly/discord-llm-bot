@@ -236,6 +236,11 @@ class Tasks(commands.Cog):
 → IMMEDIATELY call: task_management with action="create_task"
 → Tasks automatically get reminder notifications (24h, 6h, 1h before due)
 
+**When user reports task completion (e.g., "I hung the laundry", "I did X"):**
+→ IMMEDIATELY look at the Current Task Context above to find the matching task
+→ Use task_management with action="complete_task" and the task_id from context
+→ If no matching task in context, ask if they want to create a completed task for tracking
+
 **When user wants custom reminder times for a task:**
 → First: Create the task with task_management  
 → Then: Create custom reminders with manage_reminders
@@ -257,7 +262,7 @@ class Tasks(commands.Cog):
 ⚡ IMMEDIATE ACTION TRIGGERS:
 - "what tasks" / "my tasks" / "show tasks" → task_management: list_user_tasks
 - "create task" / "add task" / "new task" → task_management: create_task
-- "complete task" / "done with task" → task_management: complete_task
+- "complete task" / "done with task" / "mark as complete" / "I did X" → task_management: complete_task
 - "remind me about task at [time]" → manage_reminders (after ensuring task exists)
 
 📝 EXAMPLES:
@@ -265,10 +270,12 @@ class Tasks(commands.Cog):
 ✅ CORRECT USAGE:
 - User: "What tasks do I have?" → Use task_management: list_user_tasks
 - User: "Create task to review reports" → Use task_management: create_task
+- User: "I hung the laundry out, mark as complete" → Use task_management: complete_task (search for laundry task first)
 - User: "Task due tomorrow, remind me at 8pm" → task_management + manage_reminders
 
 ❌ WRONG USAGE:
 - User: "What tasks do I have?" → DON'T use manage_reminders (that's for notifications)
+- User: "I did X, mark complete" → DON'T suggest /cancel reminder (search for task and complete it)
 - User: "Remind me to call mom" → DON'T handle this (send to /reminder command)
 
 🔄 AUTOMATIC TASK NOTIFICATIONS:
@@ -285,7 +292,9 @@ User: {interaction.user.name} (ID: {interaction.user.id})
 Channel: {interaction.channel.id}
 {task_context}
 
-Your job: Use task_management tools first for all task operations. Only use manage_reminders for custom task notification times."""
+Your job: Use task_management tools first for all task operations. Only use manage_reminders for custom task notification times.
+
+🔍 IMPORTANT: You already have the user's current tasks listed above in "Current Task Context". When users mention completing a task, look for it in that context and use the task_id to complete it directly."""
 
             # Get AI commands cog to process the request
             ai_commands = self.bot.get_cog("AICommands")
