@@ -25,7 +25,8 @@
       "Bash(echo:*)",
       "Bash(render ssh srv-cgdpib7ekgjpv7sspsf0)",
       "Bash(render deploys create:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(afplay:*)"
     ],
     "deny": []
   }
