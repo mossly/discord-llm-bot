@@ -4,28 +4,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Discord bot that integrates multiple LLM models through OpenRouter and OpenAI APIs. The bot provides AI chat, image generation, web search, and reminder functionalities directly in Discord servers.
+This is a Discord bot that integrates multiple LLM models through OpenRouter and OpenAI APIs. The bot provides AI chat, image generation, web search, task management, reminders, and advanced tool-calling functionalities directly in Discord servers.
 
 ## Architecture
 
+### Core Components
 - **Main Bot**: `discordbot.py` - Entry point that loads cogs and starts the bot
-- **Cogs System**: All bot functionality is organized in the `/cogs/` directory as Discord.py cogs
-  - `ai_commands.py` - Main slash commands and context menu commands for AI interactions
-  - `image_gen.py` - DALL-E 3 image generation functionality
-  - `reminders.py` - Time-based reminder system
-  - `ddg_search.py` - DuckDuckGo web search integration
-  - `api_utils.py` - API utilities for OpenRouter and OpenAI
-  - `fun_prompt.py` - Fun mode prompt management
-  - `quota_management.py` - User quota management and admin commands
-- **Utilities**: 
-  - `generic_chat.py` - Core chat processing logic and attachment handling
-  - `embed_utils.py` - Discord embed creation and splitting utilities
-  - `user_quotas.py` - User quota tracking and cost management system
+- **Conversation Handler**: `conversation_handler.py` - Manages threaded AI conversations
+- **Configuration**: `config_manager.py` - Centralized environment variable management
+
+### Cogs System
+All bot functionality is organized in the `/cogs/` directory as Discord.py cogs:
+- `ai_commands.py` - Main `/chat` slash command and AI interactions  
+- `image_gen.py` - DALL-E 3 image generation (`/gen` command)
+- `reminders.py` - Natural language reminder system with recurrence
+- `tasks.py` - Task management with priority and status tracking
+- `tool_calling.py` - Advanced LLM tool-calling framework
+- `ddg_search.py` - DuckDuckGo web search integration
+- `quota_management.py` - User quota management and admin commands
+- `conversation_search.py` - Search conversation history
+- `timezone_management.py` - User timezone handling
+- `api_utils.py` - API communication utilities
+
+### Tool System
+Advanced tool-calling system in `/cogs/tools/`:
+- `base_tool.py` - Base class for all tools
+- `tool_registry.py` - Tool registration and management
+- `web_search_tool.py` - Web search capabilities
+- `reminder_tool.py` - Create and manage reminders
+- `task_management_tool.py` - Task creation and updates
+- `conversation_search_tool.py` - Search past conversations
+- `discord_message_search_tool.py` - Real-time Discord search
+- `discord_user_lookup_tool.py` - User information lookup
+- `content_tool.py` - Content retrieval from URLs
+- `recurrence_tools.py` - Reminder recurrence management
+
+### Utilities
+Helper modules in `/utils/`:
+- `generic_chat.py` - Core chat processing logic
+- `embed_utils.py` - Discord embed creation and splitting
+- `attachment_handler.py` - File and image processing
+- `response_formatter.py` - Format AI responses with footnotes
+- `conversation_logger.py` - Log conversations to disk
+- `quota_validator.py` - Check and track user quotas
+- `time_parser.py` - Natural language time parsing
+- `task_manager.py` - Task backend management
+- `reminder_manager.py` - Reminder backend management
 
 ## Key Components
 
 ### Model Configuration
-The bot supports multiple AI models with different capabilities configured in `ai_commands.py`. Models include GPT-4o-mini (with image support), o3-mini, Claude 3.7 Sonnet, DeepSeek v3, Gemini 2.0 Flash Lite, Grok 2, and Mistral Large.
+The bot supports multiple AI models with different capabilities configured in `ai_commands.py`:
+- GPT-4o-mini (with image support)
+- o4-mini (latest OpenAI model)
+- Claude Sonnet 4
+- DeepSeek R1
+- Gemini 2.5 Flash
+- Grok 3
 
 **IMPORTANT**: Model configurations are hardcoded in `ai_commands.py` for performance reasons. Loading model configurations from external files would introduce unacceptable latency for Discord interactions. Any changes to model configurations must be made directly in the code and require a deployment.
 
@@ -40,6 +75,7 @@ The bot supports multiple AI models with different capabilities configured in `a
 - Message reference handling for conversation context
 - Embed splitting for Discord's character limits
 - Server emoji integration
+- Automatic thread creation for AI conversations
 
 ## Development Commands
 
@@ -50,7 +86,21 @@ pip install -r requirements.txt
 
 # Run the bot
 python discordbot.py
+
+# Run all tests
+python tests/run_all_tests.py
+
+# Run specific test suite (tool calling tests)
+python tests/test_tool_calling.py
 ```
+
+### Testing
+The bot has comprehensive test coverage for the tool-calling system:
+- `test_base_tool.py` - Base tool functionality tests
+- `test_tool_registry.py` - Tool registration tests
+- `test_web_search_tool.py` - Web search tool tests
+- `test_content_tool.py` - Content retrieval tests
+- `test_integration.py` - Full integration tests
 
 ### User Notification
 When user input is required (e.g., waiting for approval, confirmation, or manual intervention), use the following command to notify the user with an audible beep:
@@ -108,13 +158,20 @@ API calls use tenacity for retry logic. Discord interactions include proper erro
 ### Async Processing
 Heavy operations like API calls and file processing use async/await patterns to avoid blocking the Discord event loop.
 
+### Tool Development
+When creating new tools:
+1. Inherit from `BaseTool` in `/cogs/tools/base_tool.py`
+2. Implement required methods: `get_schema()`, `run()`, `_validate_params()`
+3. Register tool in `tool_calling.py` cog's `setup()` method
+4. Tools should return structured data that can be formatted for Discord
+
 ## User Quota System
 
 ### Overview
 The bot implements a monthly usage quota system to track and limit API costs per user. All users are assigned a default $1.00/month quota, with unlimited access configurable via environment variables.
 
 ### Quota Storage
-- User quotas and usage are stored in `user_quotas.json`
+- User quotas and usage are stored in `/data/user_quotas.json`
 - Data persists across bot restarts and updates
 - Monthly tracking using `YYYY-MM` format keys
 
@@ -161,9 +218,9 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 ### Current Data Files
 - User quotas (`/data/user_quotas.json`) ✅ Compliant
 - Conversation history (`/data/conversation_history.json`) ✅ Compliant
-- Reminders (`reminders.json` - should be moved to `/data/reminders.json`) ❌ Needs fixing
-- User timezones (`user_timezones.json` - should be moved to `/data/user_timezones.json`) ❌ Needs fixing
-- Any new persistent storage files must follow `/data/` pattern
+- Reminders database (`reminders.db`) ⚠️ SQLite database in root
+- Task manager state (managed in memory, no persistence yet)
+- User timezones (managed through reminder database)
 
 ### Render Hosting Context
 The `/data` directory requirement exists because:
@@ -220,6 +277,35 @@ The bot provides real-time search capabilities through existing Discord message 
 - Locating specific messages or announcements  
 - Gathering context from previous conversations
 - Research and reference lookup in server history
+
+## Task Management System
+
+The bot includes a comprehensive task management system:
+
+### Features
+- Natural language task creation through LLM tools
+- Priority levels (low, medium, high)
+- Status tracking (pending, in_progress, completed)
+- User-specific task lists
+- Integration with reminders for time-based tasks
+
+### Commands
+- `/task` - Interact with AI for task management using natural language
+- Tasks are managed through the AI conversation flow
+
+## Reminder System
+
+### Features
+- Natural language time parsing
+- Recurrence support (daily, weekly, monthly, etc.)
+- Timezone-aware scheduling
+- SQLite backend for reliability
+- Integration with task management
+
+### Storage
+- Uses SQLite database (`reminders.db`) for persistent storage
+- Handles timezone conversions automatically
+- Supports complex recurrence patterns
 
 ## Deployment
 

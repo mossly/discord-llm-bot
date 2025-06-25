@@ -307,39 +307,32 @@ Your job: Use task_management tools first for all task operations. Only use mana
                 await interaction.followup.send(embed=embed)
                 return
             
-            # Create a custom system prompt by temporarily modifying the environment
-            original_system_prompt = os.environ.get('SYSTEM_PROMPT', '')
-            os.environ['SYSTEM_PROMPT'] = task_system_prompt
+            # Process through AI with restricted tools (only task management)
+            username = interaction.user.name
+            formatted_prompt = f"{username}: {prompt}"
             
-            try:
-                # Process through AI with restricted tools (only task management)
-                username = interaction.user.name
-                formatted_prompt = f"{username}: {prompt}"
-                
-                # Use the AI processing with task management focus and restricted tools
-                await ai_commands._process_ai_request(
-                    formatted_prompt, 
-                    model or "gemini-2.5-flash-preview",  # Default model
-                    interaction=interaction, 
-                    attachments=[], 
-                    fun=False, 
-                    web_search=False, 
-                    deep_research=False, 
-                    tool_calling=True,  # Enable tools for task management
-                    max_tokens=4000,
-                    allowed_tools=[
-                        "task_management", 
-                        "weekday_recurrence", 
-                        "specific_days_recurrence", 
-                        "monthly_position_recurrence", 
-                        "multiple_times_period_recurrence", 
-                        "custom_interval_recurrence",
-                        "manage_reminders"
-                    ]  # Task management tools + reminder tool for custom task notifications
-                )
-            finally:
-                # Restore original system prompt
-                os.environ['SYSTEM_PROMPT'] = original_system_prompt
+            # Use the AI processing with task management focus and restricted tools
+            await ai_commands._process_ai_request(
+                formatted_prompt, 
+                model or "gemini-2.5-flash-preview",  # Default model
+                interaction=interaction, 
+                attachments=[], 
+                fun=False, 
+                web_search=False, 
+                deep_research=False, 
+                tool_calling=True,  # Enable tools for task management
+                max_tokens=4000,
+                allowed_tools=[
+                    "task_management", 
+                    "weekday_recurrence", 
+                    "specific_days_recurrence", 
+                    "monthly_position_recurrence", 
+                    "multiple_times_period_recurrence", 
+                    "custom_interval_recurrence",
+                    "manage_reminders"
+                ],  # Task management tools + reminder tool for custom task notifications
+                custom_system_prompt=task_system_prompt  # Pass the custom system prompt directly
+            )
                 
         except Exception as e:
             logger.error(f"Error in task chat: {e}")
