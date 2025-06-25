@@ -14,9 +14,10 @@ logger = logging.getLogger(__name__)
 class TaskManagementTool(BaseTool):
     """Tool for AI to interact with the task management system"""
     
-    def __init__(self, task_manager: TaskManager):
+    def __init__(self, task_manager: TaskManager, task_scheduler=None):
         super().__init__()
         self.task_manager = task_manager
+        self.task_scheduler = task_scheduler
         self._name = "task_management"
         self._description = "Manage tasks including creating, viewing, updating, and completing tasks for users"
         
@@ -265,6 +266,14 @@ class TaskManagementTool(BaseTool):
             
             # Get the created task to return full details
             created_task = await self.task_manager.get_task(task_id)
+            
+            # Schedule notifications immediately if scheduler is available
+            if self.task_scheduler and created_task:
+                try:
+                    await self.task_scheduler.schedule_new_task_notifications(created_task)
+                except Exception as e:
+                    logger.error(f"Error scheduling notifications for new task {task_id}: {e}")
+                    # Don't fail the task creation if notification scheduling fails
             
             return {
                 "success": True,

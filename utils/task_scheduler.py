@@ -156,6 +156,14 @@ class TaskScheduler:
             return
             
         current_time = time.time()
+        time_until_due = task.due_date - current_time
+        
+        # For very short tasks (less than 5 minutes), schedule an immediate notification
+        if time_until_due < 300:  # 5 minutes
+            # Schedule notification for 30 seconds from now to give a brief heads up
+            immediate_time = current_time + 30
+            await self._create_notification(task.id, "immediate", immediate_time)
+            logger.info(f"Scheduled immediate notification for short-duration task {task.id}")
         
         # Schedule 24h notification
         if task.notify_24h:
@@ -389,6 +397,9 @@ class TaskScheduler:
         elif notification_type == "1h":
             title = "⚠️ Task Due in 1 Hour"
             color = 0xff6b35  # Red-orange
+        elif notification_type == "immediate":
+            title = "🔔 Task Due Very Soon!"
+            color = 0x9b59b6  # Purple
         elif notification_type == "overdue":
             title = "🚨 Task is Overdue!"
             color = 0xdc3545  # Red
@@ -641,3 +652,11 @@ class TaskScheduler:
         
         # Schedule new notifications
         await self._schedule_task_notifications(task)
+        
+    async def schedule_new_task_notifications(self, task: Task):
+        """Schedule notifications for a newly created task (called immediately)"""
+        try:
+            await self._schedule_task_notifications(task)
+            logger.info(f"Scheduled notifications for new task {task.id}: {task.title}")
+        except Exception as e:
+            logger.error(f"Error scheduling notifications for new task {task.id}: {e}")
