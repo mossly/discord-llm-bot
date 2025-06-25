@@ -7,7 +7,7 @@ from discord.ext import commands
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool, DiceTool
 from .tools.task_management_tool import TaskManagementTool
 from .tools.recurrence_tools import (
     WeekdayRecurrenceTool, SpecificDaysRecurrenceTool, MonthlyPositionRecurrenceTool,
@@ -58,6 +58,10 @@ class ToolCalling(commands.Cog):
         # Reminder management tool
         reminder_tool = ReminderTool()
         self.registry.register(reminder_tool, enabled=True)
+        
+        # Dice rolling tool
+        dice_tool = DiceTool()
+        self.registry.register(dice_tool, enabled=True)
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
         

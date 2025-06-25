@@ -69,6 +69,13 @@ except ImportError:
     TASK_MANAGEMENT_AVAILABLE = False
     TaskManagementTool = None
 
+try:
+    from .dice_tool import DiceTool
+    DICE_TOOL_AVAILABLE = True
+except ImportError:
+    DICE_TOOL_AVAILABLE = False
+    DiceTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -97,3 +104,6 @@ if REMINDER_TOOL_AVAILABLE:
 
 if TASK_MANAGEMENT_AVAILABLE:
     __all__.append('TaskManagementTool')
+
+if DICE_TOOL_AVAILABLE:
+    __all__.append('DiceTool')
