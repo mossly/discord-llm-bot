@@ -236,10 +236,14 @@ class Tasks(commands.Cog):
 → IMMEDIATELY call: task_management with action="create_task"
 → Tasks automatically get reminder notifications (24h, 6h, 1h before due)
 
-**When user reports task completion (e.g., "I hung the laundry", "I did X"):**
-→ IMMEDIATELY look at the Current Task Context above to find the matching task
-→ Use task_management with action="complete_task" and the task_id from context
-→ If no matching task in context, ask if they want to create a completed task for tracking
+**When user reports task completion (e.g., "I hung the laundry", "I did X", "I finished Y"):**
+→ CRITICAL: Past tense = task completion! Look for these patterns:
+   • "I hung/did/finished/completed/washed/cleaned..." = COMPLETION
+   • "I've done..." / "I just..." = COMPLETION
+→ IMMEDIATELY scan the Current Task Context for ANY matching pending task
+→ If found: Use task_management with action="complete_task" and the task_id
+→ Match broadly: "hung laundry" matches "hang the laundry", "did dishes" matches "wash dishes"
+→ If no match: Acknowledge their work without creating a new task
 
 **When user wants custom reminder times for a task:**
 → First: Create the task with task_management  
@@ -262,15 +266,26 @@ class Tasks(commands.Cog):
 ⚡ IMMEDIATE ACTION TRIGGERS:
 - "what tasks" / "my tasks" / "show tasks" → task_management: list_user_tasks
 - "create task" / "add task" / "new task" → task_management: create_task
-- "complete task" / "done with task" / "mark as complete" / "I did X" → task_management: complete_task
+- "complete task" / "done with task" / "mark as complete" → task_management: complete_task
+- "I did/hung/finished/completed X" → task_management: complete_task (IMPLICIT!)
 - "remind me about task at [time]" → manage_reminders (after ensuring task exists)
+
+🧠 IMPLICIT COMPLETION DETECTION:
+When users use PAST TENSE without saying "complete", they're reporting completion!
+- "I hung the laundry" = Find & complete "hang the laundry" task
+- "I washed the dishes" = Find & complete "wash dishes" task  
+- "Just finished the report" = Find & complete report-related task
+ALWAYS check Current Task Context for matches when you see past tense!
 
 📝 EXAMPLES:
 
 ✅ CORRECT USAGE:
 - User: "What tasks do I have?" → Use task_management: list_user_tasks
 - User: "Create task to review reports" → Use task_management: create_task
-- User: "I hung the laundry out, mark as complete" → Use task_management: complete_task (search for laundry task first)
+- User: "I hung the laundry out, mark as complete" → Use task_management: complete_task
+- User: "I hung the laundry" → ALSO use task_management: complete_task (implicit!)
+- User: "I finished the dishes" → Find "wash dishes" task and complete it
+- User: "Just completed the report" → Find "review reports" task and complete it
 - User: "Task due tomorrow, remind me at 8pm" → task_management + manage_reminders
 
 ❌ WRONG USAGE:
