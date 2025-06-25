@@ -70,6 +70,9 @@ class ChatRequest:
     reply_footer: Optional[str] = None
     create_thread: bool = False
     
+    # Custom system prompt override
+    custom_system_prompt: Optional[str] = None
+    
     def __post_init__(self):
         """Validate chat request parameters"""
         if not self.prompt.strip():

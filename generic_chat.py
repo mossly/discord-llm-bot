@@ -257,7 +257,8 @@ async def perform_chat_query_with_tools(
     max_iterations: int = 10,
     interaction=None,
     username: str = None,
-    allowed_tools: Optional[list] = None
+    allowed_tools: Optional[list] = None,
+    custom_system_prompt: Optional[str] = None
 ) -> tuple[str, float, str]:
     """Legacy function signature - maintained for backward compatibility"""
     from utils.chat_data_classes import ChatRequest, APIConfig, ToolConfig
@@ -289,7 +290,8 @@ async def perform_chat_query_with_tools(
         web_search=False,  # Handled by tools now
         interaction=interaction,
         username=username,
-        reply_footer=reply_footer
+        reply_footer=reply_footer,
+        custom_system_prompt=custom_system_prompt
     )
     
     return await perform_chat_query_with_tools_enhanced(request, api_cog, tool_cog, duck_cog)
@@ -342,7 +344,11 @@ async def perform_chat_query_with_tools_enhanced(
         return await perform_chat_query_enhanced(request, api_cog, duck_cog)
     
     # Build initial conversation with Discord context
-    base_system_prompt = api_cog.FUN_SYSTEM_PROMPT if request.use_fun else api_cog.SYSTEM_PROMPT
+    # Use custom system prompt if provided, otherwise use default
+    if request.custom_system_prompt:
+        base_system_prompt = request.custom_system_prompt
+    else:
+        base_system_prompt = api_cog.FUN_SYSTEM_PROMPT if request.use_fun else api_cog.SYSTEM_PROMPT
     
     # Add Discord context to system prompt
     discord_context = ""
