@@ -49,7 +49,7 @@ class Tasks(commands.Cog):
         
         tool_calling_cog = self.bot.get_cog("ToolCalling")
         if tool_calling_cog:
-            tool_calling_cog.register_task_management_tool(self.task_manager)
+            tool_calling_cog.register_task_management_tool(self.task_manager, self.task_scheduler)
             logger.info("Successfully registered task management tool with ToolCalling cog")
         else:
             logger.error("ToolCalling cog not found after waiting - task management tools will not be available!")

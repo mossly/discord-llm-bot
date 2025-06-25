@@ -61,9 +61,9 @@ class ToolCalling(commands.Cog):
         
         logger.info(f"Initialized {len(self.registry.list_tools())} tools")
         
-    def register_task_management_tool(self, task_manager):
+    def register_task_management_tool(self, task_manager, task_scheduler=None):
         """Register task management tool with the provided task manager"""
-        task_tool = TaskManagementTool(task_manager)
+        task_tool = TaskManagementTool(task_manager, task_scheduler)
         self.registry.register(task_tool, enabled=True)
         
         # Register specialized recurrence tools
