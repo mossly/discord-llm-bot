@@ -39,7 +39,7 @@ class Tasks(commands.Cog):
         await self.task_scheduler.start()
         
         # Defer tool registration to ensure ToolCalling cog is loaded
-        self.bot.loop.create_task(self._register_tools_when_ready())
+        asyncio.create_task(self._register_tools_when_ready())
         
         logger.info("Tasks cog loaded successfully")
         
