@@ -156,14 +156,11 @@ class TaskScheduler:
             return
             
         current_time = time.time()
-        time_until_due = task.due_date - current_time
         
-        # For very short tasks (less than 5 minutes), schedule an immediate notification
-        if time_until_due < 300:  # 5 minutes
-            # Schedule notification for 30 seconds from now to give a brief heads up
-            immediate_time = current_time + 30
-            await self._create_notification(task.id, "immediate", immediate_time)
-            logger.info(f"Scheduled immediate notification for short-duration task {task.id}")
+        # Always schedule a "due now" notification at the exact due time
+        if task.due_date > current_time:
+            await self._create_notification(task.id, "due_now", task.due_date)
+            logger.info(f"Scheduled due-now notification for task {task.id} at due time")
         
         # Schedule 24h notification
         if task.notify_24h:
@@ -397,9 +394,9 @@ class TaskScheduler:
         elif notification_type == "1h":
             title = "⚠️ Task Due in 1 Hour"
             color = 0xff6b35  # Red-orange
-        elif notification_type == "immediate":
-            title = "🔔 Task Due Very Soon!"
-            color = 0x9b59b6  # Purple
+        elif notification_type == "due_now":
+            title = "⏰ Task is Due Now!"
+            color = 0xf39c12  # Golden yellow
         elif notification_type == "overdue":
             title = "🚨 Task is Overdue!"
             color = 0xdc3545  # Red
@@ -539,12 +536,23 @@ class TaskScheduler:
                     # Check if we need to send another overdue notification
                     notification_key = f"overdue_{task.id}"
                     last_sent = self.last_notifications.get(notification_key, 0)
+                    time_overdue = current_time - task.due_date
                     
-                    # Send overdue notifications based on escalation hours
-                    escalation_interval = task.overdue_escalation_hours * 3600
-                    if current_time - last_sent >= escalation_interval:
-                        await self._create_notification(task.id, "overdue", current_time)
-                        self.last_notifications[notification_key] = current_time
+                    # Progressive overdue notifications:
+                    # - First notification: 1 hour after due
+                    # - Subsequent notifications: every 24 hours
+                    if last_sent == 0:
+                        # No previous overdue notification sent
+                        if time_overdue >= 3600:  # 1 hour overdue
+                            await self._create_notification(task.id, "overdue", current_time)
+                            self.last_notifications[notification_key] = current_time
+                            logger.info(f"Sent first overdue notification for task {task.id} (1h overdue)")
+                    else:
+                        # Previous notification sent, check if 24h have passed
+                        if current_time - last_sent >= 86400:  # 24 hours since last notification
+                            await self._create_notification(task.id, "overdue", current_time)
+                            self.last_notifications[notification_key] = current_time
+                            logger.info(f"Sent recurring overdue notification for task {task.id} (24h interval)")
                         
         except Exception as e:
             logger.error(f"Error updating overdue tasks: {e}")
