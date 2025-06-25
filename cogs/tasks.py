@@ -243,7 +243,8 @@ class Tasks(commands.Cog):
 
 **When user wants to create a task:**
 → IMMEDIATELY call: task_management with action="create_task"
-→ Tasks automatically get reminder notifications (24h, 6h, 1h before due)
+→ Tasks automatically get reminder notifications (24h, 6h, 1h before due, and when due)
+→ Overdue tasks get notifications (1h after due, then every 24h until completed)
 
 **When user reports task completion (e.g., "I hung the laundry", "I did X", "I finished Y"):**
 → CRITICAL: Past tense = task completion! Look for these patterns:
@@ -303,7 +304,7 @@ ALWAYS check Current Task Context for matches when you see past tense!
 - User: "Remind me to call mom" → DON'T handle this (send to /reminder command)
 
 🔄 AUTOMATIC TASK NOTIFICATIONS:
-All tasks automatically get backup reminders at 24h, 6h, 1h before due date. You don't need to create these manually.
+All tasks automatically get reminders at 24h, 6h, 1h before due, when due, and progressive overdue notifications (1h after due, then every 24h). You don't need to create these manually.
 
 ⚠️ IMPORTANT RULES:
 - ALWAYS use tools immediately for task operations
