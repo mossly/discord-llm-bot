@@ -38,12 +38,21 @@ class Tasks(commands.Cog):
         self.task_scheduler = TaskScheduler(self.bot, self.task_manager, self.background_task_manager)
         await self.task_scheduler.start()
         
-        # Register task management tool with tool calling cog
+        # Defer tool registration to ensure ToolCalling cog is loaded
+        self.bot.loop.create_task(self._register_tools_when_ready())
+        
+        logger.info("Tasks cog loaded successfully")
+        
+    async def _register_tools_when_ready(self):
+        """Register tools after a short delay to ensure all cogs are loaded"""
+        await asyncio.sleep(0.5)  # Short delay to ensure all cogs are loaded
+        
         tool_calling_cog = self.bot.get_cog("ToolCalling")
         if tool_calling_cog:
             tool_calling_cog.register_task_management_tool(self.task_manager)
-        
-        logger.info("Tasks cog loaded successfully")
+            logger.info("Successfully registered task management tool with ToolCalling cog")
+        else:
+            logger.error("ToolCalling cog not found after waiting - task management tools will not be available!")
         
     async def cog_unload(self):
         """Cleanup when the cog unloads"""
