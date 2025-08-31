@@ -563,12 +563,12 @@ class ImageGen(commands.Cog):
     @app_commands.describe(
         prompt="The prompt for the image",
         model="Choose the image generation model",
-        quality="Image quality level",
-        orientation="Choose the image orientation (Square, Landscape, or Portrait)",
+        quality="Image quality level (only for GPT-image-1 and DALL-E)",
+        orientation="Choose the image orientation (only for GPT-image-1 and DALL-E)",
         attachment1="First input image (required if using images)",
         attachment2="Second input image (optional)",
         attachment3="Third input image (optional)",
-        image_mode="How to use the attached images (only for GPT-image-1 and Gemini)",
+        image_mode="How to use the attached images (only for GPT-image-1)",
         streaming="Enable partial image streaming (GPT-image-1 only)"
     )
     async def gen(
@@ -835,37 +835,38 @@ class ImageEditModal(discord.ui.Modal):
         max_length=1000
     )
     
-    image_mode = discord.ui.TextInput(
-        label='Image Mode (input/edit)',
-        placeholder='input',
-        default='input',
-        required=False,
-        max_length=10
-    )
+    # Commented out redundant fields - most models ignore these parameters
+    # image_mode = discord.ui.TextInput(
+    #     label='Image Mode (input/edit)',
+    #     placeholder='input',
+    #     default='input',
+    #     required=False,
+    #     max_length=10
+    # )
     
-    orientation = discord.ui.TextInput(
-        label='Orientation (Square/Landscape/Portrait)',
-        placeholder='Square',
-        default='Square',
-        required=False,
-        max_length=20
-    )
+    # orientation = discord.ui.TextInput(
+    #     label='Orientation (Square/Landscape/Portrait)',
+    #     placeholder='Square',
+    #     default='Square',
+    #     required=False,
+    #     max_length=20
+    # )
     
-    quality = discord.ui.TextInput(
-        label='Quality (low/high)',
-        placeholder='high',
-        default='high',
-        required=False,
-        max_length=10
-    )
+    # quality = discord.ui.TextInput(
+    #     label='Quality (low/high)',
+    #     placeholder='high',
+    #     default='high',
+    #     required=False,
+    #     max_length=10
+    # )
     
-    model = discord.ui.TextInput(
-        label='Model',
-        placeholder='gemini-2.5-flash-image-preview:free',
-        default='gemini-2.5-flash-image-preview:free',
-        required=False,
-        max_length=50
-    )
+    # model = discord.ui.TextInput(
+    #     label='Model',
+    #     placeholder='gemini-2.5-flash-image-preview:free',
+    #     default='gemini-2.5-flash-image-preview:free',
+    #     required=False,
+    #     max_length=50
+    # )
     
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -879,28 +880,15 @@ class ImageEditModal(discord.ui.Modal):
             await interaction.followup.send("No images found in the original message.")
             return
         
-        # Get the model early to validate image support
-        model_str = self.model.value.strip() or "gemini-2.5-flash-image-preview:free"
-        
-        # Validate model selection
-        valid_models = ["gemini-2.5-flash-image-preview:free", "gemini-2.5-flash-image-preview", "dall-e-3", "gpt-image-1"]
-        if model_str not in valid_models:
-            model_str = "gemini-2.5-flash-image-preview:free"  # Default to free Gemini if invalid
-        
-        # Check if model supports image inputs
-        if model_str == "dall-e-3":
-            await interaction.followup.send("DALL-E 3 doesn't support image inputs. Please use GPT-image-1 or Gemini models for image-based generation.")
-            return
+        # Use hardcoded defaults since fields are commented out
+        model_str = "gemini-2.5-flash-image-preview:free"  # Default to free Gemini model
         
         # Check user quota before generating image (after we know how many images)
         remaining_quota = quota_manager.get_remaining_quota(user_id)
         num_input_images = len(image_inputs)
         
-        # Get quality setting
-        quality_str = self.quality.value.strip().lower() or "high"
-        # Validate quality options - two-tier system
-        if quality_str not in ("low", "high"):
-            quality_str = "high"  # Default to high if invalid
+        # Use hardcoded defaults since fields are commented out
+        quality_str = "high"
         
         # Estimate cost based on quality and multi-image operations
         base_cost = 0.20 if quality_str == "high" else 0.06
@@ -916,9 +904,9 @@ class ImageEditModal(discord.ui.Modal):
             return
             
         start_time = time.time()
-        # model_str already set and validated above
-        orientation_str = self.orientation.value.strip().title() or "Square"
-        image_mode_str = self.image_mode.value.strip().lower() or "input"
+        # Use hardcoded defaults since fields are commented out
+        orientation_str = "Square"
+        image_mode_str = "input"
             
         # Only GPT-image-1 supports streaming
         use_streaming = model_str == "gpt-image-1"
