@@ -565,8 +565,10 @@ class ImageGen(commands.Cog):
         model="Choose the image generation model",
         quality="Image quality level",
         orientation="Choose the image orientation (Square, Landscape, or Portrait)",
-        attachment="Optional input image",
-        image_mode="How to use the attached image (only for GPT-image-1)",
+        attachment1="First input image (required if using images)",
+        attachment2="Second input image (optional)",
+        attachment3="Third input image (optional)",
+        image_mode="How to use the attached images (only for GPT-image-1 and Gemini)",
         streaming="Enable partial image streaming (GPT-image-1 only)"
     )
     async def gen(
@@ -576,7 +578,9 @@ class ImageGen(commands.Cog):
         model: Literal["gemini-2.5-flash-image-preview:free", "gemini-2.5-flash-image-preview", "dall-e-3", "gpt-image-1"] = "gemini-2.5-flash-image-preview:free",
         quality: Literal["low", "high"] = "high",
         orientation: Literal["Square", "Landscape", "Portrait"] = "Square",
-        attachment: Optional[discord.Attachment] = None,
+        attachment1: Optional[discord.Attachment] = None,
+        attachment2: Optional[discord.Attachment] = None,
+        attachment3: Optional[discord.Attachment] = None,
         image_mode: Literal["input", "edit"] = "input",
         streaming: bool = False
     ):
@@ -626,12 +630,12 @@ class ImageGen(commands.Cog):
         image_inputs = []
         is_edit = False
         
-        # Collect all image attachments from the interaction message
-        # Note: We need to get the message after the interaction to see all attachments
+        # Collect all image attachments from the slash command parameters
+        attachments = [attachment1, attachment2, attachment3]
+        attachments = [att for att in attachments if att is not None]  # Filter out None values
+        
         try:
-            # Get the original message that triggered this slash command
-            # For slash commands, we need to check if there are additional attachments
-            if attachment:
+            for attachment in attachments:
                 if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
                     if model not in ["gpt-image-1", "gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
                         await interaction.followup.send("Image attachments are only supported with GPT-image-1 and Gemini models. DALL-E models generate images from text prompts only.")
@@ -651,22 +655,6 @@ class ImageGen(commands.Cog):
                     await interaction.followup.send("Please attach a valid image file (PNG, JPG, JPEG, or WebP).")
                     return
             
-            # Check for additional images in the message (Discord allows up to 10 attachments)
-            # We need to fetch the actual message to see all attachments
-            if interaction.message and hasattr(interaction.message, 'attachments'):
-                for att in interaction.message.attachments:
-                    if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and att != attachment:
-                        if model not in ["gpt-image-1", "gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
-                            continue  # Skip additional images for non-supported models
-                        try:
-                            additional_bytes = await att.read()
-                            additional_input = io.BytesIO(additional_bytes)
-                            additional_input.name = att.filename
-                            image_inputs.append(additional_input)
-                            logger.info(f"Added additional image: {att.filename}")
-                        except Exception as e:
-                            logger.error(f"Error reading additional attachment {att.filename}: {e}")
-                            
         except Exception as e:
             logger.error(f"Error processing attachments: {e}")
             
@@ -736,6 +724,10 @@ class ImageGen(commands.Cog):
             usage_info=usage_info
         )
 
+        # Process all images and combine into a single response
+        files = []
+        embeds = []
+        
         for idx, url in enumerate(result_urls):
             try:
                 if url.startswith("data:image/"):
@@ -748,20 +740,27 @@ class ImageGen(commands.Cog):
                         async with session.get(url) as resp:
                             if resp.status != 200:
                                 logger.error("Failed to fetch image from URL: %s", url)
-                                await interaction.followup.send("Failed to retrieve image!")
                                 continue
                             image_data = await resp.read()
+                            
+                file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
+                embed = discord.Embed(title="", description=prompt, color=0x32a956)
+                embed.set_image(url=f"attachment://generated_image_{idx}.png")
+                if idx == 0:  # Only add footer to first embed
+                    embed.set_footer(text=footer_text)
+                
+                files.append(file)
+                embeds.append(embed)
+                logger.info("Processed generated image for URL: %s", url[:50] + "..." if len(url) > 50 else url)
             except Exception as e:
                 logger.exception("Error processing image from URL: %s", url)
-                await interaction.followup.send(f"Error processing image: {e}")
                 continue
-
-            file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
-            embed = discord.Embed(title="", description=prompt, color=0x32a956)
-            embed.set_image(url=f"attachment://generated_image_{idx}.png")
-            embed.set_footer(text=footer_text)
-            await interaction.followup.send(file=file, embed=embed)
-            logger.info("Sent generated image embed for URL: %s", url[:50] + "..." if len(url) > 50 else url)
+        
+        if files:
+            # Send all images in a single message
+            await interaction.followup.send(files=files, embeds=embeds)
+        else:
+            await interaction.followup.send("Failed to process generated images.")
 
         logger.info("Image generation command completed in %s seconds", generation_time)
 
@@ -870,7 +869,7 @@ class ImageEditModal(discord.ui.Modal):
     
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
         
         user_id = str(interaction.user.id)
         
@@ -1005,6 +1004,10 @@ class ImageEditModal(discord.ui.Modal):
             usage_info=usage_info
         )
         
+        # Process all images and combine into a single response
+        files = []
+        embeds = []
+        
         for idx, url in enumerate(result_urls):
             try:
                 if url.startswith("data:image/"):
@@ -1017,20 +1020,27 @@ class ImageEditModal(discord.ui.Modal):
                         async with session.get(url) as resp:
                             if resp.status != 200:
                                 logger.error("Failed to fetch image from URL: %s", url)
-                                await interaction.followup.send("Failed to retrieve image!")
                                 continue
                             image_data = await resp.read()
+                            
+                file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
+                embed = discord.Embed(title="", description=self.prompt.value, color=0x32a956)
+                embed.set_image(url=f"attachment://generated_image_{idx}.png")
+                if idx == 0:  # Only add footer to first embed
+                    embed.set_footer(text=footer_text)
+                
+                files.append(file)
+                embeds.append(embed)
+                logger.info("Processed generated image for URL: %s", url[:50] + "..." if len(url) > 50 else url)
             except Exception as e:
                 logger.exception("Error processing image from URL: %s", url)
-                await interaction.followup.send(f"Error processing image: {e}")
                 continue
-                
-            file = discord.File(io.BytesIO(image_data), filename=f"generated_image_{idx}.png")
-            embed = discord.Embed(title="", description=self.prompt.value, color=0x32a956)
-            embed.set_image(url=f"attachment://generated_image_{idx}.png")
-            embed.set_footer(text=footer_text)
-            await interaction.followup.send(file=file, embed=embed)
-            logger.info("Sent generated image embed for URL: %s", url[:50] + "..." if len(url) > 50 else url)
+        
+        if files:
+            # Send all images in a single message
+            await interaction.followup.send(files=files, embeds=embeds)
+        else:
+            await interaction.followup.send("Failed to process generated images.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ImageGen(bot))
