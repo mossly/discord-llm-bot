@@ -99,19 +99,21 @@ class ImageGen(commands.Cog):
         else:
             footer_parts.append(model)
         
-        # Quality
-        if quality in ("high", "hd"):
-            footer_parts.append("High Quality")
-        elif quality in ("standard", "medium", "low"):
-            footer_parts.append("Low Quality")
+        # Quality (only for GPT-image-1 and DALL-E models)
+        if model not in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            if quality in ("high", "hd"):
+                footer_parts.append("High Quality")
+            elif quality in ("standard", "medium", "low"):
+                footer_parts.append("Low Quality")
         
-        # Orientation
-        if size == "1536x1024" or size == "1792x1024":
-            footer_parts.append("Landscape")
-        elif size == "1024x1536" or size == "1024x1792":
-            footer_parts.append("Portrait")
-        elif size == "1024x1024":
-            footer_parts.append("Square")
+        # Orientation (only for GPT-image-1 and DALL-E models)
+        if model not in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            if size == "1536x1024" or size == "1792x1024":
+                footer_parts.append("Landscape")
+            elif size == "1024x1536" or size == "1024x1792":
+                footer_parts.append("Portrait")
+            elif size == "1024x1024":
+                footer_parts.append("Square")
         
         # Mode (if using input images)
         if image_inputs:
