@@ -14,14 +14,15 @@ DEFAULT_MODEL = "deepseek-r1-0528-free"
 
 # Model type definition
 ModelChoices = Literal[
-    "gpt-4o-mini",
-    "o4-mini", 
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-nano",
     "claude-sonnet-4",
     "deepseek-r1-0528",
     "deepseek-r1-0528-free",
     "gemini-2.5-pro-preview",
     "gemini-2.5-flash-lite",
-    "grok-3-beta",
+    "grok-4",
     "dolphin-mistral-24b-venice"
 ]
 
@@ -30,23 +31,33 @@ ModelChoices = Literal[
 #   - For OpenRouter API: use "provider/model" format (e.g., "anthropic/claude-3", "google/gemini-2.0")
 #   - For OpenAI API: use just the model name (e.g., "gpt-4o-mini", "o1-preview")
 MODELS_CONFIG = {
-    "gpt-4o-mini": {
-        "name": "GPT-4o-mini",
-        "default_footer": "GPT-4o-mini",
-        "api_model": "gpt-4o-mini",
+    "gpt-5": {
+        "name": "GPT-5",
+        "default_footer": "GPT-5",
+        "api_model": "openai/gpt-5",
         "supports_images": True,
         "supports_tools": True,
-        "api": "openai",
+        "api": "openrouter",
         "enabled": True,
         "admin_only": False
     },
-    "o4-mini": {
-        "name": "o4-mini",
-        "default_footer": "o4-mini", 
-        "api_model": "o4-mini",
+    "gpt-5-mini": {
+        "name": "GPT-5 Mini",
+        "default_footer": "GPT-5 Mini",
+        "api_model": "openai/gpt-5-mini",
         "supports_images": True,
         "supports_tools": True,
-        "api": "openai",
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "gpt-5-nano": {
+        "name": "GPT-5 Nano",
+        "default_footer": "GPT-5 Nano",
+        "api_model": "openai/gpt-5-nano",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
         "enabled": True,
         "admin_only": False
     },
@@ -90,10 +101,10 @@ MODELS_CONFIG = {
         "enabled": True,
         "admin_only": False
     },
-    "grok-3-beta": {
-        "name": "Grok 3",
-        "default_footer": "Grok 3",
-        "api_model": "x-ai/grok-3-beta",
+    "grok-4": {
+        "name": "Grok 4",
+        "default_footer": "Grok 4",
+        "api_model": "x-ai/grok-4",
         "supports_images": True,
         "supports_tools": True,
         "api": "openrouter",
