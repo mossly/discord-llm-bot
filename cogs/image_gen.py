@@ -860,6 +860,14 @@ class ImageEditModal(discord.ui.Modal):
         max_length=10
     )
     
+    model = discord.ui.TextInput(
+        label='Model',
+        placeholder='gemini-2.5-flash-image-preview:free',
+        default='gemini-2.5-flash-image-preview:free',
+        required=False,
+        max_length=50
+    )
+    
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -870,6 +878,19 @@ class ImageEditModal(discord.ui.Modal):
         image_inputs = await self.image_cog.extract_images_from_message(self.original_message)
         if not image_inputs:
             await interaction.followup.send("No images found in the original message.")
+            return
+        
+        # Get the model early to validate image support
+        model_str = self.model.value.strip() or "gemini-2.5-flash-image-preview:free"
+        
+        # Validate model selection
+        valid_models = ["gemini-2.5-flash-image-preview:free", "gemini-2.5-flash-image-preview", "dall-e-3", "gpt-image-1"]
+        if model_str not in valid_models:
+            model_str = "gemini-2.5-flash-image-preview:free"  # Default to free Gemini if invalid
+        
+        # Check if model supports image inputs
+        if model_str == "dall-e-3":
+            await interaction.followup.send("DALL-E 3 doesn't support image inputs. Please use GPT-image-1 or Gemini models for image-based generation.")
             return
         
         # Check user quota before generating image (after we know how many images)
@@ -896,10 +917,12 @@ class ImageEditModal(discord.ui.Modal):
             return
             
         start_time = time.time()
-        model_str = "gpt-image-1"
+        # model_str already set and validated above
         orientation_str = self.orientation.value.strip().title() or "Square"
         image_mode_str = self.image_mode.value.strip().lower() or "input"
-        use_streaming = True
+            
+        # Only GPT-image-1 supports streaming
+        use_streaming = model_str == "gpt-image-1"
         
         # Map quality to API format
         if model_str == "gpt-image-1":
@@ -910,7 +933,15 @@ class ImageEditModal(discord.ui.Modal):
             api_quality = "hd" if quality_str == "high" else "standard"
         
         # Different size support for different models
-        if model_str == "gpt-image-1":
+        if model_str in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            # Gemini supports: 1024x1024, 1536x1024, 1024x1536
+            if orientation_str == "Landscape":
+                size = "1536x1024"
+            elif orientation_str == "Portrait":
+                size = "1024x1536"
+            else:
+                size = "1024x1024"
+        elif model_str == "gpt-image-1":
             # GPT-image-1 supports: 1024x1024, 1024x1536, 1536x1024, auto
             if orientation_str == "Landscape":
                 size = "1536x1024"
@@ -935,7 +966,8 @@ class ImageEditModal(discord.ui.Modal):
                 result_urls, usage_info = await self.image_cog.generate_image_streaming(
                     self.prompt.value, api_quality, size, model_str, image_inputs, is_edit, interaction
                 )
-                # Continue with normal flow to ensure image is properly sent
+                # Streaming already sends the final image, so we can return early
+                return
             else:
                 result_urls, usage_info = await self.image_cog.generate_image(self.prompt.value, api_quality, size, model_str, image_inputs, is_edit)
         except Exception as e:
