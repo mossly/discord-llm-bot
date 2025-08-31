@@ -502,25 +502,62 @@ class ImageGen(commands.Cog):
         image_urls = []
         if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
             # Handle Gemini chat completion response with image
+            print(f"[DEBUG] Gemini response type: {type(response)}")
+            print(f"[DEBUG] Gemini response attributes: {dir(response)}")
+            
             if hasattr(response, 'choices') and response.choices:
-                for choice in response.choices:
+                print(f"[DEBUG] Found {len(response.choices)} choices")
+                for i, choice in enumerate(response.choices):
+                    print(f"[DEBUG] Choice {i} type: {type(choice)}")
+                    print(f"[DEBUG] Choice {i} attributes: {dir(choice)}")
+                    
                     if hasattr(choice, 'message') and choice.message:
+                        print(f"[DEBUG] Message type: {type(choice.message)}")
+                        print(f"[DEBUG] Message attributes: {dir(choice.message)}")
+                        
                         content = choice.message.content
-                        # Gemini returns images as markdown links or base64 data
-                        if content:
+                        print(f"[DEBUG] Message content type: {type(content)}")
+                        print(f"[DEBUG] Message content: {content}")
+                        
+                        # Check if content is a list (multimodal response)
+                        if isinstance(content, list):
+                            print(f"[DEBUG] Content is a list with {len(content)} items")
+                            for j, item in enumerate(content):
+                                print(f"[DEBUG] Content item {j}: {type(item)} - {item}")
+                                if isinstance(item, dict):
+                                    if item.get('type') == 'image_url':
+                                        url = item.get('image_url', {}).get('url', '')
+                                        if url:
+                                            image_urls.append(url)
+                                    elif 'image' in str(item).lower():
+                                        # Look for any image-related data in the item
+                                        item_str = str(item)
+                                        import re
+                                        # Look for data URLs or other image references
+                                        data_url_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
+                                        matches = re.findall(data_url_pattern, item_str)
+                                        image_urls.extend(matches)
+                        
+                        # Original text-based parsing as fallback
+                        elif isinstance(content, str):
+                            print(f"[DEBUG] Processing text content...")
                             # Extract image URLs from markdown format ![](url)
                             import re
                             image_pattern = r'!\[.*?\]\((.*?)\)'
                             matches = re.findall(image_pattern, content)
                             for match in matches:
-                                if match.startswith('data:image'):
-                                    image_urls.append(match)
-                                else:
-                                    image_urls.append(match)
+                                image_urls.append(match)
+                            
+                            # Look for data URLs directly in the text
+                            data_url_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
+                            data_matches = re.findall(data_url_pattern, content)
+                            image_urls.extend(data_matches)
                             
                             # If no markdown images found, check if content itself is a data URL
                             if not image_urls and content.startswith('data:image'):
                                 image_urls.append(content)
+            
+            print(f"[DEBUG] Final image_urls found: {len(image_urls)} images")
         elif hasattr(response, 'data') and response.data:
             for data in response.data:
                 if hasattr(data, 'url') and data.url:
