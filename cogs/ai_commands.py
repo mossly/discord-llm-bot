@@ -10,7 +10,7 @@ import os
 logger = logging.getLogger(__name__)
 
 # Default model to use as fallback
-DEFAULT_MODEL = "gemini-2.5-flash-preview"
+DEFAULT_MODEL = "deepseek-r1-0528-free"
 
 # Model type definition
 ModelChoices = Literal[
@@ -18,9 +18,11 @@ ModelChoices = Literal[
     "o4-mini", 
     "claude-sonnet-4",
     "deepseek-r1-0528",
+    "deepseek-r1-0528-free",
     "gemini-2.5-pro-preview",
-    "gemini-2.5-flash-preview",
-    "grok-3-beta"
+    "gemini-2.5-flash-lite",
+    "grok-3-beta",
+    "dolphin-mistral-24b-venice"
 ]
 
 # Hardcoded models configuration
@@ -78,10 +80,10 @@ MODELS_CONFIG = {
         "enabled": True,
         "admin_only": False
     },
-    "gemini-2.5-flash-preview": {
-        "name": "Gemini 2.5 Flash",
-        "default_footer": "Gemini 2.5 Flash",
-        "api_model": "google/gemini-2.5-flash-preview-05-20:thinking",
+    "gemini-2.5-flash-lite": {
+        "name": "Gemini 2.5 Flash Lite",
+        "default_footer": "Gemini 2.5 Flash Lite",
+        "api_model": "google/gemini-2.5-flash-lite-preview-06-17",
         "supports_images": True,
         "supports_tools": True,
         "api": "openrouter",
@@ -93,6 +95,26 @@ MODELS_CONFIG = {
         "default_footer": "Grok 3",
         "api_model": "x-ai/grok-3-beta",
         "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "dolphin-mistral-24b-venice": {
+        "name": "Dolphin Mistral 24B Venice",
+        "default_footer": "Dolphin Mistral 24B Venice",
+        "api_model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+        "supports_images": False,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "deepseek-r1-0528-free": {
+        "name": "DeepSeek R1 Free",
+        "default_footer": "DeepSeek R1 Free",
+        "api_model": "deepseek/deepseek-r1-0528:free",
+        "supports_images": False,
         "supports_tools": True,
         "api": "openrouter",
         "enabled": True,
