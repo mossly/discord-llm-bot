@@ -454,9 +454,7 @@ class ImageGen(commands.Cog):
                             }
                         ],
                         modalities=["image", "text"],  # Request image generation
-                        max_tokens=1500,  # Each image is about 1290 tokens
-                        # Test: Try adding size parameter to see if Gemini supports it
-                        size=img_size
+                        max_tokens=1500  # Each image is about 1290 tokens
                     )
                 )
             else:
