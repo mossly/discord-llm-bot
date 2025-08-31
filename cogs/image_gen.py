@@ -26,7 +26,13 @@ class ImageGen(commands.Cog):
         
     def calculate_image_cost(self, model: str, size: str, quality: str = "high", is_edit: bool = False) -> float:
         """Calculate the cost of image generation based on model and parameters"""
-        if model == "dall-e-3":
+        if model == "gemini-2.5-flash-image-preview:free":
+            # Free version has no cost
+            return 0.0
+        elif model == "gemini-2.5-flash-image-preview":
+            # Gemini 2.5 Flash Image costs $0.039 per image according to OpenRouter
+            return 0.039
+        elif model == "dall-e-3":
             if quality == "hd":
                 return 0.08  # HD quality
             else:
@@ -80,7 +86,11 @@ class ImageGen(commands.Cog):
         footer_parts = []
         
         # Model name
-        if model == "gpt-image-1":
+        if model == "gemini-2.5-flash-image-preview:free":
+            footer_parts.append("Gemini 2.5 Flash Image (Free)")
+        elif model == "gemini-2.5-flash-image-preview":
+            footer_parts.append("Gemini 2.5 Flash Image")
+        elif model == "gpt-image-1":
             footer_parts.append("GPT-image-1")
         elif model == "dall-e-3":
             footer_parts.append("DALL·E 3")
@@ -340,9 +350,17 @@ class ImageGen(commands.Cog):
         
         loop = asyncio.get_running_loop()
         
-        # Always use OpenAI API for both DALL-E and GPT-image-1
-        client = self.openai_client
-        api_model = model
+        # Choose client based on model
+        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            client = self.openrouter_client
+            if model == "gemini-2.5-flash-image-preview:free":
+                api_model = "google/gemini-2.5-flash-image-preview:free"
+            else:
+                api_model = "google/gemini-2.5-flash-image-preview"
+        else:
+            # Use OpenAI API for DALL-E and GPT-image-1
+            client = self.openai_client
+            api_model = model
         
         if image_inputs and is_edit and model == "gpt-image-1":
             # Image editing with GPT-image-1 - use first image for editing
@@ -395,6 +413,48 @@ class ImageGen(commands.Cog):
                             n=1,
                         )
                     )
+            elif model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+                # Gemini model using OpenRouter's OpenAI-compatible API
+                # Build message content with image inputs if provided
+                if image_inputs:
+                    # Include input images in the message
+                    content_parts = [{"type": "text", "text": img_prompt}]
+                    for img_input in image_inputs:
+                        img_input.seek(0)
+                        img_bytes = img_input.read()
+                        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                        # Determine MIME type
+                        filename = getattr(img_input, 'name', 'image.png').lower()
+                        if filename.endswith('.jpg') or filename.endswith('.jpeg'):
+                            mime_type = 'image/jpeg'
+                        elif filename.endswith('.webp'):
+                            mime_type = 'image/webp'
+                        else:
+                            mime_type = 'image/png'
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{img_base64}"
+                            }
+                        })
+                    message_content = content_parts
+                else:
+                    message_content = img_prompt
+                
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: client.chat.completions.create(
+                        model=api_model,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": message_content
+                            }
+                        ],
+                        modalities=["image", "text"],  # Request image generation
+                        max_tokens=1500  # Each image is about 1290 tokens
+                    )
+                )
             else:
                 # DALL-E models
                 response = await loop.run_in_executor(
@@ -440,7 +500,28 @@ class ImageGen(commands.Cog):
 
         # Handle different response formats
         image_urls = []
-        if hasattr(response, 'data') and response.data:
+        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            # Handle Gemini chat completion response with image
+            if hasattr(response, 'choices') and response.choices:
+                for choice in response.choices:
+                    if hasattr(choice, 'message') and choice.message:
+                        content = choice.message.content
+                        # Gemini returns images as markdown links or base64 data
+                        if content:
+                            # Extract image URLs from markdown format ![](url)
+                            import re
+                            image_pattern = r'!\[.*?\]\((.*?)\)'
+                            matches = re.findall(image_pattern, content)
+                            for match in matches:
+                                if match.startswith('data:image'):
+                                    image_urls.append(match)
+                                else:
+                                    image_urls.append(match)
+                            
+                            # If no markdown images found, check if content itself is a data URL
+                            if not image_urls and content.startswith('data:image'):
+                                image_urls.append(content)
+        elif hasattr(response, 'data') and response.data:
             for data in response.data:
                 if hasattr(data, 'url') and data.url:
                     image_urls.append(data.url)
@@ -475,7 +556,7 @@ class ImageGen(commands.Cog):
         self,
         interaction: discord.Interaction,
         prompt: str,
-        model: Literal["dall-e-3", "gpt-image-1"] = "dall-e-3",
+        model: Literal["gemini-2.5-flash-image-preview:free", "gemini-2.5-flash-image-preview", "dall-e-3", "gpt-image-1"] = "gemini-2.5-flash-image-preview:free",
         quality: Literal["low", "high"] = "high",
         orientation: Literal["Square", "Landscape", "Portrait"] = "Square",
         attachment: Optional[discord.Attachment] = None,
@@ -488,7 +569,10 @@ class ImageGen(commands.Cog):
         user_id = str(interaction.user.id)
 
         # Map quality parameter to API format
-        if model == "gpt-image-1":
+        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            # Gemini uses standard quality strings
+            api_quality = "high" if quality == "high" else "standard"
+        elif model == "gpt-image-1":
             # Two-tier mapping: low → medium, high → high
             api_quality = "high" if quality == "high" else "medium"
         else:
@@ -496,7 +580,15 @@ class ImageGen(commands.Cog):
             api_quality = "hd" if quality == "high" else "standard"
         
         # Different size support for different models
-        if model == "gpt-image-1":
+        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+            # Gemini supports: 1024x1024, 1536x1024, 1024x1536
+            if orientation == "Landscape":
+                size = "1536x1024"
+            elif orientation == "Portrait":
+                size = "1024x1536"
+            else:
+                size = "1024x1024"
+        elif model == "gpt-image-1":
             # GPT-image-1 supports: 1024x1024, 1024x1536, 1536x1024, auto
             if orientation == "Landscape":
                 size = "1536x1024"
@@ -524,8 +616,8 @@ class ImageGen(commands.Cog):
             # For slash commands, we need to check if there are additional attachments
             if attachment:
                 if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    if model != "gpt-image-1":
-                        await interaction.followup.send("Image attachments are only supported with GPT-image-1 model.")
+                    if model not in ["gpt-image-1", "gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+                        await interaction.followup.send("Image attachments are only supported with GPT-image-1 and Gemini models. DALL-E models generate images from text prompts only.")
                         return
                     try:
                         image_bytes = await attachment.read()
@@ -547,8 +639,8 @@ class ImageGen(commands.Cog):
             if interaction.message and hasattr(interaction.message, 'attachments'):
                 for att in interaction.message.attachments:
                     if att.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and att != attachment:
-                        if model != "gpt-image-1":
-                            continue  # Skip additional images for non-GPT-image-1 models
+                        if model not in ["gpt-image-1", "gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+                            continue  # Skip additional images for non-supported models
                         try:
                             additional_bytes = await att.read()
                             additional_input = io.BytesIO(additional_bytes)
