@@ -13,10 +13,43 @@ logger = logging.getLogger(__name__)
 
 class ConfigManager:
     """Manages all configuration settings for the Discord bot"""
-    
+
+    PROMPTS_DIRECTORY = '/data/prompts'
+
     def __init__(self):
         self._config = {}
         self._load_configuration()
+
+    def _load_prompt(self, name: str, env_var: str, default: str) -> str:
+        """Load prompt from file or environment variable.
+
+        Priority:
+        1. File at /data/prompts/{name}.txt (if exists)
+        2. Environment variable
+        3. Default value
+        """
+        file_path = f"{self.PROMPTS_DIRECTORY}/{name}.txt"
+
+        # Try file first
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        logger.info(f"Loaded {name} from file: {file_path}")
+                        return content
+            except Exception as e:
+                logger.warning(f"Failed to load {name} from file: {e}")
+
+        # Fall back to environment variable
+        env_value = os.getenv(env_var, '')
+        if env_value:
+            logger.info(f"Loaded {name} from environment variable")
+            return env_value
+
+        # Use default
+        logger.info(f"Using default {name}")
+        return default
     
     def _load_configuration(self):
         """Load all configuration from environment variables"""
@@ -33,10 +66,18 @@ class ConfigManager:
             'openrouter_api_key': self._get_required_env('OPENROUTER_API_KEY'),
         })
         
-        # System prompts (loaded from environment variables only)
+        # System prompts (file-based with env fallback)
         self._config.update({
-            'system_prompt': os.getenv('SYSTEM_PROMPT', 'You are a helpful assistant.'),
-            'fun_prompt': os.getenv('FUN_PROMPT', 'Write an amusing and sarcastic!'),
+            'system_prompt': self._load_prompt(
+                'system_prompt',
+                'SYSTEM_PROMPT',
+                'You are a helpful assistant.'
+            ),
+            'fun_prompt': self._load_prompt(
+                'fun_prompt',
+                'FUN_PROMPT',
+                'Write an amusing and sarcastic response!'
+            ),
         })
         
         # Optional settings
@@ -55,6 +96,7 @@ class ConfigManager:
         # Data paths
         self._config.update({
             'data_directory': '/data',
+            'prompts_directory': self.PROMPTS_DIRECTORY,
             'user_quotas_file': '/data/user_quotas.json',
             'conversation_history_file': '/data/conversation_history.json',
             'reminders_file': '/data/reminders.json',
@@ -131,10 +173,14 @@ class ConfigManager:
         return user_id in self.get('unlimited_user_ids', [])
     
     def get_system_prompt(self, use_fun: bool = False) -> str:
-        """Get the appropriate system prompt from environment variables only"""
+        """Get the appropriate system prompt.
+
+        Prompts are loaded with priority: file > env var > default.
+        Files are read from /data/prompts/{name}.txt
+        """
         if use_fun:
             return self.get('fun_prompt', 'You are a helpful assistant.')
-        
+
         return self.get('system_prompt', 'You are a helpful assistant.')
     
     def get_api_clients_config(self) -> Dict[str, str]:

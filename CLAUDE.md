@@ -16,7 +16,7 @@ This is a Discord bot that integrates multiple LLM models through OpenRouter and
 ### Cogs System
 All bot functionality is organized in the `/cogs/` directory as Discord.py cogs:
 - `ai_commands.py` - Main `/chat` slash command and AI interactions  
-- `image_gen.py` - DALL-E 3 image generation (`/gen` command)
+- `image_gen.py` - AI image generation (`/gen` command) - Gemini and GPT-5 Image models
 - `reminders.py` - Natural language reminder system with recurrence
 - `tasks.py` - Task management with priority and status tracking
 - `tool_calling.py` - Advanced LLM tool-calling framework
@@ -55,12 +55,12 @@ Helper modules in `/utils/`:
 
 ### Model Configuration
 The bot supports multiple AI models with different capabilities configured in `ai_commands.py`:
-- GPT-4o-mini (with image support)
-- o4-mini (latest OpenAI model)
-- Claude Sonnet 4
-- DeepSeek R1
-- Gemini 2.5 Flash
-- Grok 3
+- Gemini 3 Pro/Flash (Google's latest)
+- Claude Opus/Sonnet/Haiku 4.5 (Anthropic's latest)
+- GPT-5.2/5 Mini/Nano (OpenAI's latest)
+- DeepSeek V3.2
+- Mistral Large
+- Grok 4.1 Fast
 
 **IMPORTANT**: Model configurations are hardcoded in `ai_commands.py` for performance reasons. Loading model configurations from external files would introduce unacceptable latency for Discord interactions. Any changes to model configurations must be made directly in the code and require a deployment.
 
@@ -134,11 +134,20 @@ This ensures that all work is properly saved and synchronized with the remote re
 - `BOT_UNLIMITED_USER_IDS` (optional) - Comma-separated list of Discord user IDs with unlimited quota
 
 ### System Prompt Configuration
-The bot's system prompt is configured through environment variables only:
-- **`SYSTEM_PROMPT`**: Set the default system prompt for normal interactions
-- **`FUN_PROMPT`**: Set the system prompt for fun mode interactions
+System prompts are loaded with the following priority:
+1. **File** at `/data/prompts/{name}.txt` (if exists and non-empty)
+2. **Environment variable** (`SYSTEM_PROMPT` / `FUN_PROMPT`)
+3. **Built-in default**
 
-**IMPORTANT**: System prompts should ONLY be loaded from environment variables. File-based loading has been removed for security and consistency.
+**Prompt Files:**
+- `/data/prompts/system_prompt.txt` - Default system prompt
+- `/data/prompts/fun_prompt.txt` - Fun mode system prompt
+
+**Environment Variables (fallback):**
+- `SYSTEM_PROMPT` - Used if `system_prompt.txt` doesn't exist
+- `FUN_PROMPT` - Used if `fun_prompt.txt` doesn't exist
+
+File-based prompts are recommended for complex multiline prompts that are difficult to store in `.env` files due to escaping issues.
 
 **Datetime Context**: The bot automatically adds current date/time context to user messages (not system prompts) to provide temporal awareness to the AI.
 
@@ -221,6 +230,7 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 - Reminders database (`/data/reminders.db`) ✅ Compliant
 - Tasks database (`/data/tasks.db`) ✅ Compliant
 - User timezones (`/data/user_timezones.db`) ✅ Compliant
+- System prompts (`/data/prompts/*.txt`) ✅ Compliant
 
 ### Container Storage Context
 The `/data` directory requirement exists because:
