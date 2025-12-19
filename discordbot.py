@@ -34,12 +34,22 @@ async def on_ready():
 
 @bot.command(name="sync")
 @commands.is_owner()
-async def sync_commands(ctx):
-    """Manually sync slash commands with Discord"""
+async def sync_commands(ctx, scope: str = None):
+    """Manually sync slash commands with Discord
+
+    Usage:
+        !sync        - Sync to current guild (instant) or global if in DMs
+        !sync global - Sync globally (can take up to 1 hour)
+    """
     try:
-        synced = await bot.tree.sync()
-        await ctx.send(f"Synced {len(synced)} command(s)")
-        logging.info(f"Manual sync: {len(synced)} command(s) synced")
+        if scope == "global" or ctx.guild is None:
+            synced = await bot.tree.sync()
+            await ctx.send(f"Synced {len(synced)} command(s) globally")
+            logging.info(f"Manual sync: {len(synced)} command(s) synced globally")
+        else:
+            synced = await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"Synced {len(synced)} command(s) to this server (instant)")
+            logging.info(f"Manual sync: {len(synced)} command(s) synced to guild {ctx.guild.id}")
     except Exception as e:
         await ctx.send(f"Failed to sync commands: {e}")
         logging.error(f"Manual sync failed: {e}")
