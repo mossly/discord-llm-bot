@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  discord-llm-bot:
+    image: ghcr.io/mossly/discord-llm-bot:latest
+    # For local development, build from source instead:
+    # build: .
+    container_name: discord-llm-bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      # Required
+      - BOT_API_TOKEN=${BOT_API_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+
+      # System prompts
+      - SYSTEM_PROMPT=${SYSTEM_PROMPT:-You are a helpful assistant.}
+      - FUN_PROMPT=${FUN_PROMPT:-Write an amusing and sarcastic response!}
+
+      # Optional settings
+      - BOT_TAG=${BOT_TAG:-}
+      - COMMAND_PREFIX=${COMMAND_PREFIX:-!}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gemini-2.5-flash-preview}
+      - DUCK_PROXY=${DUCK_PROXY:-}
+
+      # Admin/quota management
+      - BOT_ADMIN_IDS=${BOT_ADMIN_IDS:-}
+      - BOT_UNLIMITED_USER_IDS=${BOT_UNLIMITED_USER_IDS:-}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"

@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+*.md
+!CLAUDE.md
+
+# Tests (not needed in production)
+tests/
+
+# Local data (will be mounted as volume)
+data/
+
+# Environment files (secrets passed via env vars)
+.env
+.system_prompt
+admin_ids.txt

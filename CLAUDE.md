@@ -218,16 +218,16 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 ### Current Data Files
 - User quotas (`/data/user_quotas.json`) ✅ Compliant
 - Conversation history (`/data/conversation_history.json`) ✅ Compliant
-- Reminders database (`reminders.db`) ⚠️ SQLite database in root
-- Task manager state (managed in memory, no persistence yet)
-- User timezones (managed through reminder database)
+- Reminders database (`/data/reminders.db`) ✅ Compliant
+- Tasks database (`/data/tasks.db`) ✅ Compliant
+- User timezones (`/data/user_timezones.db`) ✅ Compliant
 
-### Render Hosting Context
+### Container Storage Context
 The `/data` directory requirement exists because:
-- Render's ephemeral filesystem requires specific persistent volume mounting
-- Only the `/data` directory persists across deployments and restarts
-- Files outside `/data` are lost during container restarts
-- This ensures data continuity and proper backup strategies
+- Docker containers use ephemeral filesystems by default
+- Only the `/data` directory is mounted as a persistent volume
+- Files outside `/data` are lost during container restarts/updates
+- This ensures data continuity across Watchtower auto-updates
 
 ## Conversation History System
 
@@ -309,28 +309,78 @@ The bot includes a comprehensive task management system:
 
 ## Deployment
 
-The Discord bot runs on a remote **Render** cloud instance. To manage the deployed bot, use the Render CLI from your local machine:
+The Discord bot runs as a Docker container on TrueNAS Scale, with automatic updates via Watchtower.
 
-### Render CLI Commands
-- `render login` - Authorize the CLI for your account
-- `render services` - List all services (select the Discord bot service)
-- `render deploys list [SERVICE_ID]` - View deployment history and logs
-- `render deploys create [SERVICE_ID]` - Trigger a new deployment
-- `render ssh [SERVICE_ID]` - Open SSH session to the running instance
-- `render logs -r [SERVICE_ID] -o text --limit 100` - View recent logs (working command format)
+### Docker Architecture
+- **Image**: `ghcr.io/mossly/discord-llm-bot:latest`
+- **Location**: `/mnt/Machina/apps/discord-llm-bot/`
+- **Data Volume**: `./data:/data` - Persistent storage for databases and logs
+- **Auto-updates**: Watchtower pulls new images from GHCR on each push to `main`
+
+### GitHub Actions CI/CD
+When code is pushed to `main`, GitHub Actions automatically:
+1. Builds a new Docker image
+2. Pushes to GitHub Container Registry (GHCR)
+3. Watchtower on TrueNAS detects and pulls the new image
+
+### Initial Deployment (TrueNAS)
+```bash
+# SSH into TrueNAS
+ssh claude-truenas
+
+# Create app directory
+sudo mkdir -p /mnt/Machina/apps/discord-llm-bot
+cd /mnt/Machina/apps/discord-llm-bot
+
+# Copy docker-compose.yml and create .env
+# (copy from repo or create manually)
+sudo nano .env  # Add required environment variables
+
+# Start the bot
+sudo docker compose up -d
+
+# View logs
+sudo docker logs -f discord-llm-bot
+```
+
+### Environment Configuration
+Create a `.env` file with required variables (see `.env.example` in repo):
+```bash
+BOT_API_TOKEN=your_discord_token
+OPENAI_API_KEY=sk-your_openai_key
+OPENROUTER_API_KEY=sk-or-your_openrouter_key
+SYSTEM_PROMPT=Your system prompt here
+FUN_PROMPT=Your fun mode prompt here
+BOT_ADMIN_IDS=comma,separated,user,ids
+BOT_UNLIMITED_USER_IDS=comma,separated,user,ids
+```
 
 ### Common Operations
 ```bash
-# View logs for debugging
-render services -o json  # Get service ID (srv-cgdpib7ekgjpv7sspsf0)
-render logs -r srv-cgdpib7ekgjpv7sspsf0 -o text --limit 100  # View recent logs
-render logs -r srv-cgdpib7ekgjpv7sspsf0 -o text --limit 100 | grep "permission\|error"  # Search logs
+# View logs
+ssh claude-truenas "sudo docker logs -f discord-llm-bot"
+ssh claude-truenas "sudo docker logs --tail 100 discord-llm-bot"
 
-# Deploy updates
-render deploys create srv-cgdpib7ekgjpv7sspsf0 --wait
+# Restart bot
+ssh claude-truenas "sudo docker restart discord-llm-bot"
 
-# SSH into the running instance
-render ssh srv-cgdpib7ekgjpv7sspsf0
+# Force pull latest image
+ssh claude-truenas "cd /mnt/Machina/apps/discord-llm-bot && sudo docker compose pull && sudo docker compose up -d"
+
+# Check container status
+ssh claude-truenas "sudo docker ps | grep discord-llm-bot"
+
+# Access bot shell
+ssh claude-truenas "sudo docker exec -it discord-llm-bot bash"
+
+# View data files
+ssh claude-truenas "sudo ls -la /mnt/Machina/apps/discord-llm-bot/data/"
 ```
 
-The bot's persistent data (quotas, conversation history, etc.) is stored in the `/data` directory on the Render instance.
+### Data Persistence
+Persistent data is stored in `/mnt/Machina/apps/discord-llm-bot/data/`:
+- `user_quotas.json` - User quota tracking
+- `conversation_history.json` - Logged conversations
+- `reminders.db` - SQLite reminder database
+- `tasks.db` - SQLite task database
+- `user_timezones.db` - User timezone preferences
