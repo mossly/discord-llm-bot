@@ -10,20 +10,22 @@ import os
 logger = logging.getLogger(__name__)
 
 # Default model to use as fallback
-DEFAULT_MODEL = "deepseek-r1-0528-free"
+DEFAULT_MODEL = "claude-haiku-4.5"
 
 # Model type definition
 ModelChoices = Literal[
-    "gpt-5",
+    "gemini-3-pro-preview",
+    "gemini-3-flash-preview",
+    "mistral-large-2512",
+    "deepseek-v3.2",
+    "grok-4.1-fast",
+    "gpt-5.2-pro",
+    "gpt-5.2",
     "gpt-5-mini",
     "gpt-5-nano",
-    "claude-sonnet-4",
-    "deepseek-r1-0528",
-    "deepseek-r1-0528-free",
-    "gemini-2.5-pro-preview",
-    "gemini-2.5-flash-lite",
-    "grok-4",
-    "dolphin-mistral-24b-venice"
+    "claude-opus-4.5",
+    "claude-sonnet-4.5",
+    "claude-haiku-4.5"
 ]
 
 # Hardcoded models configuration
@@ -31,15 +33,75 @@ ModelChoices = Literal[
 #   - For OpenRouter API: use "provider/model" format (e.g., "anthropic/claude-3", "google/gemini-2.0")
 #   - For OpenAI API: use just the model name (e.g., "gpt-4o-mini", "o1-preview")
 MODELS_CONFIG = {
-    "gpt-5": {
-        "name": "GPT-5",
-        "default_footer": "GPT-5",
-        "api_model": "openai/gpt-5",
+    "gemini-3-pro-preview": {
+        "name": "Gemini 3 Pro",
+        "default_footer": "Gemini 3 Pro",
+        "api_model": "google/gemini-3-pro-preview",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": True
+    },
+    "gemini-3-flash-preview": {
+        "name": "Gemini 3 Flash",
+        "default_footer": "Gemini 3 Flash",
+        "api_model": "google/gemini-3-flash-preview",
         "supports_images": True,
         "supports_tools": True,
         "api": "openrouter",
         "enabled": True,
         "admin_only": False
+    },
+    "mistral-large-2512": {
+        "name": "Mistral Large",
+        "default_footer": "Mistral Large",
+        "api_model": "mistralai/mistral-large-2512",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "deepseek-v3.2": {
+        "name": "DeepSeek V3.2",
+        "default_footer": "DeepSeek V3.2",
+        "api_model": "deepseek/deepseek-v3.2",
+        "supports_images": False,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "grok-4.1-fast": {
+        "name": "Grok 4.1 Fast",
+        "default_footer": "Grok 4.1 Fast",
+        "api_model": "x-ai/grok-4.1-fast",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": False
+    },
+    "gpt-5.2-pro": {
+        "name": "GPT-5.2 Pro",
+        "default_footer": "GPT-5.2 Pro",
+        "api_model": "openai/gpt-5.2-pro",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": True
+    },
+    "gpt-5.2": {
+        "name": "GPT-5.2",
+        "default_footer": "GPT-5.2",
+        "api_model": "openai/gpt-5.2",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": True
     },
     "gpt-5-mini": {
         "name": "GPT-5 Mini",
@@ -61,71 +123,31 @@ MODELS_CONFIG = {
         "enabled": True,
         "admin_only": False
     },
-    "claude-sonnet-4": {
-        "name": "Claude Sonnet 4",
-        "default_footer": "Claude Sonnet 4",
-        "api_model": "anthropic/claude-sonnet-4",
+    "claude-opus-4.5": {
+        "name": "Claude Opus 4.5",
+        "default_footer": "Claude Opus 4.5",
+        "api_model": "anthropic/claude-opus-4.5",
+        "supports_images": True,
+        "supports_tools": True,
+        "api": "openrouter",
+        "enabled": True,
+        "admin_only": True
+    },
+    "claude-sonnet-4.5": {
+        "name": "Claude Sonnet 4.5",
+        "default_footer": "Claude Sonnet 4.5",
+        "api_model": "anthropic/claude-sonnet-4.5",
         "supports_images": True,
         "supports_tools": True,
         "api": "openrouter",
         "enabled": True,
         "admin_only": False
     },
-    "deepseek-r1-0528": {
-        "name": "DeepSeek R1",
-        "default_footer": "DeepSeek R1",
-        "api_model": "deepseek/deepseek-r1-0528",
-        "supports_images": False,
-        "supports_tools": True,
-        "api": "openrouter",
-        "enabled": True,
-        "admin_only": False
-    },
-    "gemini-2.5-pro-preview": {
-        "name": "Gemini 2.5 Pro",
-        "default_footer": "Gemini 2.5 Pro",
-        "api_model": "google/gemini-2.5-pro-preview",
+    "claude-haiku-4.5": {
+        "name": "Claude Haiku 4.5",
+        "default_footer": "Claude Haiku 4.5",
+        "api_model": "anthropic/claude-haiku-4.5",
         "supports_images": True,
-        "supports_tools": True,
-        "api": "openrouter",
-        "enabled": True,
-        "admin_only": False
-    },
-    "gemini-2.5-flash-lite": {
-        "name": "Gemini 2.5 Flash Lite",
-        "default_footer": "Gemini 2.5 Flash Lite",
-        "api_model": "google/gemini-2.5-flash-lite-preview-06-17",
-        "supports_images": True,
-        "supports_tools": True,
-        "api": "openrouter",
-        "enabled": True,
-        "admin_only": False
-    },
-    "grok-4": {
-        "name": "Grok 4",
-        "default_footer": "Grok 4",
-        "api_model": "x-ai/grok-4",
-        "supports_images": True,
-        "supports_tools": True,
-        "api": "openrouter",
-        "enabled": True,
-        "admin_only": False
-    },
-    "dolphin-mistral-24b-venice": {
-        "name": "Dolphin Mistral 24B Venice",
-        "default_footer": "Dolphin Mistral 24B Venice",
-        "api_model": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-        "supports_images": False,
-        "supports_tools": True,
-        "api": "openrouter",
-        "enabled": True,
-        "admin_only": False
-    },
-    "deepseek-r1-0528-free": {
-        "name": "DeepSeek R1 Free",
-        "default_footer": "DeepSeek R1 Free",
-        "api_model": "deepseek/deepseek-r1-0528:free",
-        "supports_images": False,
         "supports_tools": True,
         "api": "openrouter",
         "enabled": True,

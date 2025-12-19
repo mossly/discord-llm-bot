@@ -49,10 +49,13 @@ async def on_message(message):
     # Ignore bot messages
     if message.author.bot:
         return
-    
+
     # Only handle messages in AI conversation threads
     if await is_ai_conversation_thread(bot, message.channel):
         await conversation_handler.handle_thread_conversation(message)
+
+    # Process prefix commands (like !sync)
+    await bot.process_commands(message)
 
 
 async def load_cogs():

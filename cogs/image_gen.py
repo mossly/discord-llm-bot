@@ -26,32 +26,25 @@ class ImageGen(commands.Cog):
         
     def calculate_image_cost(self, model: str, size: str, quality: str = "high", is_edit: bool = False) -> float:
         """Calculate the cost of image generation based on model and parameters"""
-        if model == "gemini-2.5-flash-image-preview:free":
-            # Free version has no cost
-            return 0.0
-        elif model == "gemini-2.5-flash-image-preview":
-            # Gemini 2.5 Flash Image costs $0.039 per image according to OpenRouter
+        if model == "gemini-2.5-flash-image":
+            # Gemini 2.5 Flash Image costs approximately $0.039 per image
             return 0.039
-        elif model == "dall-e-3":
-            if quality == "hd":
-                return 0.08  # HD quality
-            else:
-                return 0.04  # Standard quality
-        elif model == "gpt-image-1":
-            # GPT-image-1 pricing with quality considerations
-            base_cost = 0.20 if quality == "high" else 0.06  # High quality costs more
+        elif model == "gemini-3-pro-image-preview":
+            # Gemini 3 Pro Image - premium pricing
+            return 0.08
+        elif model == "gpt-5-image-mini":
+            # GPT-5 Image Mini - lower cost option
+            base_cost = 0.08 if quality == "high" else 0.04
             if is_edit:
-                return base_cost * 1.3  # Edit operations tend to be more expensive
-            else:
-                return base_cost
-        elif model == "dall-e-2":
-            if size == "1024x1024":
-                return 0.02
-            elif size == "512x512":
-                return 0.018
-            elif size == "256x256":
-                return 0.016
-        return 0.04  # Default fallback
+                return base_cost * 1.3
+            return base_cost
+        elif model == "gpt-5-image":
+            # GPT-5 Image - premium pricing
+            base_cost = 0.20 if quality == "high" else 0.10
+            if is_edit:
+                return base_cost * 1.3
+            return base_cost
+        return 0.05  # Default fallback
         
     def extract_usage_info(self, response) -> dict:
         """Extract usage/cost information from API response"""
@@ -84,30 +77,28 @@ class ImageGen(commands.Cog):
         """Build standardized footer for image generation"""
         # First line: Model name with modifiers
         footer_parts = []
-        
+
         # Model name
-        if model == "gemini-2.5-flash-image-preview:free":
-            footer_parts.append("Gemini 2.5 Flash Image (Free)")
-        elif model == "gemini-2.5-flash-image-preview":
+        if model == "gemini-2.5-flash-image":
             footer_parts.append("Gemini 2.5 Flash Image")
-        elif model == "gpt-image-1":
-            footer_parts.append("GPT-image-1")
-        elif model == "dall-e-3":
-            footer_parts.append("DALL·E 3")
-        elif model == "dall-e-2":
-            footer_parts.append("DALL·E 2")
+        elif model == "gemini-3-pro-image-preview":
+            footer_parts.append("Gemini 3 Pro Image")
+        elif model == "gpt-5-image-mini":
+            footer_parts.append("GPT-5 Image Mini")
+        elif model == "gpt-5-image":
+            footer_parts.append("GPT-5 Image")
         else:
             footer_parts.append(model)
-        
-        # Quality (only for GPT-image-1 and DALL-E models)
-        if model not in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+
+        # Quality (only for GPT models)
+        if model in ["gpt-5-image-mini", "gpt-5-image"]:
             if quality in ("high", "hd"):
                 footer_parts.append("High Quality")
             elif quality in ("standard", "medium", "low"):
                 footer_parts.append("Low Quality")
-        
-        # Orientation (only for GPT-image-1 and DALL-E models)
-        if model not in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+
+        # Orientation (only for GPT models)
+        if model in ["gpt-5-image-mini", "gpt-5-image"]:
             if size == "1536x1024" or size == "1792x1024":
                 footer_parts.append("Landscape")
             elif size == "1024x1536" or size == "1024x1792":
@@ -165,9 +156,9 @@ class ImageGen(commands.Cog):
         
         return f"{first_line}\n{second_line}"
 
-    async def generate_image_streaming(self, img_prompt: str, img_quality: str, img_size: str, model: str = "gpt-image-1", image_inputs: list = None, is_edit: bool = False, interaction=None):
+    async def generate_image_streaming(self, img_prompt: str, img_quality: str, img_size: str, model: str = "gpt-5-image-mini", image_inputs: list = None, is_edit: bool = False, interaction=None):
         """Generate image with streaming support using Responses API"""
-        if model != "gpt-image-1":
+        if model not in ["gpt-5-image-mini", "gpt-5-image"]:
             # Fallback to regular generation for non-streaming models
             return await self.generate_image(img_prompt, img_quality, img_size, model, image_inputs, is_edit)
         
@@ -255,7 +246,7 @@ class ImageGen(commands.Cog):
                     color=0x32a956
                 )
                 embed.set_image(url=f"attachment://generating_image.png")
-                embed.set_footer(text=f"GPT-image-1 | Streaming | Step {idx+1}")
+                embed.set_footer(text=f"{model} | Streaming | Step {idx+1}")
                 
                 if stream_message is None:
                     # Send initial message
@@ -279,13 +270,13 @@ class ImageGen(commands.Cog):
                 break
         
         # Calculate cost for streaming (since no usage info is returned)
-        cost = self.calculate_image_cost("gpt-image-1", img_size, img_quality, is_edit)
+        cost = self.calculate_image_cost(model, img_size, img_quality, is_edit)
         
         # Update the final message to show completion
         if stream_message:
             # Build standardized footer
             footer_text = self.build_footer(
-                model="gpt-image-1",
+                model=model,
                 quality=img_quality,
                 size=img_size,
                 is_edit=is_edit,
@@ -339,37 +330,40 @@ class ImageGen(commands.Cog):
             
         return [], {"total_cost": cost}
 
-    async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "dall-e-3", image_inputs: list = None, is_edit: bool = False):
+    async def generate_image(self, img_prompt: str, img_quality: str, img_size: str, model: str = "gemini-2.5-flash-image", image_inputs: list = None, is_edit: bool = False):
         # Handle backwards compatibility
         if isinstance(image_inputs, io.BytesIO):
             image_inputs = [image_inputs]
         elif image_inputs is None:
             image_inputs = []
-            
+
         num_images = len(image_inputs)
         logger.info("Entering generate_image function (COG) with prompt: '%s', quality: '%s', size: '%s', model: '%s', is_edit: %s, num_input_images: %d",
                     img_prompt, img_quality, img_size, model, is_edit, num_images)
-        
+
         loop = asyncio.get_running_loop()
-        
-        # Choose client based on model
-        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
-            client = self.openrouter_client
-            if model == "gemini-2.5-flash-image-preview:free":
-                api_model = "google/gemini-2.5-flash-image-preview:free"
-            else:
-                api_model = "google/gemini-2.5-flash-image-preview"
+
+        # All models now go through OpenRouter
+        client = self.openrouter_client
+
+        # Map model names to OpenRouter API model names
+        if model == "gemini-2.5-flash-image":
+            api_model = "google/gemini-2.5-flash-image"
+        elif model == "gemini-3-pro-image-preview":
+            api_model = "google/gemini-3-pro-image-preview"
+        elif model == "gpt-5-image-mini":
+            api_model = "openai/gpt-5-image-mini"
+        elif model == "gpt-5-image":
+            api_model = "openai/gpt-5-image"
         else:
-            # Use OpenAI API for DALL-E and GPT-image-1
-            client = self.openai_client
             api_model = model
-        
-        if image_inputs and is_edit and model == "gpt-image-1":
-            # Image editing with GPT-image-1 - use first image for editing
+
+        if image_inputs and is_edit and model in ["gpt-5-image-mini", "gpt-5-image"]:
+            # Image editing with GPT models - use first image for editing
             primary_image = image_inputs[0]
             logger.info(f"Calling image edit with filename: {getattr(primary_image, 'name', 'unknown')}")
             if num_images > 1:
-                logger.warning(f"GPT-image-1 edit mode only supports 1 image, ignoring {num_images - 1} additional images")
+                logger.warning(f"{model} edit mode only supports 1 image, ignoring {num_images - 1} additional images")
             response = await loop.run_in_executor(
                 None,
                 lambda: client.images.edit(
@@ -382,15 +376,15 @@ class ImageGen(commands.Cog):
                 )
             )
         else:
-            # Image generation (with or without image input for GPT-image-1)
-            if model == "gpt-image-1":
-                # GPT-image-1 supports using images as input for generation via the edit endpoint
+            # Image generation (with or without image input)
+            if model in ["gpt-5-image-mini", "gpt-5-image"]:
+                # GPT-5 Image models support using images as input for generation via the edit endpoint
                 if image_inputs:
                     # Log input images being used
                     image_names = [getattr(img, 'name', 'unknown') for img in image_inputs]
-                    logger.info(f"GPT-image-1 generation with {num_images} input images: {image_names}")
-                    
-                    # For GPT-image-1 with input images, use the edit endpoint even for "input" mode
+                    logger.info(f"{model} generation with {num_images} input images: {image_names}")
+
+                    # For GPT models with input images, use the edit endpoint even for "input" mode
                     # This allows the model to use the images as references for generation
                     response = await loop.run_in_executor(
                         None,
@@ -415,8 +409,8 @@ class ImageGen(commands.Cog):
                             n=1,
                         )
                     )
-            elif model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
-                # Gemini model using OpenRouter's OpenAI-compatible API
+            elif model in ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"]:
+                # Gemini models using OpenRouter's OpenAI-compatible API
                 # Build message content with image inputs if provided
                 if image_inputs:
                     # Include input images in the message
@@ -442,7 +436,7 @@ class ImageGen(commands.Cog):
                     message_content = content_parts
                 else:
                     message_content = img_prompt
-                
+
                 response = await loop.run_in_executor(
                     None,
                     lambda: client.chat.completions.create(
@@ -458,7 +452,7 @@ class ImageGen(commands.Cog):
                     )
                 )
             else:
-                # DALL-E models
+                # Fallback for any other models
                 response = await loop.run_in_executor(
                     None,
                     lambda: client.images.generate(
@@ -502,7 +496,7 @@ class ImageGen(commands.Cog):
 
         # Handle different response formats
         image_urls = []
-        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+        if model in ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"]:
             # Handle Gemini chat completion response with image
             if hasattr(response, 'choices') and response.choices:
                 for choice in response.choices:
@@ -515,7 +509,7 @@ class ImageGen(commands.Cog):
                                         url = image_data.get('image_url', {}).get('url', '')
                                         if url:
                                             image_urls.append(url)
-                        
+
                         # Fallback: Check content for any embedded images
                         content = choice.message.content
                         if isinstance(content, list):
@@ -531,12 +525,12 @@ class ImageGen(commands.Cog):
                             image_pattern = r'!\[.*?\]\((.*?)\)'
                             matches = re.findall(image_pattern, content)
                             image_urls.extend(matches)
-                            
+
                             # Look for data URLs directly in the text
                             data_url_pattern = r'data:image/[^;]+;base64,[A-Za-z0-9+/=]+'
                             data_matches = re.findall(data_url_pattern, content)
                             image_urls.extend(data_matches)
-                            
+
                             # If content itself is a data URL
                             if content.startswith('data:image'):
                                 image_urls.append(content)
@@ -545,7 +539,7 @@ class ImageGen(commands.Cog):
                 if hasattr(data, 'url') and data.url:
                     image_urls.append(data.url)
                 elif hasattr(data, 'b64_json') and data.b64_json:
-                    # GPT-image-1 might return base64 instead of URL
+                    # GPT models might return base64 instead of URL
                     image_urls.append(f"data:image/png;base64,{data.b64_json}")
                 else:
                     logger.warning(f"Unexpected data format in response: {data}")
@@ -561,23 +555,50 @@ class ImageGen(commands.Cog):
         
         return image_urls, usage_info
 
-    @app_commands.command(name="gen", description="Generate or edit an image using DALL·E 3 or GPT-image-1")
+    def _is_admin(self, user_id: int) -> bool:
+        """Check if user is an admin"""
+        admin_ids_str = os.getenv("BOT_ADMIN_IDS", "")
+        if admin_ids_str:
+            try:
+                admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
+                if user_id in admin_ids:
+                    return True
+            except ValueError:
+                pass
+
+        # Check admin_ids.txt file
+        try:
+            with open("admin_ids.txt", "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        try:
+                            if int(line) == user_id:
+                                return True
+                        except ValueError:
+                            continue
+        except FileNotFoundError:
+            pass
+
+        return False
+
+    @app_commands.command(name="gen", description="Generate or edit an image using AI models")
     @app_commands.describe(
         prompt="The prompt for the image",
         model="Choose the image generation model",
-        quality="Image quality level (only for GPT-image-1 and DALL-E)",
-        orientation="Choose the image orientation (only for GPT-image-1 and DALL-E)",
+        quality="Image quality level (only for GPT models)",
+        orientation="Choose the image orientation (only for GPT models)",
         attachment1="First input image (required if using images)",
         attachment2="Second input image (optional)",
         attachment3="Third input image (optional)",
-        image_mode="How to use the attached images (only for GPT-image-1)",
-        streaming="Enable partial image streaming (GPT-image-1 only)"
+        image_mode="How to use the attached images (only for GPT models)",
+        streaming="Enable partial image streaming (GPT models only)"
     )
     async def gen(
         self,
         interaction: discord.Interaction,
         prompt: str,
-        model: Literal["gemini-2.5-flash-image-preview:free", "gemini-2.5-flash-image-preview", "dall-e-3", "gpt-image-1"] = "gemini-2.5-flash-image-preview:free",
+        model: Literal["gemini-2.5-flash-image", "gemini-3-pro-image-preview", "gpt-5-image-mini", "gpt-5-image"] = "gemini-2.5-flash-image",
         quality: Literal["low", "high"] = "high",
         orientation: Literal["Square", "Landscape", "Portrait"] = "Square",
         attachment1: Optional[discord.Attachment] = None,
@@ -588,22 +609,31 @@ class ImageGen(commands.Cog):
     ):
         await interaction.response.defer(thinking=True)
         start_time = time.time()
-        
+
         user_id = str(interaction.user.id)
+        user_id_int = interaction.user.id
+
+        # Check if model is admin-only
+        admin_only_models = ["gemini-3-pro-image-preview", "gpt-5-image"]
+        if model in admin_only_models and not self._is_admin(user_id_int):
+            from utils.embed_utils import create_error_embed
+            error_embed = create_error_embed(f"The model '{model}' is only available to administrators.")
+            await interaction.followup.send(embed=error_embed)
+            return
 
         # Map quality parameter to API format
-        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+        if model in ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"]:
             # Gemini uses standard quality strings
             api_quality = "high" if quality == "high" else "standard"
-        elif model == "gpt-image-1":
+        elif model in ["gpt-5-image-mini", "gpt-5-image"]:
             # Two-tier mapping: low → medium, high → high
             api_quality = "high" if quality == "high" else "medium"
         else:
-            # Two-tier mapping: low → standard, high → hd
-            api_quality = "hd" if quality == "high" else "standard"
-        
+            # Fallback
+            api_quality = "high" if quality == "high" else "standard"
+
         # Different size support for different models
-        if model in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
+        if model in ["gemini-2.5-flash-image", "gemini-3-pro-image-preview"]:
             # Gemini supports: 1024x1024, 1536x1024, 1024x1536
             if orientation == "Landscape":
                 size = "1536x1024"
@@ -611,8 +641,8 @@ class ImageGen(commands.Cog):
                 size = "1024x1536"
             else:
                 size = "1024x1024"
-        elif model == "gpt-image-1":
-            # GPT-image-1 supports: 1024x1024, 1024x1536, 1536x1024, auto
+        elif model in ["gpt-5-image-mini", "gpt-5-image"]:
+            # GPT-5 Image models support: 1024x1024, 1024x1536, 1536x1024, auto
             if orientation == "Landscape":
                 size = "1536x1024"
             elif orientation == "Portrait":
@@ -620,28 +650,19 @@ class ImageGen(commands.Cog):
             else:
                 size = "1024x1024"
         else:
-            # DALL-E 3 supports: 1024x1024, 1024x1792, 1792x1024
-            if orientation == "Landscape":
-                size = "1792x1024"
-            elif orientation == "Portrait":
-                size = "1024x1792"
-            else:
-                size = "1024x1024"
+            # Fallback
+            size = "1024x1024"
 
-            
         image_inputs = []
         is_edit = False
-        
+
         # Collect all image attachments from the slash command parameters
         attachments = [attachment1, attachment2, attachment3]
         attachments = [att for att in attachments if att is not None]  # Filter out None values
-        
+
         try:
             for attachment in attachments:
                 if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    if model not in ["gpt-image-1", "gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
-                        await interaction.followup.send("Image attachments are only supported with GPT-image-1 and Gemini models. DALL-E models generate images from text prompts only.")
-                        return
                     try:
                         image_bytes = await attachment.read()
                         image_input = io.BytesIO(image_bytes)
@@ -684,7 +705,7 @@ class ImageGen(commands.Cog):
 
         try:
             # Use streaming if enabled and model supports it
-            if streaming and model == "gpt-image-1":
+            if streaming and model in ["gpt-5-image-mini", "gpt-5-image"]:
                 result_urls, usage_info = await self.generate_image_streaming(
                     prompt, api_quality, size, model, image_inputs, is_edit, interaction
                 )
@@ -883,75 +904,53 @@ class ImageEditModal(discord.ui.Modal):
             return
         
         # Use hardcoded defaults since fields are commented out
-        model_str = "gemini-2.5-flash-image-preview:free"  # Default to free Gemini model
-        
+        model_str = "gemini-2.5-flash-image"  # Default to Gemini 2.5 Flash Image
+
         # Check user quota before generating image (after we know how many images)
         remaining_quota = quota_manager.get_remaining_quota(user_id)
         num_input_images = len(image_inputs)
-        
+
         # Use hardcoded defaults since fields are commented out
         quality_str = "high"
-        
-        # Estimate cost based on quality and multi-image operations
-        base_cost = 0.20 if quality_str == "high" else 0.06
-        estimated_cost = base_cost * 1.5 if num_input_images > 1 else base_cost
-        
+
+        # Estimate cost based on model
+        estimated_cost = self.image_cog.calculate_image_cost(model_str, "1024x1024", quality_str, False)
+        if num_input_images > 1:
+            estimated_cost *= 1.5
+
         if remaining_quota == 0:
             error_embed = create_error_embed("You've reached your monthly usage limit. Your quota resets at the beginning of each month.")
             await interaction.followup.send(embed=error_embed)
             return
         elif remaining_quota != float('inf') and remaining_quota < estimated_cost:
-            cost_msg = f"${estimated_cost:.2f}" if num_input_images > 1 else "$0.04-$0.08"
+            cost_msg = f"${estimated_cost:.2f}"
             await interaction.followup.send(f"⚠️ **Low Quota**: You have ${remaining_quota:.4f} remaining this month. Image generation with {num_input_images} input images typically costs {cost_msg}.")
             return
-            
+
         start_time = time.time()
         # Use hardcoded defaults since fields are commented out
         orientation_str = "Square"
         image_mode_str = "input"
-            
-        # Only GPT-image-1 supports streaming
-        use_streaming = model_str == "gpt-image-1"
-        
+
+        # Only GPT models support streaming
+        use_streaming = model_str in ["gpt-5-image-mini", "gpt-5-image"]
+
         # Map quality to API format
-        if model_str == "gpt-image-1":
+        if model_str in ["gpt-5-image-mini", "gpt-5-image"]:
             # Two-tier mapping: low → medium, high → high
             api_quality = "high" if quality_str == "high" else "medium"
         else:
-            # Two-tier mapping: low → standard, high → hd
-            api_quality = "hd" if quality_str == "high" else "standard"
-        
-        # Different size support for different models
-        if model_str in ["gemini-2.5-flash-image-preview", "gemini-2.5-flash-image-preview:free"]:
-            # Gemini supports: 1024x1024, 1536x1024, 1024x1536
-            if orientation_str == "Landscape":
-                size = "1536x1024"
-            elif orientation_str == "Portrait":
-                size = "1024x1536"
-            else:
-                size = "1024x1024"
-        elif model_str == "gpt-image-1":
-            # GPT-image-1 supports: 1024x1024, 1024x1536, 1536x1024, auto
-            if orientation_str == "Landscape":
-                size = "1536x1024"
-            elif orientation_str == "Portrait":
-                size = "1024x1536"
-            else:
-                size = "1024x1024"
-        else:
-            # DALL-E 3 supports: 1024x1024, 1024x1792, 1792x1024
-            if orientation_str == "Landscape":
-                size = "1792x1024"
-            elif orientation_str == "Portrait":
-                size = "1024x1792"
-            else:
-                size = "1024x1024"
+            # Gemini uses standard quality strings
+            api_quality = "high" if quality_str == "high" else "standard"
+
+        # Different size support for different models - all use 1024x1024 for Square
+        size = "1024x1024"
             
         is_edit = (image_mode_str == "edit")
             
         try:
             # Use streaming if enabled and model supports it
-            if use_streaming and model_str == "gpt-image-1":
+            if use_streaming and model_str in ["gpt-5-image-mini", "gpt-5-image"]:
                 result_urls, usage_info = await self.image_cog.generate_image_streaming(
                     self.prompt.value, api_quality, size, model_str, image_inputs, is_edit, interaction
                 )

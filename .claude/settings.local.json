@@ -26,7 +26,20 @@
       "Bash(render ssh srv-cgdpib7ekgjpv7sspsf0)",
       "Bash(render deploys create:*)",
       "Bash(sqlite3:*)",
-      "Bash(afplay:*)"
+      "Bash(afplay:*)",
+      "Bash(ssh claude-truenas \"sudo mkdir -p /mnt/Machina/apps/discord-llm-bot && ls -la /mnt/Machina/apps/discord-llm-bot\")",
+      "Bash(cat:*)",
+      "Bash(ssh:*)",
+      "Bash(winget install:*)",
+      "Bash(npm install:*)",
+      "Bash(render whoami)",
+      "Bash(npm uninstall:*)",
+      "Bash(scoop install:*)",
+      "Bash(render:*)",
+      "Bash(~/scoop/shims/render:*)",
+      "Bash(scoop list:*)",
+      "Bash(curl:*)",
+      "Bash(/c/Users/mossa/bin/render.exe:*)"
     ],
     "deny": []
   }
