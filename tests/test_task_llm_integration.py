@@ -282,7 +282,7 @@ class TaskLLMIntegrationTest:
         
         # Execute the task command
         try:
-            await self.tasks_cog.task_chat(interaction, prompt, model="gemini-2.5-flash-preview")
+            await self.tasks_cog.task_chat(interaction, prompt, model="gemini-3-flash-preview")
             
             # Get the response from the last followup call
             if interaction.followup.send.called:

@@ -339,7 +339,7 @@ Your job: Use task_management tools first for all task operations. Only use mana
             # Use the AI processing with task management focus and restricted tools
             await ai_commands._process_ai_request(
                 formatted_prompt, 
-                model or "gemini-2.5-flash-preview",  # Default model
+                model or "gemini-3-flash-preview",  # Default model
                 interaction=interaction, 
                 attachments=[], 
                 fun=False, 

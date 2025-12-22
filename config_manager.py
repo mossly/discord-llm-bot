@@ -89,7 +89,7 @@ class ConfigManager:
         
         # Default model configuration
         self._config.update({
-            'default_model': os.getenv('DEFAULT_MODEL', 'gemini-2.5-flash-preview'),
+            'default_model': os.getenv('DEFAULT_MODEL', 'gemini-3-flash-preview'),
             'max_tokens_default': int(os.getenv('MAX_TOKENS_DEFAULT', '8000')),
         })
         

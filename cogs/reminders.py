@@ -622,8 +622,8 @@ Remember: You have access to the user's current reminders above. When they refer
                 
                 # Use the AI processing with reminder management focus and restricted tools
                 await ai_commands._process_ai_request(
-                    formatted_prompt, 
-                    model or "gemini-2.5-flash-preview",  # Default model
+                    formatted_prompt,
+                    model or "gemini-3-flash-preview",  # Default model
                     interaction=interaction, 
                     attachments=[], 
                     fun=False, 

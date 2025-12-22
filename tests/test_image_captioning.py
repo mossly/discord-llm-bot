@@ -22,7 +22,7 @@ class TestImageCaptioning(unittest.TestCase):
         
     def test_default_model_constant(self):
         """Test DEFAULT_MODEL is properly defined"""
-        self.assertEqual(DEFAULT_MODEL, "gemini-2.5-flash-preview")
+        self.assertEqual(DEFAULT_MODEL, "gemini-3-flash-preview")
         
     def test_model_supports_images_check(self):
         """Test checking if models support images"""

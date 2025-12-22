@@ -22,7 +22,7 @@ services:
       # Optional settings
       - BOT_TAG=${BOT_TAG:-}
       - COMMAND_PREFIX=${COMMAND_PREFIX:-!}
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-gemini-2.5-flash-preview}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gemini-3-flash-preview}
       - DUCK_PROXY=${DUCK_PROXY:-}
 
       # Admin/quota management

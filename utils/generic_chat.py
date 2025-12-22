@@ -47,7 +47,7 @@ async def perform_chat_query(
     # Convert legacy parameters to new data classes
     api_config = APIConfig(
         api=api,
-        model=model or "gemini-2.5-flash-preview",
+        model=model or "gemini-3-flash-preview",
         max_tokens=max_tokens
     )
 
@@ -266,7 +266,7 @@ async def perform_chat_query_with_tools(
     # Convert legacy parameters to new data classes
     api_config = APIConfig(
         api=api,
-        model=model or "gemini-2.5-flash-preview",
+        model=model or "gemini-3-flash-preview",
         max_tokens=max_tokens
     )
 

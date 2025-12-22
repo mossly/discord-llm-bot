@@ -13,7 +13,7 @@ from discord import Interaction
 class APIConfig:
     """Configuration for API client settings"""
     api: str = "openai"  # "openai" or "openrouter"
-    model: str = "gemini-2.5-flash-preview"
+    model: str = "gemini-3-flash-preview"
     max_tokens: int = 8000
     
     def __post_init__(self):
@@ -175,15 +175,15 @@ class ChatRequestBuilder:
 
 
 # Factory functions for common request patterns
-def create_simple_request(prompt: str, user_id: str, channel: discord.TextChannel, 
-                         model: str = "gemini-2.5-flash-preview") -> ChatRequest:
+def create_simple_request(prompt: str, user_id: str, channel: discord.TextChannel,
+                         model: str = "gemini-3-flash-preview") -> ChatRequest:
     """Create a simple chat request with minimal configuration"""
     return ChatRequestBuilder(prompt, user_id, channel).with_model(model).build()
 
 
 def create_tool_request(prompt: str, user_id: str, channel: discord.TextChannel,
                        allowed_tools: Optional[List[str]] = None,
-                       model: str = "gemini-2.5-flash-preview") -> ChatRequest:
+                       model: str = "gemini-3-flash-preview") -> ChatRequest:
     """Create a chat request with tool calling enabled"""
     return (ChatRequestBuilder(prompt, user_id, channel)
             .with_model(model)
@@ -192,7 +192,7 @@ def create_tool_request(prompt: str, user_id: str, channel: discord.TextChannel,
 
 
 def create_interaction_request(prompt: str, interaction: Interaction,
-                              model: str = "gemini-2.5-flash-preview") -> ChatRequest:
+                              model: str = "gemini-3-flash-preview") -> ChatRequest:
     """Create a chat request from a Discord interaction"""
     return (ChatRequestBuilder(prompt, str(interaction.user.id), interaction.channel)
             .with_model(model)
