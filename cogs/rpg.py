@@ -8,10 +8,33 @@ from discord import app_commands
 import logging
 import asyncio
 from typing import Optional
+from enum import Enum
 
 from utils.character_sheet_manager import CharacterSheetManager
+from utils.embed_utils import create_error_embed, send_embed
 
 logger = logging.getLogger(__name__)
+
+# RPG System Prompt
+RPG_SYSTEM_PROMPT = """You are a Game Master running a tabletop RPG session. Create immersive narratives, voice NPCs distinctively, and manage game mechanics fairly.
+
+TOOLS AVAILABLE:
+- character_sheet: View/modify player stats (HP, MP, XP, Level, Gold, inventory, attributes)
+- roll_dice: Roll dice for checks, combat, saves, random events
+
+RULES:
+1. ALWAYS use character_sheet to track damage, healing, XP gains, loot, level ups
+2. ALWAYS use roll_dice for random outcomes - never fabricate dice results
+3. Narrate results dramatically after each roll
+4. Keep challenges appropriate to the character's level
+5. Create memorable NPCs with distinct personalities
+6. Describe scenes vividly to immerse the player
+7. When combat occurs, track HP changes with character_sheet
+
+The player's current character stats will be provided in context. Use them to inform your narrative and ensure mechanical consistency."""
+
+# RPG allowed tools
+RPG_ALLOWED_TOOLS = ["character_sheet", "roll_dice"]
 
 
 class RPG(commands.Cog):
@@ -118,6 +141,257 @@ class RPG(commands.Cog):
                 color=0xFF0000
             )
             await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="rpg", description="Start an RPG adventure in a new thread")
+    @app_commands.describe(
+        prompt="Your adventure prompt or action",
+        model="AI model to use (optional)"
+    )
+    async def rpg_command(
+        self,
+        interaction: discord.Interaction,
+        prompt: str,
+        model: Optional[str] = None
+    ):
+        """Start an RPG adventure in a new thread"""
+        # Check if we're in a guild channel that supports threads
+        if not interaction.guild or isinstance(interaction.channel, discord.Thread):
+            error_embed = create_error_embed("RPG threads can only be created in server text channels (not in DMs or existing threads).")
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
+            return
+
+        await interaction.response.defer(thinking=True)
+
+        try:
+            # Get AI commands cog
+            ai_commands = self.bot.get_cog("AICommands")
+            if not ai_commands:
+                error_embed = create_error_embed("AI commands not available.")
+                await interaction.followup.send(embed=error_embed)
+                return
+
+            # Get or create character for this user (will be associated with thread later)
+            # For initial message, use None as channel_id since thread doesn't exist yet
+            character = await self.character_manager.get_or_create_character(
+                interaction.user.id,
+                None  # Will be updated when thread is created
+            )
+
+            # Build character context
+            char_context = self._build_character_context(character)
+
+            # Build full system prompt with character context
+            full_system_prompt = f"{RPG_SYSTEM_PROMPT}\n\nCURRENT CHARACTER:\n{char_context}"
+
+            # Format the prompt
+            username = interaction.user.name
+            formatted_prompt = f"{username}: {prompt}"
+
+            # Use default model if none specified
+            model_key = model or "gemini-3-flash-preview"
+
+            # Process through AI with RPG tools only
+            await ai_commands._process_ai_request(
+                formatted_prompt,
+                model_key,
+                interaction=interaction,
+                attachments=[],
+                fun=False,
+                web_search=False,
+                deep_research=False,
+                tool_calling=True,
+                max_tokens=8000,
+                create_thread=True,
+                allowed_tools=RPG_ALLOWED_TOOLS,
+                custom_system_prompt=full_system_prompt
+            )
+
+            # Note: The thread creation happens in _process_ai_request with create_thread=True
+            # However, we need to add "RPG Mode" to the footer. Since we can't easily modify
+            # the embed after _process_ai_request, we'll need to rely on is_rpg_conversation_thread
+            # detecting it some other way, OR we modify the first message after thread creation.
+
+            # Let's modify the first message in the thread to add RPG Mode marker
+            # Wait a moment for thread to be created
+            await asyncio.sleep(0.5)
+
+            # Find the thread that was just created (most recent thread by bot)
+            async for thread in interaction.channel.threads:
+                # Check if this thread was just created (within last 5 seconds)
+                if thread.owner_id == self.bot.user.id:
+                    # Found the thread, modify the first message to add RPG Mode
+                    async for msg in thread.history(limit=1, oldest_first=True):
+                        if msg.author == self.bot.user and msg.embeds:
+                            embed = msg.embeds[0]
+                            current_footer = embed.footer.text if embed.footer else ""
+                            if current_footer and "RPG Mode" not in current_footer:
+                                lines = current_footer.split('\n')
+                                if lines:
+                                    lines[0] += " | RPG Mode"
+                                    new_footer = '\n'.join(lines)
+                                    embed.set_footer(text=new_footer)
+                                    await msg.edit(embed=embed)
+                                    logger.info(f"Added RPG Mode marker to thread: {thread.name}")
+                    break
+
+        except Exception as e:
+            logger.error(f"Error starting RPG session: {e}", exc_info=True)
+            error_embed = create_error_embed(f"Failed to start RPG session: {str(e)[:100]}")
+            await interaction.followup.send(embed=error_embed)
+
+    async def handle_rpg_thread_conversation(self, message: discord.Message):
+        """Handle conversation in RPG threads"""
+        try:
+            # Get AI commands cog
+            ai_commands = self.bot.get_cog("AICommands")
+            if not ai_commands:
+                logger.error("AICommands cog not found")
+                return
+
+            # Extract model from the first bot message footer
+            model_key = await self._detect_thread_model(message.channel)
+
+            # Get character for this user and thread
+            character = await self.character_manager.get_or_create_character(
+                message.author.id,
+                message.channel.id
+            )
+
+            # Build character context
+            char_context = self._build_character_context(character)
+
+            # Build full system prompt with character context
+            full_system_prompt = f"{RPG_SYSTEM_PROMPT}\n\nCURRENT CHARACTER:\n{char_context}"
+
+            # Gather conversation history from thread
+            conversation_history = await self._build_conversation_history(message.channel, message)
+
+            # Build context and prompt
+            context_text, current_prompt = self._build_context_and_prompt(
+                conversation_history, message
+            )
+
+            # Log processing info
+            logger.info(
+                f"Processing RPG thread message from {message.author.name} in thread {message.channel.name}"
+            )
+
+            # Send thinking message
+            thinking_msg = await message.reply("-# *The Game Master considers...*")
+
+            try:
+                # Combine context and current prompt
+                full_prompt = self._combine_context_and_prompt(context_text, current_prompt)
+
+                # Process the AI request with RPG tools only
+                await ai_commands._process_ai_request(
+                    prompt=full_prompt,
+                    model_key=model_key,
+                    reply_msg=message,
+                    reply_user=message.author,
+                    fun=False,
+                    tool_calling=True,
+                    allowed_tools=RPG_ALLOWED_TOOLS,
+                    custom_system_prompt=full_system_prompt
+                )
+            finally:
+                # Clean up thinking message
+                try:
+                    await thinking_msg.delete()
+                except:
+                    pass
+
+        except Exception as e:
+            logger.error(f"Error handling RPG thread conversation: {e}", exc_info=True)
+            error_embed = create_error_embed(f"Error processing message: {str(e)[:100]}...")
+            await message.channel.send(embed=error_embed)
+
+    def _build_character_context(self, character) -> str:
+        """Build a text representation of the character for the system prompt"""
+        inventory = character.get_inventory_list()
+        inv_text = ", ".join(inventory) if inventory else "Empty"
+
+        custom_stats = character.get_custom_stats()
+        custom_text = ", ".join(f"{k}: {v}" for k, v in custom_stats.items()) if custom_stats else "None"
+
+        return f"""Name: {character.name}
+Level: {character.level}
+HP: {character.hp}/{character.max_hp}
+MP: {character.mp}/{character.max_mp}
+XP: {character.xp}
+Gold: {character.gold}
+Attributes: STR {character.strength}, DEX {character.dexterity}, CON {character.constitution}, INT {character.intelligence}, WIS {character.wisdom}, CHA {character.charisma}
+Inventory: {inv_text}
+Custom Stats: {custom_text}"""
+
+    async def _detect_thread_model(self, channel: discord.Thread) -> str:
+        """Detect the model used in a thread from the first bot message"""
+        model_key = None
+
+        # Look through the first 50 messages to find bot's initial message
+        async for msg in channel.history(limit=50, oldest_first=True):
+            if msg.author == self.bot.user and msg.embeds and msg.embeds[0].footer:
+                footer_text = msg.embeds[0].footer.text
+                if footer_text:
+                    first_line = footer_text.split('\n')[0].strip()
+                    # Remove RPG Mode suffix if present
+                    if " | RPG Mode" in first_line:
+                        first_line = first_line.replace(" | RPG Mode", "")
+
+                    # Try to detect model from footer
+                    from cogs.ai_commands import MODELS_CONFIG
+                    for key, config in MODELS_CONFIG.items():
+                        if (config.get("default_footer") == first_line or
+                            config.get("name") == first_line):
+                            model_key = key
+                            break
+                break
+
+        # Fallback to default model if detection fails
+        if not model_key:
+            model_key = "gemini-3-flash-preview"
+
+        return model_key
+
+    async def _build_conversation_history(self, channel: discord.Thread, current_message: discord.Message) -> list:
+        """Build conversation history from thread messages"""
+        conversation_history = []
+
+        # Gather conversation history from thread (newest first, excluding current message)
+        async for msg in channel.history(limit=50, before=current_message):
+            if msg.author == self.bot.user:
+                # Bot message - extract content from embed
+                if msg.embeds and msg.embeds[0].description:
+                    conversation_history.append(f"Game Master: {msg.embeds[0].description}")
+            elif not msg.author.bot:
+                # User message
+                conversation_history.append(f"{msg.author.name}: {msg.content}")
+
+        # Reverse to get chronological order (oldest first)
+        conversation_history.reverse()
+        return conversation_history
+
+    def _build_context_and_prompt(self, conversation_history: list, message: discord.Message) -> tuple:
+        """Build context text and current prompt, handling length limits"""
+        max_context_length = 4000
+
+        context_text = "\n".join(conversation_history)
+
+        # Trim if too long
+        while len(context_text) > max_context_length and conversation_history:
+            conversation_history.pop(0)
+            context_text = "\n".join(conversation_history)
+
+        current_prompt = f"{message.author.name}: {message.content}"
+
+        return context_text, current_prompt
+
+    def _combine_context_and_prompt(self, context_text: str, current_prompt: str) -> str:
+        """Combine context and current prompt into final prompt"""
+        if context_text:
+            return f"Previous conversation:\n{context_text}\n\nCurrent message:\n{current_prompt}"
+        else:
+            return current_prompt
 
     @app_commands.command(name="reset-character", description="Reset your character sheet to default values")
     @app_commands.describe(

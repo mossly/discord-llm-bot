@@ -402,10 +402,24 @@ The bot includes an RPG character sheet system for tracking player stats in role
 - Inventory management (add/remove items)
 - Custom stats for game-specific attributes
 - SQLite backend for persistence
+- Dedicated RPG threads with Game Master AI
 
 ### Commands
+- `/rpg` - Start an RPG adventure in a new thread (creates thread with "RPG Mode" marker)
 - `/character` - View your character sheet
 - `/reset-character` - Reset character to default values
+
+### RPG Thread Mode
+The `/rpg` command creates a dedicated thread where:
+- The AI acts as a Game Master with an RPG-focused system prompt
+- Only `character_sheet` and `roll_dice` tools are available
+- Character stats are automatically injected into the AI context
+- The first message footer contains "RPG Mode" for identification
+
+### Tool Restrictions
+- `character_sheet` tool is ONLY available in RPG threads (threads with "RPG Mode" in footer)
+- `roll_dice` tool is available in all contexts
+- Regular `/thread` and `/chat` conversations do NOT have access to character_sheet
 
 ### LLM Tool Integration
 - **Tool Name**: `character_sheet`

@@ -55,13 +55,21 @@ class ConversationHandler:
             try:
                 # Process the AI request
                 full_prompt = self._combine_context_and_prompt(context_text, current_prompt)
+                # Define allowed tools for regular AI threads (character_sheet excluded - RPG only)
+                allowed_tools = [
+                    "web_search", "content_tool", "search_conversations",
+                    "search_discord_messages", "search_current_discord_messages",
+                    "lookup_discord_user", "manage_reminders", "roll_dice",
+                    "deep_research", "task_management"
+                ]
                 await ai_commands._process_ai_request(
                     prompt=full_prompt,
                     model_key=model_key,
                     reply_msg=message,
                     reply_user=message.author,
                     fun=fun_mode,  # Use detected fun mode
-                    tool_calling=True  # Enable tools by default in threads
+                    tool_calling=True,  # Enable tools by default in threads
+                    allowed_tools=allowed_tools  # Exclude character_sheet from regular threads
                 )
             finally:
                 # Clean up thinking message
@@ -185,16 +193,32 @@ async def is_ai_conversation_thread(bot, channel: discord.Thread) -> bool:
     """Check if this is an AI conversation thread"""
     if not isinstance(channel, discord.Thread):
         return False
-    
+
     try:
         # Check if the first message is from our bot
         first_message = None
         async for msg in channel.history(limit=1, oldest_first=True):
             first_message = msg
             break
-        
+
         return first_message and first_message.author == bot.user
-        
+
     except Exception as e:
         logger.error(f"Error checking if thread is AI conversation: {e}")
+        return False
+
+
+async def is_rpg_conversation_thread(bot, channel: discord.Thread) -> bool:
+    """Check if this is an RPG conversation thread (has 'RPG Mode' in first message footer)"""
+    if not isinstance(channel, discord.Thread):
+        return False
+
+    try:
+        async for msg in channel.history(limit=1, oldest_first=True):
+            if msg.author == bot.user and msg.embeds:
+                footer_text = msg.embeds[0].footer.text if msg.embeds[0].footer else ""
+                return "RPG Mode" in footer_text
+        return False
+    except Exception as e:
+        logger.error(f"Error checking if thread is RPG conversation: {e}")
         return False

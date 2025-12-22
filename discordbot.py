@@ -3,7 +3,7 @@ import asyncio
 import logging
 import discord
 from discord.ext import commands
-from conversation_handler import ConversationHandler, is_ai_conversation_thread
+from conversation_handler import ConversationHandler, is_ai_conversation_thread, is_rpg_conversation_thread
 from config_manager import config
 
 logging.basicConfig(
@@ -60,8 +60,13 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Only handle messages in AI conversation threads
-    if await is_ai_conversation_thread(bot, message.channel):
+    # Check RPG thread first (more specific check)
+    if await is_rpg_conversation_thread(bot, message.channel):
+        rpg_cog = bot.get_cog("RPG")
+        if rpg_cog:
+            await rpg_cog.handle_rpg_thread_conversation(message)
+    # Then check regular AI conversation threads
+    elif await is_ai_conversation_thread(bot, message.channel):
         await conversation_handler.handle_thread_conversation(message)
 
     # Process prefix commands (like !sync)
