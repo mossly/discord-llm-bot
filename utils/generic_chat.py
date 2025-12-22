@@ -454,11 +454,18 @@ async def perform_chat_query_with_tools_enhanced(
 
             if tool_calls:
                 # Add assistant message with tool calls
-                conversation_messages.append({
-                    "role": "assistant",
-                    "content": assistant_content,
-                    "tool_calls": tool_calls
-                })
+                # Use raw_message if available to preserve Gemini thought_signature and reasoning_details
+                raw_message = response.get("raw_message")
+                if raw_message:
+                    # Use the raw message which includes all provider-specific fields
+                    conversation_messages.append(raw_message)
+                else:
+                    # Fallback to manual construction for backward compatibility
+                    conversation_messages.append({
+                        "role": "assistant",
+                        "content": assistant_content,
+                        "tool_calls": tool_calls
+                    })
 
 
                 # Execute tools with user context for security

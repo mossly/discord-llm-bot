@@ -454,13 +454,21 @@ class DeepResearchTool(BaseTool):
         
         if "error" in response:
             raise ValueError(f"API error: {response['error']}")
-        
+
+        # Use raw_message if available to preserve Gemini thought_signature and reasoning_details
+        # This is critical for models like Gemini 3 that require metadata preservation
+        raw_message = response.get("raw_message")
+        if raw_message:
+            message = raw_message
+        else:
+            message = {
+                "content": response.get("content"),
+                "tool_calls": response.get("tool_calls", [])
+            }
+
         return {
             "choices": [{
-                "message": {
-                    "content": response.get("content"),
-                    "tool_calls": response.get("tool_calls", [])
-                }
+                "message": message
             }],
             "usage": {
                 "total_tokens": 0,  # API utils doesn't return usage stats in this format

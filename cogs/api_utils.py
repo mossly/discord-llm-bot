@@ -360,23 +360,42 @@ class APIUtils(commands.Cog):
                 return {"error": "Invalid API response"}
             
             message = response.choices[0].message
-            
+
             result = {
                 "content": message.content,
                 "tool_calls": []
             }
-            
-            # Extract tool calls
+
+            # Extract tool calls - preserve full structure for Gemini thought_signature support
             if hasattr(message, 'tool_calls') and message.tool_calls:
                 for tc in message.tool_calls:
-                    result["tool_calls"].append({
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments
+                    # Use model_dump() to preserve all fields including thought_signature
+                    # This is required for Gemini 3 models which include reasoning metadata
+                    if hasattr(tc, 'model_dump'):
+                        tool_call_dict = tc.model_dump(exclude_none=True)
+                    else:
+                        # Fallback for older SDK versions
+                        tool_call_dict = {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
                         }
-                    })
+                    result["tool_calls"].append(tool_call_dict)
+
+            # Preserve the raw message for conversation history (includes reasoning_details, etc.)
+            # This is critical for Gemini 3 models that require thought_signature preservation
+            if hasattr(message, 'model_dump'):
+                result["raw_message"] = message.model_dump(exclude_none=True)
+            else:
+                # Fallback: construct a basic message dict
+                result["raw_message"] = {
+                    "role": "assistant",
+                    "content": message.content,
+                    "tool_calls": result["tool_calls"] if result["tool_calls"] else None
+                }
             
             # Get usage stats for OpenRouter
             if api == "openrouter" and hasattr(response, 'id'):
