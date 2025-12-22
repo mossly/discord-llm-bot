@@ -226,7 +226,8 @@ class RPG(commands.Cog):
             await asyncio.sleep(0.5)
 
             # Find the thread that was just created (most recent thread by bot)
-            async for thread in interaction.channel.threads:
+            # Note: channel.threads is a list property, not an async iterator
+            for thread in interaction.channel.threads:
                 # Check if this thread was just created (within last 5 seconds)
                 if thread.owner_id == self.bot.user.id:
                     # Found the thread, modify the first message to add RPG Mode

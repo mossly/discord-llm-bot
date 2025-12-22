@@ -39,7 +39,11 @@
       "Bash(~/scoop/shims/render:*)",
       "Bash(scoop list:*)",
       "Bash(curl:*)",
-      "Bash(/c/Users/mossa/bin/render.exe:*)"
+      "Bash(/c/Users/mossa/bin/render.exe:*)",
+      "Bash(git -C \"c:\\Users\\mossa\\Desktop\\programming\\discord-llm-bot\" diff HEAD -- cogs/api_utils.py)",
+      "Bash(git -C \"c:/Users/mossa/Desktop/programming/discord-llm-bot\" status --short)",
+      "Bash(git -C \"c:/Users/mossa/Desktop/programming/discord-llm-bot\" show 450ecbb --stat)",
+      "Bash(git -C \"c:/Users/mossa/Desktop/programming/discord-llm-bot\" show 450ecbb --no-stat)"
     ],
     "deny": []
   }
