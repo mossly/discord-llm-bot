@@ -353,9 +353,11 @@ Custom Stats: {custom_text}"""
                 footer_text = msg.embeds[0].footer.text
                 if footer_text:
                     first_line = footer_text.split('\n')[0].strip()
-                    # Remove RPG Mode suffix if present
+                    # Remove RPG Mode and Fun Mode suffixes if present
                     if " | RPG Mode" in first_line:
                         first_line = first_line.replace(" | RPG Mode", "")
+                    if " | Fun Mode" in first_line:
+                        first_line = first_line.replace(" | Fun Mode", "")
 
                     # Try to detect model from footer
                     from cogs.ai_commands import MODELS_CONFIG

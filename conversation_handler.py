@@ -87,27 +87,32 @@ class ConversationHandler:
     async def _detect_thread_model(self, channel: discord.Thread) -> str:
         """Detect the model used in a thread from the first bot message"""
         model_key = None
-        
+
         # Look through the first 50 messages to find bot's initial message
         async for msg in channel.history(limit=50, oldest_first=True):
             if msg.author == self.bot.user and msg.embeds and msg.embeds[0].footer:
                 footer_text = msg.embeds[0].footer.text
                 if footer_text:
                     first_line = footer_text.split('\n')[0].strip()
+                    # Remove RPG Mode and Fun Mode suffixes if present
+                    if " | RPG Mode" in first_line:
+                        first_line = first_line.replace(" | RPG Mode", "")
+                    if " | Fun Mode" in first_line:
+                        first_line = first_line.replace(" | Fun Mode", "")
                     # Try to detect model from footer
                     from cogs.ai_commands import MODELS_CONFIG
                     for key, config in MODELS_CONFIG.items():
-                        if (config.get("default_footer") == first_line or 
+                        if (config.get("default_footer") == first_line or
                             config.get("name") == first_line):
                             model_key = key
                             break
                 break
-        
+
         # Fallback to default model if detection fails
         if not model_key:
             from cogs.ai_commands import DEFAULT_MODEL
             model_key = DEFAULT_MODEL
-            
+
         return model_key
     
     async def _detect_thread_fun_mode(self, channel: discord.Thread) -> bool:
