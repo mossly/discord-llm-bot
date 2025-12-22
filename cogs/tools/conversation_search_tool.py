@@ -4,7 +4,7 @@ Conversation search tool for LLMs to search through conversation history
 
 from typing import Dict, Any, List, Optional
 from .base_tool import BaseTool
-from conversation_history import ConversationHistoryManager
+from utils.conversation_history import ConversationHistoryManager
 import logging
 from datetime import datetime
 

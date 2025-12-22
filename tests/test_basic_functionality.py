@@ -162,19 +162,19 @@ def test_type_annotations():
     
     # Test that we can import generic_chat functions
     try:
-        from generic_chat import build_standardized_footer
+        from utils.response_formatter import build_standardized_footer
         footer = build_standardized_footer("test_model", 100, 50, 0.01, 2.5)
         assert "test_model" in footer
         assert "100 input tokens" in footer
         print("✅ Generic chat import and function")
     except Exception as e:
         print(f"❌ Generic chat import failed: {e}")
-    
+
     # Test tuple type annotations
     from typing import get_type_hints
     try:
         # This should not raise an error with Python 3.9+
-        from generic_chat import perform_chat_query
+        from utils.generic_chat import perform_chat_query
         hints = get_type_hints(perform_chat_query)
         print("✅ Type annotations work correctly")
     except Exception as e:

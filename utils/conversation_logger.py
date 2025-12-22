@@ -6,7 +6,7 @@ Handles logging of user-bot conversations for history and analytics
 import logging
 import discord
 from typing import Optional
-from conversation_history import ConversationHistoryManager
+from utils.conversation_history import ConversationHistoryManager
 
 logger = logging.getLogger(__name__)
 

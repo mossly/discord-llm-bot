@@ -306,7 +306,8 @@ class AICommands(commands.Cog):
                 return
 
         if not image_url:
-            from generic_chat import process_attachments, perform_chat_query, perform_chat_query_with_tools
+            from utils.generic_chat import perform_chat_query, perform_chat_query_with_tools
+            from utils.attachment_handler import process_attachments
             final_prompt, img_url = await process_attachments(prompt, attachments or [], is_slash=(interaction is not None))
         else:
             final_prompt = prompt

@@ -15,7 +15,7 @@ This is a Discord bot that integrates multiple LLM models through OpenRouter and
 
 ### Cogs System
 All bot functionality is organized in the `/cogs/` directory as Discord.py cogs:
-- `ai_commands.py` - Main `/chat` slash command and AI interactions  
+- `ai_commands.py` - Main `/chat` and `/thread` slash commands, AI context menus, and model configuration
 - `image_gen.py` - AI image generation (`/gen` command) - Gemini and GPT-5 Image models
 - `reminders.py` - Natural language reminder system with recurrence
 - `tasks.py` - Task management with priority and status tracking
@@ -25,6 +25,7 @@ All bot functionality is organized in the `/cogs/` directory as Discord.py cogs:
 - `conversation_search.py` - Search conversation history
 - `timezone_management.py` - User timezone handling
 - `api_utils.py` - API communication utilities
+- `fun_prompt.py` - Fun mode prompt management and persistence
 
 ### Tool System
 Advanced tool-calling system in `/cogs/tools/`:
@@ -38,10 +39,12 @@ Advanced tool-calling system in `/cogs/tools/`:
 - `discord_user_lookup_tool.py` - User information lookup
 - `content_tool.py` - Content retrieval from URLs
 - `recurrence_tools.py` - Reminder recurrence management
+- `dice_tool.py` - Dice rolling for decision making and roleplaying
+- `deep_research_tool.py` - LLM-orchestrated deep iterative research with multi-step search and content extraction
+- `context_aware_discord_search_tool.py` - Context-aware Discord search using current server/channel
 
 ### Utilities
 Helper modules in `/utils/`:
-- `generic_chat.py` - Core chat processing logic
 - `embed_utils.py` - Discord embed creation and splitting
 - `attachment_handler.py` - File and image processing
 - `response_formatter.py` - Format AI responses with footnotes
@@ -50,19 +53,47 @@ Helper modules in `/utils/`:
 - `time_parser.py` - Natural language time parsing
 - `task_manager.py` - Task backend management
 - `reminder_manager.py` - Reminder backend management
+- `background_task_manager.py` - Background task scheduling and management
+- `chat_data_classes.py` - Data classes for chat processing
+- `task_scheduler.py` - Task scheduling utilities
+- `timezone_manager.py` - Timezone handling utilities
+- `generic_chat.py` - Core chat processing logic with tool integration
+- `conversation_history.py` - Conversation history storage and retrieval
 
 ## Key Components
 
 ### Model Configuration
 The bot supports multiple AI models with different capabilities configured in `ai_commands.py`:
-- Gemini 3 Pro/Flash (Google's latest)
-- Claude Opus/Sonnet/Haiku 4.5 (Anthropic's latest)
-- GPT-5.2/5 Mini/Nano (OpenAI's latest)
-- DeepSeek V3.2
-- Mistral Large
-- Grok 4.1 Fast
 
-**IMPORTANT**: Model configurations are hardcoded in `ai_commands.py` for performance reasons. Loading model configurations from external files would introduce unacceptable latency for Discord interactions. Any changes to model configurations must be made directly in the code and require a deployment.
+**Text Models (via `/chat` command):**
+- `gemini-3-pro-preview` - Google Gemini 3 Pro (admin only)
+- `gemini-3-flash-preview` - Google Gemini 3 Flash
+- `claude-opus-4.5` - Anthropic Claude Opus 4.5 (admin only)
+- `claude-sonnet-4.5` - Anthropic Claude Sonnet 4.5
+- `claude-haiku-4.5` - Anthropic Claude Haiku 4.5 (default)
+- `gpt-5.2-pro` - OpenAI GPT-5.2 Pro (admin only)
+- `gpt-5.2` - OpenAI GPT-5.2 (admin only)
+- `gpt-5-mini` - OpenAI GPT-5 Mini
+- `gpt-5-nano` - OpenAI GPT-5 Nano
+- `deepseek-v3.2` - DeepSeek V3.2
+- `mistral-large-2512` - Mistral Large
+- `grok-4.1-fast` - xAI Grok 4.1 Fast
+
+**Image Generation Models (via `/gen` command):**
+- `gemini-2.5-flash-image` - Gemini 2.5 Flash Image (default)
+- `gemini-3-pro-image-preview` - Gemini 3 Pro Image (admin only)
+- `gpt-5-image-mini` - GPT-5 Image Mini
+- `gpt-5-image` - GPT-5 Image (admin only)
+
+**Image Generation Features:**
+- Multiple input image support (up to 3 images)
+- Image editing mode (`edit`) and input reference mode (`input`)
+- Streaming partial images for GPT models (optional `streaming=True`)
+- Quality settings: `low` and `high`
+- Orientation: Square, Landscape, Portrait
+- Context menu "Generate with Image" for quick image operations
+
+**IMPORTANT**: Model configurations are hardcoded in `ai_commands.py` and `image_gen.py` for performance reasons. Loading model configurations from external files would introduce unacceptable latency for Discord interactions. Any changes to model configurations must be made directly in the code and require a deployment.
 
 ### API Integration
 - Uses OpenRouter for most models and OpenAI directly for some
@@ -76,6 +107,8 @@ The bot supports multiple AI models with different capabilities configured in `a
 - Embed splitting for Discord's character limits
 - Server emoji integration
 - Automatic thread creation for AI conversations
+- Guild-specific command sync with `!sync` prefix command (owner only)
+- `/thread` command to start AI conversations in dedicated threads
 
 ## Development Commands
 
@@ -94,13 +127,41 @@ python tests/run_all_tests.py
 python tests/test_tool_calling.py
 ```
 
+### Command Sync
+The bot includes a `!sync` prefix command (owner only) for manual command synchronization:
+```bash
+!sync        # Sync to current guild (instant updates)
+!sync global # Sync globally (can take up to 1 hour)
+```
+Guild-specific sync is recommended for faster updates during development.
+
 ### Testing
-The bot has comprehensive test coverage for the tool-calling system:
+The bot has comprehensive test coverage in the `/tests/` directory:
+
+**Tool Tests:**
 - `test_base_tool.py` - Base tool functionality tests
 - `test_tool_registry.py` - Tool registration tests
 - `test_web_search_tool.py` - Web search tool tests
 - `test_content_tool.py` - Content retrieval tests
+- `test_tools.py` - General tool tests
+- `test_tool_cog_basic.py` - Tool cog basic tests
+
+**Feature Tests:**
+- `test_reminder_system.py` - Reminder system tests
+- `test_reminder_direct.py` - Direct reminder tests
+- `test_task_command.py` - Task command tests
+- `test_task_flow.py` - Task workflow tests
+- `test_task_llm_integration.py` - Task LLM integration tests
+- `test_time_parsing_fix.py` - Time parsing tests
+- `test_image_captioning.py` - Image captioning tests
+
+**Integration & Quality Tests:**
 - `test_integration.py` - Full integration tests
+- `test_basic_functionality.py` - Basic functionality tests
+- `test_code_quality.py` - Code quality checks
+- `test_deployment_readiness.py` - Deployment readiness checks
+- `test_syntax_validation.py` - Syntax validation
+- `test_final_validation.py` - Final validation tests
 
 ### User Notification
 When user input is required (e.g., waiting for approval, confirmation, or manual intervention), use the following command to notify the user with an audible beep:
@@ -216,7 +277,7 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 
 ## Data Persistence
 
-**CRITICAL REQUIREMENT**: All persistent data files MUST be stored in the `/data` directory or subdirectories within `/data`. This is a hard requirement for the Render hosting environment where the bot runs.
+**CRITICAL REQUIREMENT**: All persistent data files MUST be stored in the `/data` directory or subdirectories within `/data`. This is a hard requirement for the Docker/TrueNAS deployment where the bot runs.
 
 ### Data Storage Rules
 1. **Never use relative paths** like `./file.json` or `file.json` for persistent data
@@ -287,6 +348,44 @@ The bot provides real-time search capabilities through existing Discord message 
 - Locating specific messages or announcements  
 - Gathering context from previous conversations
 - Research and reference lookup in server history
+
+## Deep Research System
+
+The bot includes an LLM-orchestrated deep research capability for comprehensive topic investigation.
+
+### Features
+- **LLM Orchestration**: Uses Claude Sonnet 4 to strategically plan and execute research
+- **Multi-step Search**: Iteratively searches and refines queries based on findings
+- **Content Extraction**: Extracts and summarizes key content from discovered URLs
+- **Relevance Scoring**: Calculates source relevance based on domain authority and title matching
+- **Citation Generation**: Produces formatted citations with inline superscript references
+
+### Tool Integration
+- **Tool Name**: `deep_research`
+- **Parameters**:
+  - `query` (required): The research topic or question
+  - `min_actions` (optional): Minimum research actions (default: 6, max: 12)
+  - `focus_areas` (optional): List of specific focus areas to investigate
+  - `model` (optional): Orchestration model (default: anthropic/claude-sonnet-4)
+
+### Usage
+Enable via the `/chat` command with `deep_research=True` parameter, or use the deep_research tool directly in tool-calling mode.
+
+## Dice Rolling Tool
+
+Simple dice rolling tool for decision making and roleplaying scenarios.
+
+### Tool Integration
+- **Tool Name**: `roll_dice`
+- **Parameters**:
+  - `sides` (required): Number of sides (2-1000)
+  - `count` (optional): Number of dice to roll (1-10)
+  - `modifier` (optional): Modifier to add to total
+
+### Features
+- Supports standard RPG dice (d4, d6, d8, d10, d12, d20, d100)
+- Multiple dice rolls with modifiers
+- Formatted output in standard dice notation (e.g., "2d6+3")
 
 ## Task Management System
 
