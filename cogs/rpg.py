@@ -12,10 +12,11 @@ from enum import Enum
 
 from utils.character_sheet_manager import CharacterSheetManager
 from utils.embed_utils import create_error_embed, send_embed
+from config_manager import config
 
 logger = logging.getLogger(__name__)
 
-# RPG System Prompt
+# RPG System Prompt (base - will be combined with fun prompt if enabled)
 RPG_SYSTEM_PROMPT = """You are a Game Master running a tabletop RPG session. Create immersive narratives, voice NPCs distinctively, and manage game mechanics fairly.
 
 TOOLS AVAILABLE:
@@ -145,13 +146,15 @@ class RPG(commands.Cog):
     @app_commands.command(name="rpg", description="Start an RPG adventure in a new thread")
     @app_commands.describe(
         prompt="Your adventure prompt or action",
-        model="AI model to use (optional)"
+        model="AI model to use (optional)",
+        fun="Enable fun/unhinged mode for chaotic adventures"
     )
     async def rpg_command(
         self,
         interaction: discord.Interaction,
         prompt: str,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        fun: Optional[bool] = False
     ):
         """Start an RPG adventure in a new thread"""
         # Check if we're in a guild channel that supports threads
@@ -181,7 +184,14 @@ class RPG(commands.Cog):
             char_context = self._build_character_context(character)
 
             # Build full system prompt with character context
-            full_system_prompt = f"{RPG_SYSTEM_PROMPT}\n\nCURRENT CHARACTER:\n{char_context}"
+            # If fun mode is enabled, prepend the fun prompt
+            base_prompt = RPG_SYSTEM_PROMPT
+            if fun:
+                fun_prompt = config.get('fun_prompt', '')
+                if fun_prompt:
+                    base_prompt = f"{fun_prompt}\n\n{RPG_SYSTEM_PROMPT}"
+
+            full_system_prompt = f"{base_prompt}\n\nCURRENT CHARACTER:\n{char_context}"
 
             # Format the prompt
             username = interaction.user.name
@@ -196,7 +206,7 @@ class RPG(commands.Cog):
                 model_key,
                 interaction=interaction,
                 attachments=[],
-                fun=False,
+                fun=fun,
                 web_search=False,
                 deep_research=False,
                 tool_calling=True,
@@ -248,8 +258,9 @@ class RPG(commands.Cog):
                 logger.error("AICommands cog not found")
                 return
 
-            # Extract model from the first bot message footer
+            # Extract model and fun mode from the first bot message footer
             model_key = await self._detect_thread_model(message.channel)
+            fun_mode = await self._detect_thread_fun_mode(message.channel)
 
             # Get character for this user and thread
             character = await self.character_manager.get_or_create_character(
@@ -261,7 +272,14 @@ class RPG(commands.Cog):
             char_context = self._build_character_context(character)
 
             # Build full system prompt with character context
-            full_system_prompt = f"{RPG_SYSTEM_PROMPT}\n\nCURRENT CHARACTER:\n{char_context}"
+            # If fun mode is enabled, prepend the fun prompt
+            base_prompt = RPG_SYSTEM_PROMPT
+            if fun_mode:
+                fun_prompt = config.get('fun_prompt', '')
+                if fun_prompt:
+                    base_prompt = f"{fun_prompt}\n\n{RPG_SYSTEM_PROMPT}"
+
+            full_system_prompt = f"{base_prompt}\n\nCURRENT CHARACTER:\n{char_context}"
 
             # Gather conversation history from thread
             conversation_history = await self._build_conversation_history(message.channel, message)
@@ -273,7 +291,7 @@ class RPG(commands.Cog):
 
             # Log processing info
             logger.info(
-                f"Processing RPG thread message from {message.author.name} in thread {message.channel.name}"
+                f"Processing RPG thread message from {message.author.name} in thread {message.channel.name} (fun_mode={fun_mode})"
             )
 
             # Send thinking message
@@ -289,7 +307,7 @@ class RPG(commands.Cog):
                     model_key=model_key,
                     reply_msg=message,
                     reply_user=message.author,
-                    fun=False,
+                    fun=fun_mode,
                     tool_calling=True,
                     allowed_tools=RPG_ALLOWED_TOOLS,
                     custom_system_prompt=full_system_prompt
@@ -352,6 +370,19 @@ Custom Stats: {custom_text}"""
             model_key = "gemini-3-flash-preview"
 
         return model_key
+
+    async def _detect_thread_fun_mode(self, channel: discord.Thread) -> bool:
+        """Detect if fun mode is used in a thread from bot message footers"""
+        # Look through the first 20 messages to find bot messages with fun mode
+        async for msg in channel.history(limit=20, oldest_first=True):
+            if msg.author == self.bot.user and msg.embeds and msg.embeds[0].footer:
+                footer_text = msg.embeds[0].footer.text
+                if footer_text and "Fun Mode" in footer_text:
+                    logger.info(f"Detected fun mode in RPG thread from footer: {footer_text}")
+                    return True
+
+        logger.info("No fun mode detected in RPG thread history")
+        return False
 
     async def _build_conversation_history(self, channel: discord.Thread, current_message: discord.Message) -> list:
         """Build conversation history from thread messages"""
