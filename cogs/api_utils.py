@@ -58,6 +58,127 @@ class APIUtils(commands.Cog):
         
         return emoji_mapping
     
+    def _has_unmatched_emoji_patterns(self, content: str, guild: discord.Guild) -> list:
+        """
+        Find :emoji: patterns that don't match any server emoji.
+        Returns list of unmatched emoji names.
+        """
+        if not content or not guild:
+            return []
+
+        pattern = r':([a-zA-Z0-9_]+):'
+        emoji_mapping = self.create_emoji_name_mapping(guild)
+
+        unmatched = []
+        for match in re.finditer(pattern, content):
+            emoji_name = match.group(1).lower()
+            start_pos = match.start()
+            end_pos = match.end()
+
+            # Skip if already a server emoji (exact match)
+            if emoji_name in emoji_mapping:
+                continue
+
+            # Skip if this is part of an already-formatted emoji <:name:id> or <a:name:id>
+            if start_pos > 0 and content[start_pos-1] == ':':
+                if start_pos > 1 and content[start_pos-2] == 'a':
+                    if start_pos > 2 and content[start_pos-3] == '<':
+                        continue
+                elif start_pos > 1 and content[start_pos-2] == '<':
+                    continue
+
+            # Skip if followed by numbers and > (already formatted)
+            if end_pos < len(content) and re.match(r'[0-9]+>', content[end_pos:]):
+                continue
+
+            # Skip if inside code blocks (backticks)
+            # Count backticks before this position
+            text_before = content[:start_pos]
+            single_backticks = text_before.count('`') - text_before.count('```') * 3
+            if single_backticks % 2 == 1:  # Inside inline code
+                continue
+            if text_before.count('```') % 2 == 1:  # Inside code block
+                continue
+
+            unmatched.append(match.group(1))
+
+        return list(set(unmatched))  # Deduplicate
+
+    async def fix_hallucinated_emojis(
+        self,
+        content: str,
+        guild: discord.Guild,
+        timeout: float = 3.0
+    ) -> str:
+        """
+        Use a cheap LLM to identify and fix hallucinated emoji names.
+
+        Args:
+            content: The AI response text that may contain :emoji: patterns
+            guild: Discord guild for emoji list
+            timeout: Maximum time to wait for the API call
+
+        Returns:
+            Content with hallucinated emojis replaced with appropriate server emojis
+        """
+        if not content or not guild:
+            return content
+
+        # Check if there are any unmatched emoji patterns
+        unmatched = self._has_unmatched_emoji_patterns(content, guild)
+        if not unmatched:
+            logger.debug("No unmatched emoji patterns found, skipping LLM fix")
+            return content
+
+        # Get emoji names for the prompt
+        emoji_names = [emoji.name for emoji in guild.emojis]
+        if not emoji_names:
+            return content
+
+        logger.info(f"Found {len(unmatched)} unmatched emoji patterns: {unmatched}")
+
+        # Build prompt with full context
+        prompt = f"""Fix the emoji shortcodes in this text. Replace any :emoji: that's not in the server's emoji list with the most semantically appropriate match.
+
+Available server emojis: {', '.join(emoji_names)}
+
+Text to fix:
+{content}
+
+Rules:
+- Output ONLY the fixed text, nothing else
+- Keep all <:name:id> formatted emojis unchanged (these are already correct)
+- Replace unmatched :emoji: shortcodes with the most semantically similar server emoji using :name: format
+- If no good semantic match exists for an emoji, remove it entirely
+- Preserve ALL other text exactly as-is (formatting, punctuation, etc.)
+- Do not add any emojis that weren't in the original text"""
+
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.OPENROUTERCLIENT.chat.completions.create,
+                    model="google/gemini-2.0-flash-001",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=len(content) + 500
+                ),
+                timeout=timeout
+            )
+
+            if response and response.choices and response.choices[0].message.content:
+                result = response.choices[0].message.content
+                logger.info(f"LLM emoji fix successful for {len(unmatched)} hallucinated emojis")
+                return result
+            else:
+                logger.warning("LLM emoji fix returned empty result, using original")
+                return content
+
+        except asyncio.TimeoutError:
+            logger.warning(f"LLM emoji fix timed out after {timeout}s, using original content")
+            return content
+        except Exception as e:
+            logger.warning(f"LLM emoji fix failed: {e}, using original content")
+            return content
+
     def substitute_emoji_formats(self, content: str, guild: discord.Guild) -> str:
         """Convert :emoji_name: format to proper <:emoji_name:id> format for server emojis"""
         if not content or not guild:

@@ -203,6 +203,9 @@ async def perform_chat_query_enhanced(
 
         # Apply emoji format substitution if emojis are enabled
         if request.use_fun and request.channel and request.channel.guild:
+            # First: LLM-based fix for hallucinated emojis (async, with timeout)
+            cleaned_content = await api_cog.fix_hallucinated_emojis(cleaned_content, request.channel.guild)
+            # Second: exact match substitution for any remaining :emoji: patterns
             cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, request.channel.guild)
 
         # Build standardized footer
@@ -503,6 +506,9 @@ async def perform_chat_query_with_tools_enhanced(
 
                 # Apply emoji format substitution if emojis are enabled
                 if request.use_fun and request.channel and request.channel.guild:
+                    # First: LLM-based fix for hallucinated emojis (async, with timeout)
+                    cleaned_content = await api_cog.fix_hallucinated_emojis(cleaned_content, request.channel.guild)
+                    # Second: exact match substitution for any remaining :emoji: patterns
                     cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, request.channel.guild)
 
                 footer = build_standardized_footer(
@@ -602,6 +608,9 @@ async def perform_chat_query_with_tools_enhanced(
 
         # Apply emoji format substitution if emojis are enabled
         if request.use_fun and request.channel and request.channel.guild:
+            # First: LLM-based fix for hallucinated emojis (async, with timeout)
+            cleaned_content = await api_cog.fix_hallucinated_emojis(cleaned_content, request.channel.guild)
+            # Second: exact match substitution for any remaining :emoji: patterns
             cleaned_content = api_cog.substitute_emoji_formats(cleaned_content, request.channel.guild)
 
         footer = build_standardized_footer(
