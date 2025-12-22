@@ -26,6 +26,7 @@ All bot functionality is organized in the `/cogs/` directory as Discord.py cogs:
 - `timezone_management.py` - User timezone handling
 - `api_utils.py` - API communication utilities
 - `fun_prompt.py` - Fun mode prompt management and persistence
+- `rpg.py` - RPG character sheet management (`/character`, `/reset-character`)
 
 ### Tool System
 Advanced tool-calling system in `/cogs/tools/`:
@@ -42,6 +43,7 @@ Advanced tool-calling system in `/cogs/tools/`:
 - `dice_tool.py` - Dice rolling for decision making and roleplaying
 - `deep_research_tool.py` - LLM-orchestrated deep iterative research with multi-step search and content extraction
 - `context_aware_discord_search_tool.py` - Context-aware Discord search using current server/channel
+- `character_sheet_tool.py` - RPG character sheet management for LLM access
 
 ### Utilities
 Helper modules in `/utils/`:
@@ -59,6 +61,7 @@ Helper modules in `/utils/`:
 - `timezone_manager.py` - Timezone handling utilities
 - `generic_chat.py` - Core chat processing logic with tool integration
 - `conversation_history.py` - Conversation history storage and retrieval
+- `character_sheet_manager.py` - RPG character sheet database management
 
 ## Key Components
 
@@ -292,6 +295,7 @@ Admins can manage quotas using the `/set-quota`, `/reset-usage`, `/quota-stats`,
 - Tasks database (`/data/tasks.db`) ✅ Compliant
 - User timezones (`/data/user_timezones.db`) ✅ Compliant
 - System prompts (`/data/prompts/*.txt`) ✅ Compliant
+- Character sheets (`/data/character_sheets.db`) ✅ Compliant
 
 ### Container Storage Context
 The `/data` directory requirement exists because:
@@ -386,6 +390,42 @@ Simple dice rolling tool for decision making and roleplaying scenarios.
 - Supports standard RPG dice (d4, d6, d8, d10, d12, d20, d100)
 - Multiple dice rolls with modifiers
 - Formatted output in standard dice notation (e.g., "2d6+3")
+
+## RPG Character Sheet System
+
+The bot includes an RPG character sheet system for tracking player stats in roleplaying scenarios.
+
+### Features
+- Per-user and per-channel character sheets (different characters for different RPG threads)
+- Core stats: HP, MP, XP, Level, Gold
+- Attributes: Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma
+- Inventory management (add/remove items)
+- Custom stats for game-specific attributes
+- SQLite backend for persistence
+
+### Commands
+- `/character` - View your character sheet
+- `/reset-character` - Reset character to default values
+
+### LLM Tool Integration
+- **Tool Name**: `character_sheet`
+- **Operations**:
+  - `view` - Get the full character sheet
+  - `modify_stat` - Change a stat by a delta (e.g., take 10 damage = hp -10)
+  - `set_stat` - Set a stat to a specific value
+  - `add_item` - Add an item to inventory
+  - `remove_item` - Remove an item from inventory
+  - `set_name` - Set the character's name
+  - `reset` - Reset character to defaults
+
+### Stats
+- Core: `hp`, `max_hp`, `mp`, `max_mp`, `xp`, `level`, `gold`
+- Attributes: `strength`/`str`, `dexterity`/`dex`, `constitution`/`con`, `intelligence`/`int`, `wisdom`/`wis`, `charisma`/`cha`
+- Custom stats are also supported and stored automatically
+
+### Storage
+- **Database**: `/data/character_sheets.db`
+- **Unique per**: user_id + channel_id combination
 
 ## Task Management System
 

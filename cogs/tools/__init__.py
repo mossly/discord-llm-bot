@@ -76,6 +76,13 @@ except ImportError:
     DICE_TOOL_AVAILABLE = False
     DiceTool = None
 
+try:
+    from .character_sheet_tool import CharacterSheetTool
+    CHARACTER_SHEET_TOOL_AVAILABLE = True
+except ImportError:
+    CHARACTER_SHEET_TOOL_AVAILABLE = False
+    CharacterSheetTool = None
+
 __all__ = ['BaseTool', 'ToolRegistry']
 
 if WEB_SEARCH_AVAILABLE:
@@ -107,3 +114,6 @@ if TASK_MANAGEMENT_AVAILABLE:
 
 if DICE_TOOL_AVAILABLE:
     __all__.append('DiceTool')
+
+if CHARACTER_SHEET_TOOL_AVAILABLE:
+    __all__.append('CharacterSheetTool')

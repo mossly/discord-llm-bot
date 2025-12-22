@@ -7,7 +7,7 @@ from discord.ext import commands
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool, DiceTool
+from .tools import ToolRegistry, WebSearchTool, ContentRetrievalTool, DeepResearchTool, ConversationSearchTool, DiscordMessageSearchTool, ContextAwareDiscordSearchTool, DiscordUserLookupTool, ReminderTool, DiceTool, CharacterSheetTool
 from .tools.task_management_tool import TaskManagementTool
 from .tools.recurrence_tools import (
     WeekdayRecurrenceTool, SpecificDaysRecurrenceTool, MonthlyPositionRecurrenceTool,
@@ -87,7 +87,16 @@ class ToolCalling(commands.Cog):
         self.registry.register(custom_interval_tool, enabled=True)
         
         logger.info("Registered task management and 5 specialized recurrence tools")
-    
+
+    def register_character_sheet_tool(self, character_manager):
+        """Register character sheet tool with the provided character manager"""
+        if CharacterSheetTool:
+            character_tool = CharacterSheetTool(character_manager)
+            self.registry.register(character_tool, enabled=True)
+            logger.info("Registered character sheet tool")
+        else:
+            logger.warning("CharacterSheetTool not available")
+
     def get_registry(self) -> ToolRegistry:
         """Get the tool registry"""
         return self.registry
@@ -164,7 +173,7 @@ class ToolCalling(commands.Cog):
                 # Force the user_id to match the requesting user for security
                 arguments["user_id"] = requesting_user_id or user_id
                 
-            # Auto-inject user_id for task_management tool and enforce security  
+            # Auto-inject user_id for task_management tool and enforce security
             if tool_name == "task_management":
                 # Force the user_id to match the requesting user for security
                 # Ensure it's an integer
@@ -173,7 +182,18 @@ class ToolCalling(commands.Cog):
                     arguments["user_id"] = int(user_id_to_use)
                 except (ValueError, TypeError):
                     arguments["user_id"] = int(user_id)
-            
+
+            # Auto-inject user_id and channel_id for character_sheet tool
+            if tool_name == "character_sheet":
+                user_id_to_use = requesting_user_id or user_id
+                try:
+                    arguments["user_id"] = int(user_id_to_use)
+                except (ValueError, TypeError):
+                    arguments["user_id"] = int(user_id)
+                # Inject channel_id for channel-specific character sheets
+                if channel and hasattr(channel, 'id'):
+                    arguments["channel_id"] = channel.id
+
             result = await self.registry.execute_tool(tool_name, session_id=session_id, **arguments)
             
             # Enhanced logging for search tools
