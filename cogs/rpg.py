@@ -198,14 +198,11 @@ class RPG(commands.Cog):
             username = interaction.user.name
             formatted_prompt = f"{username}: {prompt}"
 
-            # Use default model if none specified
-            model_key = model or "gemini-3-flash-preview"
-
             # Process through AI with RPG tools only
             # Pass rpg_mode=True to add "RPG Mode" marker to footer
             await ai_commands._process_ai_request(
                 formatted_prompt,
-                model_key,
+                model,
                 interaction=interaction,
                 attachments=[],
                 fun=fun,
