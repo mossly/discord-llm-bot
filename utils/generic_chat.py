@@ -265,7 +265,8 @@ async def perform_chat_query_with_tools(
     username: str = None,
     allowed_tools: Optional[list] = None,
     custom_system_prompt: Optional[str] = None,
-    rpg_mode: bool = False
+    rpg_mode: bool = False,
+    create_thread: bool = False
 ) -> tuple[str, float, str]:
     """Legacy function signature - maintained for backward compatibility"""
     from utils.chat_data_classes import ChatRequest, APIConfig, ToolConfig
@@ -299,7 +300,8 @@ async def perform_chat_query_with_tools(
         username=username,
         reply_footer=reply_footer,
         custom_system_prompt=custom_system_prompt,
-        rpg_mode=rpg_mode
+        rpg_mode=rpg_mode,
+        create_thread=create_thread
     )
 
     return await perform_chat_query_with_tools_enhanced(request, api_cog, tool_cog, duck_cog)
@@ -497,7 +499,8 @@ async def perform_chat_query_with_tools_enhanced(
                 )
 
                 # In RPG mode, post tool actions as separate messages for visibility
-                if request.rpg_mode and request.channel:
+                # Skip on initial /rpg command (create_thread=True) to avoid cluttering thread creation
+                if request.rpg_mode and request.channel and not request.create_thread:
                     for result in tool_results:
                         tool_name = result.get("tool_name")
                         tool_result = result.get("result", {})

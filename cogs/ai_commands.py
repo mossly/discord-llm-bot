@@ -353,7 +353,8 @@ class AICommands(commands.Cog):
                     username=username,
                     allowed_tools=allowed_tools,
                     custom_system_prompt=custom_system_prompt,
-                    rpg_mode=rpg_mode
+                    rpg_mode=rpg_mode,
+                    create_thread=create_thread
                 )
             else:
                 # Fall back to standard query
