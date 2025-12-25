@@ -56,10 +56,11 @@ class ConversationHandler:
                 # Process the AI request
                 full_prompt = self._combine_context_and_prompt(context_text, current_prompt)
                 # Define allowed tools for regular AI threads (character_sheet excluded - RPG only)
+                # Tool names must match the actual tool.name property values
                 allowed_tools = [
-                    "web_search", "content_tool", "search_conversations",
+                    "search_web", "get_contents", "search_conversations",
                     "search_discord_messages", "search_current_discord_messages",
-                    "lookup_discord_user", "manage_reminders", "roll_dice",
+                    "lookup_discord_users", "manage_reminders", "roll_dice",
                     "deep_research", "task_management"
                 ]
                 await ai_commands._process_ai_request(

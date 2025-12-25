@@ -498,6 +498,46 @@ async def perform_chat_query_with_tools_enhanced(
                 # Continue to next iteration
                 continue
             else:
+                # Check if model returned empty content after tool calls
+                # Some models (like Gemini 3) may return empty content after tool execution
+                if not assistant_content and iteration > 0:
+                    logger.warning(f"Model returned empty content after tool execution on iteration {iteration}, attempting recovery")
+
+                    # Add a system message to prompt the model for a response
+                    conversation_messages.append({
+                        "role": "system",
+                        "content": "The tool execution completed successfully. Please provide your response to the user based on the tool results."
+                    })
+
+                    # Make one more API call to get a response
+                    try:
+                        recovery_response = await api_cog.send_request_with_tools(
+                            model=request.api_config.model,
+                            messages=conversation_messages,
+                            tools=None,  # No tools for recovery response
+                            tool_choice="none",
+                            api=request.api_config.api,
+                            max_tokens=request.api_config.max_tokens
+                        )
+
+                        if recovery_response.get("content"):
+                            assistant_content = recovery_response.get("content")
+                            # Track recovery usage
+                            if recovery_response.get("stats"):
+                                stats = recovery_response["stats"]
+                                total_input_tokens += stats.get("tokens_prompt", 0)
+                                total_output_tokens += stats.get("tokens_completion", 0)
+                                if "total_cost" in stats:
+                                    recovery_cost = stats["total_cost"]
+                                    total_cost += recovery_cost
+                                    if recovery_cost > 0:
+                                        quota_validator.track_usage(request.user_id, recovery_cost)
+                            logger.info("Recovery successful, got response content")
+                        else:
+                            logger.warning("Recovery attempt also returned empty content")
+                    except Exception as recovery_error:
+                        logger.error(f"Recovery attempt failed: {recovery_error}")
+
                 elapsed = round(time.time() - start_time, 2)
 
                 # Add tool usage to totals
