@@ -321,7 +321,22 @@ Inventory: {inv_text}
 Custom Stats: {custom_text}"""
 
     async def _detect_thread_model(self, channel: discord.Thread) -> str:
-        """Detect the model used in a thread from the first bot message"""
+        """Detect the model used in a thread - DB first, then footer fallback"""
+        # Try database first
+        if hasattr(self.bot, 'conversation_db'):
+            try:
+                thread_data = await self.bot.conversation_db.get_thread(channel.id)
+                if thread_data:
+                    logger.info(f"Got model from DB for thread {channel.id}: {thread_data.model_key}")
+                    return thread_data.model_key
+            except Exception as e:
+                logger.error(f"Error getting thread from DB: {e}")
+
+        # Fallback to footer parsing for legacy threads
+        return await self._detect_thread_model_from_footer(channel)
+
+    async def _detect_thread_model_from_footer(self, channel: discord.Thread) -> str:
+        """Legacy: Detect model from footer parsing"""
         model_key = None
 
         # Look through the first 50 messages to find bot's initial message
@@ -338,9 +353,9 @@ Custom Stats: {custom_text}"""
 
                     # Try to detect model from footer
                     from cogs.ai_commands import MODELS_CONFIG
-                    for key, config in MODELS_CONFIG.items():
-                        if (config.get("default_footer") == first_line or
-                            config.get("name") == first_line):
+                    for key, cfg in MODELS_CONFIG.items():
+                        if (cfg.get("default_footer") == first_line or
+                            cfg.get("name") == first_line):
                             model_key = key
                             break
                 break
@@ -352,7 +367,22 @@ Custom Stats: {custom_text}"""
         return model_key
 
     async def _detect_thread_fun_mode(self, channel: discord.Thread) -> bool:
-        """Detect if fun mode is used in a thread from bot message footers"""
+        """Detect if fun mode is used in a thread - DB first, then footer fallback"""
+        # Try database first
+        if hasattr(self.bot, 'conversation_db'):
+            try:
+                thread_data = await self.bot.conversation_db.get_thread(channel.id)
+                if thread_data:
+                    logger.info(f"Got fun_mode from DB for thread {channel.id}: {thread_data.is_fun_mode}")
+                    return thread_data.is_fun_mode
+            except Exception as e:
+                logger.error(f"Error getting thread from DB: {e}")
+
+        # Fallback to footer parsing for legacy threads
+        return await self._detect_thread_fun_mode_from_footer(channel)
+
+    async def _detect_thread_fun_mode_from_footer(self, channel: discord.Thread) -> bool:
+        """Legacy: Detect fun mode from footer parsing"""
         # Look through the first 20 messages to find bot messages with fun mode
         async for msg in channel.history(limit=20, oldest_first=True):
             if msg.author == self.bot.user and msg.embeds and msg.embeds[0].footer:

@@ -216,7 +216,8 @@ async def perform_chat_query_enhanced(
             cost=total_cost,
             elapsed_time=elapsed,
             footnotes=footnotes,
-            use_fun=request.use_fun
+            use_fun=request.use_fun,
+            rpg_mode=request.rpg_mode
         )
 
         # Log conversation to history

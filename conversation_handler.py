@@ -86,7 +86,22 @@ class ConversationHandler:
             await message.channel.send(embed=error_embed)
     
     async def _detect_thread_model(self, channel: discord.Thread) -> str:
-        """Detect the model used in a thread from the first bot message"""
+        """Detect the model used in a thread - DB first, then footer fallback"""
+        # Try database first
+        if hasattr(self.bot, 'conversation_db'):
+            try:
+                thread_data = await self.bot.conversation_db.get_thread(channel.id)
+                if thread_data:
+                    logger.info(f"Got model from DB for thread {channel.id}: {thread_data.model_key}")
+                    return thread_data.model_key
+            except Exception as e:
+                logger.error(f"Error getting thread from DB: {e}")
+
+        # Fallback to footer parsing for legacy threads
+        return await self._detect_thread_model_from_footer(channel)
+
+    async def _detect_thread_model_from_footer(self, channel: discord.Thread) -> str:
+        """Legacy: Detect model from footer parsing"""
         model_key = None
 
         # Look through the first 50 messages to find bot's initial message
@@ -102,9 +117,9 @@ class ConversationHandler:
                         first_line = first_line.replace(" | Fun Mode", "")
                     # Try to detect model from footer
                     from cogs.ai_commands import MODELS_CONFIG
-                    for key, config in MODELS_CONFIG.items():
-                        if (config.get("default_footer") == first_line or
-                            config.get("name") == first_line):
+                    for key, cfg in MODELS_CONFIG.items():
+                        if (cfg.get("default_footer") == first_line or
+                            cfg.get("name") == first_line):
                             model_key = key
                             break
                 break
@@ -115,9 +130,24 @@ class ConversationHandler:
             model_key = DEFAULT_MODEL
 
         return model_key
-    
+
     async def _detect_thread_fun_mode(self, channel: discord.Thread) -> bool:
-        """Detect if fun mode is used in a thread from bot message footers"""
+        """Detect if fun mode is used in a thread - DB first, then footer fallback"""
+        # Try database first
+        if hasattr(self.bot, 'conversation_db'):
+            try:
+                thread_data = await self.bot.conversation_db.get_thread(channel.id)
+                if thread_data:
+                    logger.info(f"Got fun_mode from DB for thread {channel.id}: {thread_data.is_fun_mode}")
+                    return thread_data.is_fun_mode
+            except Exception as e:
+                logger.error(f"Error getting thread from DB: {e}")
+
+        # Fallback to footer parsing for legacy threads
+        return await self._detect_thread_fun_mode_from_footer(channel)
+
+    async def _detect_thread_fun_mode_from_footer(self, channel: discord.Thread) -> bool:
+        """Legacy: Detect fun mode from footer parsing"""
         # Look through the first 20 messages to find bot messages with fun mode
         async for msg in channel.history(limit=20, oldest_first=True):
             if msg.author == self.bot.user and msg.embeds and msg.embeds[0].footer:
@@ -125,7 +155,7 @@ class ConversationHandler:
                 if footer_text and "Fun Mode" in footer_text:
                     logger.info(f"Detected fun mode in thread from footer: {footer_text}")
                     return True
-        
+
         logger.info("No fun mode detected in thread history")
         return False
     
@@ -196,12 +226,23 @@ class ConversationHandler:
 
 
 async def is_ai_conversation_thread(bot, channel: discord.Thread) -> bool:
-    """Check if this is an AI conversation thread"""
+    """Check if this is an AI conversation thread - DB first, then message check fallback"""
     if not isinstance(channel, discord.Thread):
         return False
 
     try:
-        # Check if the first message is from our bot
+        # Try database first
+        if hasattr(bot, 'conversation_db'):
+            try:
+                thread_data = await bot.conversation_db.get_thread(channel.id)
+                if thread_data:
+                    # It's in our DB, so it's an AI thread (but not RPG - that's checked separately)
+                    logger.debug(f"Thread {channel.id} found in DB (rpg={thread_data.is_rpg_mode})")
+                    return not thread_data.is_rpg_mode  # Return False if it's RPG (handled by rpg check)
+            except Exception as e:
+                logger.error(f"Error checking thread in DB: {e}")
+
+        # Fallback: Check if the first message is from our bot
         first_message = None
         async for msg in channel.history(limit=1, oldest_first=True):
             first_message = msg
@@ -215,11 +256,22 @@ async def is_ai_conversation_thread(bot, channel: discord.Thread) -> bool:
 
 
 async def is_rpg_conversation_thread(bot, channel: discord.Thread) -> bool:
-    """Check if this is an RPG conversation thread (has 'RPG Mode' in first message footer)"""
+    """Check if this is an RPG conversation thread - DB first, then footer check fallback"""
     if not isinstance(channel, discord.Thread):
         return False
 
     try:
+        # Try database first
+        if hasattr(bot, 'conversation_db'):
+            try:
+                thread_data = await bot.conversation_db.get_thread(channel.id)
+                if thread_data:
+                    logger.debug(f"Thread {channel.id} RPG mode from DB: {thread_data.is_rpg_mode}")
+                    return thread_data.is_rpg_mode
+            except Exception as e:
+                logger.error(f"Error checking thread in DB: {e}")
+
+        # Fallback: Check footer for "RPG Mode"
         async for msg in channel.history(limit=1, oldest_first=True):
             if msg.author == bot.user and msg.embeds:
                 footer_text = msg.embeds[0].footer.text if msg.embeds[0].footer else ""

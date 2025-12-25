@@ -456,10 +456,26 @@ class AICommands(commands.Cog):
                 
                 # Create thread from the original message
                 thread = await reply_msg.create_thread(name=thread_name or "AI Conversation")
-                
+
+                # Save thread metadata to database
+                if hasattr(self.bot, 'conversation_db'):
+                    try:
+                        await self.bot.conversation_db.create_thread(
+                            thread_id=thread.id,
+                            guild_id=thread.guild.id,
+                            parent_channel_id=thread.parent_id,
+                            created_by_user_id=reply_user.id if reply_user else 0,
+                            model_key=model_key,
+                            is_fun_mode=fun,
+                            is_rpg_mode=rpg_mode,
+                            allowed_tools=allowed_tools
+                        )
+                    except Exception as db_err:
+                        logger.error(f"Failed to save thread metadata: {db_err}")
+
                 # Send response in the thread
                 await send_embed(thread, embed, content=attribution_text)
-                
+
                 logger.info(f"Created thread '{thread_name}' for AI conversation")
                 
             except Exception as e:
@@ -535,9 +551,27 @@ class AICommands(commands.Cog):
                             name=thread_name or "AI Conversation",
                             auto_archive_duration=1440  # 24 hours
                         )
-                        logger.info(f"Created thread '{thread_name}' from /thread command")
+
+                        # Save thread metadata to database
+                        if hasattr(self.bot, 'conversation_db'):
+                            try:
+                                await self.bot.conversation_db.create_thread(
+                                    thread_id=thread.id,
+                                    guild_id=thread.guild.id,
+                                    parent_channel_id=thread.parent_id,
+                                    created_by_user_id=interaction.user.id,
+                                    model_key=model_key,
+                                    is_fun_mode=fun,
+                                    is_rpg_mode=rpg_mode,
+                                    allowed_tools=allowed_tools
+                                )
+                            except Exception as db_err:
+                                logger.error(f"Failed to save thread metadata: {db_err}")
+
+                        command_type = "/rpg" if rpg_mode else "/thread"
+                        logger.info(f"Created thread '{thread_name}' from {command_type} command")
                         thread_created = True
-                    
+
                     # Send minimal ephemeral response to satisfy Discord interaction requirement
                     if thread_created:
                         await interaction.followup.send("✅ Thread created successfully.", ephemeral=True)

@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 from conversation_handler import ConversationHandler, is_ai_conversation_thread, is_rpg_conversation_thread
 from config_manager import config
+from utils.conversation_db import conversation_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,7 +26,15 @@ async def on_ready():
     logging.info(f"{bot.user.name} has connected to Discord!")
     for guild in bot.guilds:
         logging.info(f"Bot is in server: {guild.name} (id: {guild.id})")
-    
+
+    # Initialize conversation database
+    try:
+        await conversation_db.initialize()
+        bot.conversation_db = conversation_db
+        logging.info("Conversation database initialized")
+    except Exception as e:
+        logging.error(f"Failed to initialize conversation database: {e}")
+
     try:
         synced = await bot.tree.sync()
         logging.info(f"Synced {len(synced)} command(s) to Discord")
