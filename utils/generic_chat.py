@@ -460,6 +460,16 @@ async def perform_chat_query_with_tools_enhanced(
                 # Use raw_message if available to preserve Gemini thought_signature and reasoning_details
                 raw_message = response.get("raw_message")
                 if raw_message:
+                    # Debug logging for Gemini 3
+                    if "gemini-3" in request.api_config.model.lower():
+                        logger.info(f"[Gemini 3 Debug] Appending raw_message to conversation")
+                        logger.info(f"[Gemini 3 Debug] raw_message keys: {raw_message.keys()}")
+                        if 'reasoning_details' in raw_message:
+                            logger.info(f"[Gemini 3 Debug] reasoning_details in raw_message: {raw_message['reasoning_details']}")
+                        if 'tool_calls' in raw_message:
+                            for i, tc in enumerate(raw_message['tool_calls']):
+                                if isinstance(tc, dict):
+                                    logger.info(f"[Gemini 3 Debug] raw_message tool_call[{i}] keys: {tc.keys()}")
                     # Use the raw message which includes all provider-specific fields
                     conversation_messages.append(raw_message)
                 else:

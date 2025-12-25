@@ -482,6 +482,25 @@ Rules:
             
             message = response.choices[0].message
 
+            # Debug logging for Gemini 3 thought_signature investigation
+            if "gemini-3" in model.lower():
+                logger.info(f"[Gemini 3 Debug] Model: {model}")
+                logger.info(f"[Gemini 3 Debug] Message type: {type(message)}")
+                logger.info(f"[Gemini 3 Debug] Message attributes: {dir(message)}")
+                if hasattr(message, 'model_dump'):
+                    raw_dump = message.model_dump()
+                    logger.info(f"[Gemini 3 Debug] Full message dump keys: {raw_dump.keys()}")
+                    if 'reasoning_details' in raw_dump:
+                        logger.info(f"[Gemini 3 Debug] reasoning_details present: {type(raw_dump['reasoning_details'])}")
+                        logger.info(f"[Gemini 3 Debug] reasoning_details content: {raw_dump['reasoning_details']}")
+                    else:
+                        logger.info("[Gemini 3 Debug] reasoning_details NOT present in message dump")
+                    if 'tool_calls' in raw_dump and raw_dump['tool_calls']:
+                        for i, tc in enumerate(raw_dump['tool_calls']):
+                            logger.info(f"[Gemini 3 Debug] tool_call[{i}] keys: {tc.keys() if isinstance(tc, dict) else 'not a dict'}")
+                            if isinstance(tc, dict) and 'thought_signature' in tc:
+                                logger.info(f"[Gemini 3 Debug] tool_call[{i}] has thought_signature: {tc['thought_signature'][:50]}...")
+
             result = {
                 "content": message.content,
                 "tool_calls": []
@@ -517,6 +536,14 @@ Rules:
                     "content": message.content,
                     "tool_calls": result["tool_calls"] if result["tool_calls"] else None
                 }
+
+            # Debug: Log what we're returning for Gemini 3
+            if "gemini-3" in model.lower():
+                logger.info(f"[Gemini 3 Debug] raw_message keys: {result['raw_message'].keys()}")
+                if 'reasoning_details' in result['raw_message']:
+                    logger.info(f"[Gemini 3 Debug] raw_message has reasoning_details")
+                else:
+                    logger.info(f"[Gemini 3 Debug] raw_message MISSING reasoning_details")
             
             # Get usage stats for OpenRouter
             if api == "openrouter" and hasattr(response, 'id'):
