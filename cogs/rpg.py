@@ -201,6 +201,7 @@ class RPG(commands.Cog):
             model_key = model or "gemini-3-flash-preview"
 
             # Process through AI with RPG tools only
+            # Pass rpg_mode=True to add "RPG Mode" marker to footer
             await ai_commands._process_ai_request(
                 formatted_prompt,
                 model_key,
@@ -213,37 +214,12 @@ class RPG(commands.Cog):
                 max_tokens=8000,
                 create_thread=True,
                 allowed_tools=RPG_ALLOWED_TOOLS,
-                custom_system_prompt=full_system_prompt
+                custom_system_prompt=full_system_prompt,
+                rpg_mode=True
             )
 
-            # Note: The thread creation happens in _process_ai_request with create_thread=True
-            # However, we need to add "RPG Mode" to the footer. Since we can't easily modify
-            # the embed after _process_ai_request, we'll need to rely on is_rpg_conversation_thread
-            # detecting it some other way, OR we modify the first message after thread creation.
-
-            # Let's modify the first message in the thread to add RPG Mode marker
-            # Wait a moment for thread to be created
-            await asyncio.sleep(0.5)
-
-            # Find the thread that was just created (most recent thread by bot)
-            # Note: channel.threads is a list property, not an async iterator
-            for thread in interaction.channel.threads:
-                # Check if this thread was just created (within last 5 seconds)
-                if thread.owner_id == self.bot.user.id:
-                    # Found the thread, modify the first message to add RPG Mode
-                    async for msg in thread.history(limit=1, oldest_first=True):
-                        if msg.author == self.bot.user and msg.embeds:
-                            embed = msg.embeds[0]
-                            current_footer = embed.footer.text if embed.footer else ""
-                            if current_footer and "RPG Mode" not in current_footer:
-                                lines = current_footer.split('\n')
-                                if lines:
-                                    lines[0] += " | RPG Mode"
-                                    new_footer = '\n'.join(lines)
-                                    embed.set_footer(text=new_footer)
-                                    await msg.edit(embed=embed)
-                                    logger.info(f"Added RPG Mode marker to thread: {thread.name}")
-                    break
+            # RPG Mode marker is now added via rpg_mode=True parameter
+            # No need for post-hoc message editing
 
         except Exception as e:
             logger.error(f"Error starting RPG session: {e}", exc_info=True)
@@ -311,7 +287,8 @@ class RPG(commands.Cog):
                     fun=fun_mode,
                     tool_calling=True,
                     allowed_tools=RPG_ALLOWED_TOOLS,
-                    custom_system_prompt=full_system_prompt
+                    custom_system_prompt=full_system_prompt,
+                    rpg_mode=True
                 )
             finally:
                 # Clean up thinking message

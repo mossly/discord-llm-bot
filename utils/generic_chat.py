@@ -261,7 +261,8 @@ async def perform_chat_query_with_tools(
     interaction=None,
     username: str = None,
     allowed_tools: Optional[list] = None,
-    custom_system_prompt: Optional[str] = None
+    custom_system_prompt: Optional[str] = None,
+    rpg_mode: bool = False
 ) -> tuple[str, float, str]:
     """Legacy function signature - maintained for backward compatibility"""
     from utils.chat_data_classes import ChatRequest, APIConfig, ToolConfig
@@ -294,7 +295,8 @@ async def perform_chat_query_with_tools(
         interaction=interaction,
         username=username,
         reply_footer=reply_footer,
-        custom_system_prompt=custom_system_prompt
+        custom_system_prompt=custom_system_prompt,
+        rpg_mode=rpg_mode
     )
 
     return await perform_chat_query_with_tools_enhanced(request, api_cog, tool_cog, duck_cog)
@@ -568,7 +570,8 @@ async def perform_chat_query_with_tools_enhanced(
                     cost=final_cost,
                     elapsed_time=elapsed,
                     footnotes=footnotes,
-                    use_fun=request.use_fun
+                    use_fun=request.use_fun,
+                    rpg_mode=request.rpg_mode
                 )
 
                 # Log conversation to history
@@ -670,7 +673,8 @@ async def perform_chat_query_with_tools_enhanced(
             cost=final_cost,
             elapsed_time=elapsed,
             footnotes=footnotes,
-            use_fun=request.use_fun
+            use_fun=request.use_fun,
+            rpg_mode=request.rpg_mode
         )
 
         # Log conversation to history
@@ -711,7 +715,8 @@ async def perform_chat_query_with_tools_enhanced(
             output_tokens=final_output_tokens,
             cost=final_cost,
             elapsed_time=elapsed,
-            use_fun=request.use_fun
+            use_fun=request.use_fun,
+            rpg_mode=request.rpg_mode
         )
 
         # Clean up session

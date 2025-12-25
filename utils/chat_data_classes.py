@@ -61,6 +61,7 @@ class ChatRequest:
     # Behavior flags
     use_fun: bool = False
     web_search: bool = False
+    rpg_mode: bool = False
     
     # Discord context
     interaction: Optional[Interaction] = None

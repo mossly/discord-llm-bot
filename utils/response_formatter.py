@@ -31,19 +31,22 @@ def extract_footnotes(content: str) -> tuple[str, str]:
 
 
 def build_standardized_footer(
-    model_name: str, 
-    input_tokens: int = 0, 
-    output_tokens: int = 0, 
-    cost: float = 0, 
-    elapsed_time: float = 0, 
+    model_name: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cost: float = 0,
+    elapsed_time: float = 0,
     footnotes: str = "",
-    use_fun: bool = False
+    use_fun: bool = False,
+    rpg_mode: bool = False
 ) -> str:
     """Build standardized footer for AI responses"""
-    # First line: Clean model name with fun mode indicator
+    # First line: Clean model name with mode indicators
     first_line = model_name
     if use_fun:
         first_line += " | Fun Mode"
+    if rpg_mode:
+        first_line += " | RPG Mode"
     
     # Second line: Usage stats
     usage_parts = []
