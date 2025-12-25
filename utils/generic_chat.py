@@ -496,6 +496,31 @@ async def perform_chat_query_with_tools_enhanced(
                     requesting_user_id=request.user_id  # Pass the actual Discord user making the request
                 )
 
+                # In RPG mode, post dice roll results as separate messages
+                if request.rpg_mode and request.channel:
+                    for result in tool_results:
+                        if result.get("tool_name") == "roll_dice":
+                            dice_result = result.get("result", {})
+                            if dice_result.get("success"):
+                                # Create a visually distinct dice roll embed
+                                dice_embed = discord.Embed(
+                                    title="🎲 Dice Roll",
+                                    description=dice_result.get("result_text", "Dice rolled"),
+                                    color=0xFFD700  # Gold color for dice rolls
+                                )
+                                # Add individual rolls if multiple dice
+                                if len(dice_result.get("rolls", [])) > 1:
+                                    rolls_str = ", ".join(str(r) for r in dice_result["rolls"])
+                                    dice_embed.add_field(name="Individual Rolls", value=rolls_str, inline=True)
+                                if dice_result.get("modifier", 0) != 0:
+                                    dice_embed.add_field(name="Modifier", value=f"{'+' if dice_result['modifier'] > 0 else ''}{dice_result['modifier']}", inline=True)
+                                dice_embed.add_field(name="Total", value=str(dice_result.get("final_total", "?")), inline=True)
+
+                                try:
+                                    await request.channel.send(embed=dice_embed)
+                                except Exception as e:
+                                    logger.error(f"Failed to send dice roll message: {e}")
+
                 # Add tool results to conversation
                 formatted_results = tool_cog.format_tool_results_for_llm(tool_results)
                 conversation_messages.extend(formatted_results)
