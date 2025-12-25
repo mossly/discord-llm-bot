@@ -32,7 +32,11 @@ class DiscordUserLookupTool(BaseTool):
             "properties": {
                 "search_term": {
                     "type": "string",
-                    "description": "Username, display name, or partial name to search for (case-insensitive)"
+                    "description": "Username, display name, partial name, or Discord user ID to search for (case-insensitive for names)"
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "Direct Discord user ID to look up (bypasses name search, returns exact user info)"
                 },
                 "server_id": {
                     "type": "string",
@@ -54,7 +58,7 @@ class DiscordUserLookupTool(BaseTool):
                     "default": 10
                 }
             },
-            "required": ["search_term"]
+            "required": []
         }
     
     def _format_user_result(self, member: discord.Member) -> Dict[str, Any]:
@@ -116,17 +120,63 @@ class DiscordUserLookupTool(BaseTool):
         
         return score > 0, score
     
-    async def execute(self, search_term: str, server_id: Optional[str] = None,
-                     exact_match: bool = False, include_bots: bool = False,
-                     max_results: int = 10) -> Dict[str, Any]:
+    async def execute(self, search_term: Optional[str] = None, user_id: Optional[str] = None,
+                     server_id: Optional[str] = None, exact_match: bool = False,
+                     include_bots: bool = False, max_results: int = 10) -> Dict[str, Any]:
         """Execute Discord user lookup"""
         try:
-            # Validate parameters
+            # Direct user ID lookup (bypasses name search)
+            if user_id:
+                try:
+                    user_id_int = int(user_id)
+                    # Search across all guilds for this user
+                    for guild in self.bot.guilds:
+                        member = guild.get_member(user_id_int)
+                        if member:
+                            user_data = self._format_user_result(member)
+                            user_data["match_score"] = 1.0
+                            logger.info(f"User lookup by ID completed: Found {member.name} ({member.display_name}) in {guild.name}")
+                            return {
+                                "success": True,
+                                "results": [user_data],
+                                "search_term": user_id,
+                                "total_results": 1,
+                                "suggestions": [],
+                                "search_stats": {
+                                    "lookup_type": "direct_id",
+                                    "user_id": user_id
+                                },
+                                "message": f"Found user with ID {user_id}: {member.name} ({member.display_name})"
+                            }
+
+                    # User ID not found in any guild
+                    return {
+                        "success": True,
+                        "results": [],
+                        "search_term": user_id,
+                        "total_results": 0,
+                        "suggestions": [],
+                        "search_stats": {"lookup_type": "direct_id", "user_id": user_id},
+                        "message": f"No user found with ID {user_id} in accessible servers"
+                    }
+                except ValueError:
+                    return {
+                        "success": False,
+                        "error": f"Invalid user ID format: {user_id}"
+                    }
+
+            # Validate search_term if no user_id provided
             if not search_term or len(search_term.strip()) < 1:
                 return {
                     "success": False,
-                    "error": "Search term must be at least 1 character long"
+                    "error": "Either search_term or user_id must be provided"
                 }
+
+            # Check if search_term looks like a Discord ID (all digits, 17-19 chars)
+            if search_term.isdigit() and 17 <= len(search_term) <= 19:
+                # Treat as user ID lookup
+                return await self.execute(user_id=search_term, server_id=server_id,
+                                         include_bots=include_bots, max_results=max_results)
             
             # Apply safety limits
             max_results = min(max_results, 50)

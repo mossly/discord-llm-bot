@@ -297,13 +297,15 @@ class DiscordMessageSearchTool(BaseTool):
         results = []
         messages_searched = 0
         matching_author_count = 0
-        
+
+        # Get channel name before try block so it's available in exception handlers
+        channel_name = getattr(channel, 'name', None) or f'DM-{channel.id}'
+
         try:
             async for message in channel.history(limit=limit):
                 messages_searched += 1
-                
+
                 # Debug logging for specific channel and author
-                channel_name = getattr(channel, 'name', f'DM-{channel.id}') if isinstance(channel, discord.TextChannel) else f'DM-{channel.id}'
                 if channel_name == "based-text-chat" and author_id and str(message.author.id) == author_id:
                     matching_author_count += 1
                     if query and query.lower() in message.content.lower():
