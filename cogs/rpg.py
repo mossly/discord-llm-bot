@@ -13,6 +13,7 @@ from enum import Enum
 from utils.character_sheet_manager import CharacterSheetManager
 from utils.embed_utils import create_error_embed, send_embed
 from config_manager import config
+from cogs.ai_commands import ModelChoices, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -146,15 +147,15 @@ class RPG(commands.Cog):
     @app_commands.command(name="rpg", description="Start an RPG adventure in a new thread")
     @app_commands.describe(
         prompt="Your adventure prompt or action",
-        model="AI model to use (optional)",
+        model="AI model to use",
         fun="Enable fun/unhinged mode for chaotic adventures"
     )
     async def rpg_command(
         self,
         interaction: discord.Interaction,
         prompt: str,
-        model: Optional[str] = None,
-        fun: Optional[bool] = False
+        model: ModelChoices = DEFAULT_MODEL,
+        fun: bool = False
     ):
         """Start an RPG adventure in a new thread"""
         # Check if we're in a guild channel that supports threads

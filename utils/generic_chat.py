@@ -533,11 +533,34 @@ async def perform_chat_query_with_tools_enhanced(
                 if not assistant_content and iteration > 0:
                     logger.warning(f"Model returned empty content after tool execution on iteration {iteration}, attempting recovery")
 
-                    # Add a system message to prompt the model for a response
-                    conversation_messages.append({
-                        "role": "system",
-                        "content": "The tool execution completed successfully. Please provide your response to the user based on the tool results."
-                    })
+                    # For Gemini 3, use a user message instead of system message for better recovery
+                    # Gemini models respond better to user prompts than system prompts for continuation
+                    if "gemini-3" in request.api_config.model.lower():
+                        # Create a fresh conversation with just the essential context
+                        # Extract the last tool results for context
+                        tool_results_summary = []
+                        for msg in reversed(conversation_messages):
+                            if msg.get("role") == "tool":
+                                tool_results_summary.insert(0, msg.get("content", ""))
+                            elif msg.get("role") == "assistant":
+                                break  # Stop at the last assistant message
+
+                        recovery_prompt = f"The following tool actions were just completed:\n\n"
+                        for result in tool_results_summary:
+                            recovery_prompt += f"- {result}\n"
+                        recovery_prompt += f"\nBased on these results, please continue the narrative and respond to the user."
+
+                        # Add as user message for Gemini
+                        conversation_messages.append({
+                            "role": "user",
+                            "content": recovery_prompt
+                        })
+                    else:
+                        # For other models, use system message
+                        conversation_messages.append({
+                            "role": "system",
+                            "content": "The tool execution completed successfully. Please provide your response to the user based on the tool results."
+                        })
 
                     # Make one more API call to get a response
                     try:
