@@ -47,6 +47,9 @@ ENV/
 *.swp
 *.swo
 
+# Internal docs/plans (not for repo)
+/docs/conversation-db-roadmap.md
+
 # OS
 .DS_Store
 Thumbs.db
