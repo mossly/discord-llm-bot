@@ -589,58 +589,63 @@ async def perform_chat_query_with_tools_enhanced(
                 if not assistant_content and iteration > 0:
                     logger.warning(f"Model returned empty content after tool execution on iteration {iteration}, attempting recovery")
 
-                    # Retry up to 3 times with a simple prompt to get a response
-                    max_retries = 3
-                    for retry_num in range(max_retries):
-                        logger.info(f"Empty response recovery attempt {retry_num + 1}/{max_retries}")
+                    # Extract all tool results from the conversation for summary
+                    all_tool_results = []
+                    for msg in conversation_messages:
+                        if msg.get("role") == "tool":
+                            all_tool_results.append(msg.get("content", ""))
 
-                        # Add a user message prompting for response (only on first retry)
-                        if retry_num == 0:
-                            # Extract the last tool results for context
-                            tool_results_summary = []
-                            for msg in reversed(conversation_messages):
-                                if msg.get("role") == "tool":
-                                    tool_results_summary.insert(0, msg.get("content", ""))
-                                elif msg.get("role") == "assistant":
-                                    break
+                    # Find original user message
+                    original_user_msg = None
+                    for msg in conversation_messages:
+                        if msg.get("role") == "user":
+                            original_user_msg = msg.get("content", "")
+                            break
 
-                            recovery_prompt = "The tool actions completed. Please provide your narrative response to the user."
-                            conversation_messages.append({
-                                "role": "user",
-                                "content": recovery_prompt
-                            })
+                    # Build a fresh, minimal conversation for recovery
+                    # This avoids the complex tool call history that may confuse Gemini 3
+                    recovery_messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"""The user asked: {original_user_msg}
 
-                        try:
-                            recovery_response = await api_cog.send_request_with_tools(
-                                model=request.api_config.model,
-                                messages=conversation_messages,
-                                tools=None,  # No tools for recovery response
-                                tool_choice="none",
-                                api=request.api_config.api,
-                                max_tokens=request.api_config.max_tokens
-                            )
+You already performed the following actions:
+{chr(10).join('- ' + r for r in all_tool_results)}
 
-                            if recovery_response.get("content"):
-                                assistant_content = recovery_response.get("content")
-                                # Track recovery usage
-                                if recovery_response.get("stats"):
-                                    stats = recovery_response["stats"]
-                                    total_input_tokens += stats.get("tokens_prompt", 0)
-                                    total_output_tokens += stats.get("tokens_completion", 0)
-                                    if "total_cost" in stats:
-                                        recovery_cost = stats["total_cost"]
-                                        total_cost += recovery_cost
-                                        if recovery_cost > 0:
-                                            quota_validator.track_usage(request.user_id, recovery_cost)
-                                logger.info(f"Recovery successful on attempt {retry_num + 1}")
-                                break  # Success, exit retry loop
-                            else:
-                                logger.warning(f"Recovery attempt {retry_num + 1} returned empty content")
-                        except Exception as recovery_error:
-                            logger.error(f"Recovery attempt {retry_num + 1} failed: {recovery_error}")
+Now provide your narrative response to the user based on these completed actions. Do not call any more tools."""}
+                    ]
+
+                    logger.info(f"Attempting recovery with fresh minimal conversation")
+
+                    try:
+                        recovery_response = await api_cog.send_request_with_tools(
+                            model=request.api_config.model,
+                            messages=recovery_messages,
+                            tools=None,  # No tools for recovery response
+                            tool_choice="none",
+                            api=request.api_config.api,
+                            max_tokens=request.api_config.max_tokens
+                        )
+
+                        if recovery_response.get("content"):
+                            assistant_content = recovery_response.get("content")
+                            # Track recovery usage
+                            if recovery_response.get("stats"):
+                                stats = recovery_response["stats"]
+                                total_input_tokens += stats.get("tokens_prompt", 0)
+                                total_output_tokens += stats.get("tokens_completion", 0)
+                                if "total_cost" in stats:
+                                    recovery_cost = stats["total_cost"]
+                                    total_cost += recovery_cost
+                                    if recovery_cost > 0:
+                                        quota_validator.track_usage(request.user_id, recovery_cost)
+                            logger.info("Recovery successful with fresh conversation")
+                        else:
+                            logger.warning("Recovery with fresh conversation also returned empty content")
+                    except Exception as recovery_error:
+                        logger.error(f"Recovery attempt failed: {recovery_error}")
 
                     if not assistant_content:
-                        logger.error(f"All {max_retries} recovery attempts failed for empty response")
+                        logger.error("Recovery failed - model consistently returning empty content")
 
                 elapsed = round(time.time() - start_time, 2)
 
