@@ -496,30 +496,83 @@ async def perform_chat_query_with_tools_enhanced(
                     requesting_user_id=request.user_id  # Pass the actual Discord user making the request
                 )
 
-                # In RPG mode, post dice roll results as separate messages
+                # In RPG mode, post tool actions as separate messages for visibility
                 if request.rpg_mode and request.channel:
                     for result in tool_results:
-                        if result.get("tool_name") == "roll_dice":
-                            dice_result = result.get("result", {})
-                            if dice_result.get("success"):
-                                # Create a visually distinct dice roll embed
+                        tool_name = result.get("tool_name")
+                        tool_result = result.get("result", {})
+
+                        if not tool_result.get("success"):
+                            continue
+
+                        try:
+                            if tool_name == "roll_dice":
+                                # Dice roll embed
                                 dice_embed = discord.Embed(
                                     title="🎲 Dice Roll",
-                                    description=dice_result.get("result_text", "Dice rolled"),
-                                    color=0xFFD700  # Gold color for dice rolls
+                                    description=tool_result.get("result_text", "Dice rolled"),
+                                    color=0xFFD700  # Gold color
                                 )
-                                # Add individual rolls if multiple dice
-                                if len(dice_result.get("rolls", [])) > 1:
-                                    rolls_str = ", ".join(str(r) for r in dice_result["rolls"])
+                                if len(tool_result.get("rolls", [])) > 1:
+                                    rolls_str = ", ".join(str(r) for r in tool_result["rolls"])
                                     dice_embed.add_field(name="Individual Rolls", value=rolls_str, inline=True)
-                                if dice_result.get("modifier", 0) != 0:
-                                    dice_embed.add_field(name="Modifier", value=f"{'+' if dice_result['modifier'] > 0 else ''}{dice_result['modifier']}", inline=True)
-                                dice_embed.add_field(name="Total", value=str(dice_result.get("final_total", "?")), inline=True)
+                                if tool_result.get("modifier", 0) != 0:
+                                    dice_embed.add_field(name="Modifier", value=f"{'+' if tool_result['modifier'] > 0 else ''}{tool_result['modifier']}", inline=True)
+                                dice_embed.add_field(name="Total", value=str(tool_result.get("final_total", "?")), inline=True)
+                                await request.channel.send(embed=dice_embed)
 
-                                try:
-                                    await request.channel.send(embed=dice_embed)
-                                except Exception as e:
-                                    logger.error(f"Failed to send dice roll message: {e}")
+                            elif tool_name == "character_sheet":
+                                # Character sheet action embed
+                                operation = tool_result.get("operation", "unknown")
+
+                                # Skip view operations - don't need to show those
+                                if operation == "view":
+                                    continue
+
+                                action_embed = discord.Embed(color=0x9B59B6)  # Purple for character updates
+
+                                if operation == "modify_stat":
+                                    stat = tool_result.get("stat", "?")
+                                    new_val = tool_result.get("new_value", "?")
+                                    delta = tool_result.get("delta", 0)
+                                    delta_str = f"+{delta}" if delta > 0 else str(delta)
+                                    action_embed.title = f"📊 {stat.upper()} {delta_str}"
+                                    action_embed.description = f"Now: {new_val}"
+
+                                elif operation == "set_stat":
+                                    stat = tool_result.get("stat", "?")
+                                    new_val = tool_result.get("value", "?")
+                                    action_embed.title = f"📊 {stat.upper()} Set"
+                                    action_embed.description = f"Now: {new_val}"
+
+                                elif operation == "add_item":
+                                    item = tool_result.get("item", "unknown item")
+                                    action_embed.title = "🎒 Item Acquired"
+                                    action_embed.description = f"+{item}"
+                                    action_embed.color = 0x2ECC71  # Green
+
+                                elif operation == "remove_item":
+                                    item = tool_result.get("item", "unknown item")
+                                    action_embed.title = "🎒 Item Lost"
+                                    action_embed.description = f"-{item}"
+                                    action_embed.color = 0xE74C3C  # Red
+
+                                elif operation == "set_name":
+                                    name = tool_result.get("name", "Unknown")
+                                    action_embed.title = "✨ Character Named"
+                                    action_embed.description = name
+
+                                elif operation == "reset":
+                                    action_embed.title = "🔄 Character Reset"
+                                    action_embed.description = "All stats restored to defaults"
+                                    action_embed.color = 0x3498DB  # Blue
+                                else:
+                                    continue  # Skip unknown operations
+
+                                await request.channel.send(embed=action_embed)
+
+                        except Exception as e:
+                            logger.error(f"Failed to send RPG action message: {e}")
 
                 # Add tool results to conversation
                 formatted_results = tool_cog.format_tool_results_for_llm(tool_results)
@@ -533,63 +586,58 @@ async def perform_chat_query_with_tools_enhanced(
                 if not assistant_content and iteration > 0:
                     logger.warning(f"Model returned empty content after tool execution on iteration {iteration}, attempting recovery")
 
-                    # For Gemini 3, use a user message instead of system message for better recovery
-                    # Gemini models respond better to user prompts than system prompts for continuation
-                    if "gemini-3" in request.api_config.model.lower():
-                        # Create a fresh conversation with just the essential context
-                        # Extract the last tool results for context
-                        tool_results_summary = []
-                        for msg in reversed(conversation_messages):
-                            if msg.get("role") == "tool":
-                                tool_results_summary.insert(0, msg.get("content", ""))
-                            elif msg.get("role") == "assistant":
-                                break  # Stop at the last assistant message
+                    # Retry up to 3 times with a simple prompt to get a response
+                    max_retries = 3
+                    for retry_num in range(max_retries):
+                        logger.info(f"Empty response recovery attempt {retry_num + 1}/{max_retries}")
 
-                        recovery_prompt = f"The following tool actions were just completed:\n\n"
-                        for result in tool_results_summary:
-                            recovery_prompt += f"- {result}\n"
-                        recovery_prompt += f"\nBased on these results, please continue the narrative and respond to the user."
+                        # Add a user message prompting for response (only on first retry)
+                        if retry_num == 0:
+                            # Extract the last tool results for context
+                            tool_results_summary = []
+                            for msg in reversed(conversation_messages):
+                                if msg.get("role") == "tool":
+                                    tool_results_summary.insert(0, msg.get("content", ""))
+                                elif msg.get("role") == "assistant":
+                                    break
 
-                        # Add as user message for Gemini
-                        conversation_messages.append({
-                            "role": "user",
-                            "content": recovery_prompt
-                        })
-                    else:
-                        # For other models, use system message
-                        conversation_messages.append({
-                            "role": "system",
-                            "content": "The tool execution completed successfully. Please provide your response to the user based on the tool results."
-                        })
+                            recovery_prompt = "The tool actions completed. Please provide your narrative response to the user."
+                            conversation_messages.append({
+                                "role": "user",
+                                "content": recovery_prompt
+                            })
 
-                    # Make one more API call to get a response
-                    try:
-                        recovery_response = await api_cog.send_request_with_tools(
-                            model=request.api_config.model,
-                            messages=conversation_messages,
-                            tools=None,  # No tools for recovery response
-                            tool_choice="none",
-                            api=request.api_config.api,
-                            max_tokens=request.api_config.max_tokens
-                        )
+                        try:
+                            recovery_response = await api_cog.send_request_with_tools(
+                                model=request.api_config.model,
+                                messages=conversation_messages,
+                                tools=None,  # No tools for recovery response
+                                tool_choice="none",
+                                api=request.api_config.api,
+                                max_tokens=request.api_config.max_tokens
+                            )
 
-                        if recovery_response.get("content"):
-                            assistant_content = recovery_response.get("content")
-                            # Track recovery usage
-                            if recovery_response.get("stats"):
-                                stats = recovery_response["stats"]
-                                total_input_tokens += stats.get("tokens_prompt", 0)
-                                total_output_tokens += stats.get("tokens_completion", 0)
-                                if "total_cost" in stats:
-                                    recovery_cost = stats["total_cost"]
-                                    total_cost += recovery_cost
-                                    if recovery_cost > 0:
-                                        quota_validator.track_usage(request.user_id, recovery_cost)
-                            logger.info("Recovery successful, got response content")
-                        else:
-                            logger.warning("Recovery attempt also returned empty content")
-                    except Exception as recovery_error:
-                        logger.error(f"Recovery attempt failed: {recovery_error}")
+                            if recovery_response.get("content"):
+                                assistant_content = recovery_response.get("content")
+                                # Track recovery usage
+                                if recovery_response.get("stats"):
+                                    stats = recovery_response["stats"]
+                                    total_input_tokens += stats.get("tokens_prompt", 0)
+                                    total_output_tokens += stats.get("tokens_completion", 0)
+                                    if "total_cost" in stats:
+                                        recovery_cost = stats["total_cost"]
+                                        total_cost += recovery_cost
+                                        if recovery_cost > 0:
+                                            quota_validator.track_usage(request.user_id, recovery_cost)
+                                logger.info(f"Recovery successful on attempt {retry_num + 1}")
+                                break  # Success, exit retry loop
+                            else:
+                                logger.warning(f"Recovery attempt {retry_num + 1} returned empty content")
+                        except Exception as recovery_error:
+                            logger.error(f"Recovery attempt {retry_num + 1} failed: {recovery_error}")
+
+                    if not assistant_content:
+                        logger.error(f"All {max_retries} recovery attempts failed for empty response")
 
                 elapsed = round(time.time() - start_time, 2)
 
