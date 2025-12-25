@@ -39,7 +39,8 @@ async def perform_chat_query(
     web_search: bool = False,
     max_tokens: int = 8000,
     interaction=None,
-    username: str = None
+    username: str = None,
+    rpg_mode: bool = False
 ) -> tuple[str, float, str]:
     """Legacy function signature - maintained for backward compatibility"""
     from utils.chat_data_classes import ChatRequest, APIConfig, ToolConfig
@@ -68,7 +69,8 @@ async def perform_chat_query(
         web_search=web_search,
         interaction=interaction,
         username=username,
-        reply_footer=reply_footer
+        reply_footer=reply_footer,
+        rpg_mode=rpg_mode
     )
 
     return await perform_chat_query_enhanced(request, api_cog, duck_cog)

@@ -372,7 +372,8 @@ class AICommands(commands.Cog):
                     web_search=web_search,
                     max_tokens=max_tokens,
                     interaction=interaction,
-                    username=username
+                    username=username,
+                    rpg_mode=rpg_mode
                 )
             
             # Check if result contains API error information
